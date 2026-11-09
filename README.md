@@ -1,28 +1,59 @@
 # Flay
 
-Lokaler Sprachassistent für macOS (Apple Silicon) und Windows: Push-to-Talk → Speech-to-Text →
-lokales LLM → Text-to-Speech. Deutsch und Englisch. Alles läuft offline auf dem eigenen Rechner.
+**Flay ist ein Sprachassistent, der komplett lokal auf dem eigenen Rechner läuft** – macOS
+(Apple Silicon) und Windows, Deutsch und Englisch. Du sprichst (per Taste oder mit „Hey Flay“),
+Flay versteht dich mit einer lokalen Spracherkennung, denkt mit einem lokalen Sprachmodell
+nach, das auch Bilder versteht, und antwortet mit eigener Stimme. Gespräche, Aufnahmen und
+Screenshots verlassen den Rechner nicht.
 
-> Status: **Phase 4** – Gespräch per Push-to-Talk oder Chat, Gedächtnis, Werkzeuge für
-> PhpStorm, Claude Code und den Bildschirm. Nächste Schritte siehe
-> [docs/roadmap.md](docs/roadmap.md).
+Flay ist für die Arbeit am Rechner gedacht:
+- Projekte in PhpStorm öffnen und schließen.
+- Aufträge an Claude Code geben; abschicken tust du selbst.
+- Den Bildschirm ansehen und dort klicken.
+- Webseiten und lokale Dateien lesen und zusammenfassen.
+- Formulare ausfüllen und Abläufe wiederholen.
+- Sich Dinge merken.
 
-## Setup
+Dazu gibt es eine Web-UI mit Chat und ein Symbol in der Menüleiste bzw. im Tray. Was als
+Nächstes kommt, steht in [docs/roadmap.md](docs/roadmap.md).
 
-Voraussetzung: [uv](https://docs.astral.sh/uv/) (`brew install uv` bzw.
-`winget install astral-sh.uv`). uv installiert auch die passende Python-Version (3.12).
+## Schnellstart
+
+**Voraussetzungen:**
+- [uv](https://docs.astral.sh/uv/): `brew install uv` bzw. `winget install astral-sh.uv`. uv
+  bringt auch Python 3.12 mit.
+- [Git LFS](https://git-lfs.com) für die mitgelieferte Stimme.
+- [Ollama](https://ollama.com) ≥ 0.30 als lokaler Modell-Server.
+- Getestet mit einem Mac mit M2 Pro (32 GB) und unter Windows mit einer RTX 4070 Ti (12 GB).
 
 ```sh
+git lfs install
+git clone https://github.com/minzink/local-assistant.git
+cd local-assistant
+
+ollama pull qwen3-vl:8b-instruct     # Sprachmodell, versteht Text und Bilder (Apache 2.0)
+ollama pull qwen3-embedding:0.6b     # Suche im Gedächtnis (Apache 2.0)
+ollama pull qwen3-vl:4b-instruct     # genaueres Klicken auf dem Bildschirm (optional)
+
 uv sync
-uv run flay setup       # lädt einmalig alle Modelle – der einzige Befehl, der etwas herunterlädt
-uv run flay info        # erkannte Hardware + aufgelöste Konfiguration
+uv run flay setup    # lädt einmalig Spracherkennung, Stimmen usw. – danach läuft alles offline
+uv run flay run      # startet Flay
 ```
 
-Außerdem wird ein lokaler LLM-Server mit OpenAI-kompatibler API benötigt, z.B.
-[Ollama](https://ollama.com) ≥ 0.30 mit `ollama pull qwen3-vl:8b-instruct` (Apache-2.0; versteht
-Text und Bilder und kann Werkzeuge aufrufen; die Variante ohne `-instruct` denkt vor jeder
-Antwort 6–10 s nach), alternativ LM Studio oder llama.cpp. Adresse und
-Modell stehen in der Config (`llm.base_url`, `llm.model`).
+Dann die **rechte Option-Taste** (macOS) bzw. **rechte Strg-Taste** (Windows) halten,
+sprechen und loslassen, z.B. „Wie spät ist es?“. Die Web-UI öffnet sich unter
+<http://127.0.0.1:8765>; dort kannst du auch tippen und das dauerhafte Zuhören einschalten.
+
+Unter macOS braucht das Terminal einmalig die Berechtigungen *Mikrofon*, *Bedienungshilfen* und
+*Eingabeüberwachung*, Details siehe unten.
+
+Eigene Einstellungen kommen in eine `flay.yaml`; die Vorlage ist `flay.example.yaml`.
+Statt Ollama geht jeder Server mit OpenAI-kompatibler API, z.B. LM Studio oder llama.cpp
+(`llm.base_url`, `llm.model`). `uv run flay info` zeigt die erkannte Hardware und die
+verwendete Konfiguration.
+
+Alles Weitere – eigene Stimme, Aktivierungswort, Claude Code, Gedächtnis – steht in den
+folgenden Abschnitten.
 
 ## Starten
 
