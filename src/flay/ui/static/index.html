@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flay</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --surface: #ffffff; --text: #1d1d1b; --muted: #74746f;
+    --border: #e2e2dd; --user: #2f5bea; --user-text: #ffffff; --bot: #ffffff;
+    --accent: #2f5bea; --off: #c2410c; --off-bg: #fdeee6; --ok: #15803d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141413; --surface: #1e1e1c; --text: #ecece8; --muted: #9a9a94;
+      --border: #2f2f2c; --user: #3b6cf6; --user-text: #ffffff; --bot: #262624;
+      --accent: #7a9bff; --off: #fb923c; --off-bg: #3a2416; --ok: #4ade80;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column;
+  }
+  header, footer { background: var(--surface); border-color: var(--border); }
+  header {
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+  }
+  header h1 { font-size: 17px; margin: 0; font-weight: 650; }
+  .status { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .status[data-state="listening"] .dot { background: var(--off); }
+  .status[data-state="thinking"] .dot { background: var(--accent); animation: pulse 1s infinite; }
+  .status[data-state="speaking"] .dot { background: var(--ok); animation: pulse 1s infinite; }
+  .status[data-state="offline"] .dot { background: transparent; border: 1px solid var(--muted); }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .controls { margin-left: auto; display: flex; gap: 8px; }
+  .toggle {
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px;
+  }
+  .toggle svg { width: 16px; height: 16px; }
+  .toggle .off { display: none; }
+  .toggle[aria-pressed="true"] { background: var(--off-bg); color: var(--off); border-color: var(--off); }
+  /* "Zuhören" is on when pressed – shown as active, not as muted */
+  .toggle.listen[aria-pressed="true"], .toggle.wake[aria-pressed="true"] { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); border-color: var(--ok); }
+  /* "Hey Flay" only matters while listening continuously */
+  .toggle.wake.idle { opacity: .55; }
+  .toggle[aria-pressed="true"] .on { display: none; }
+  .toggle[aria-pressed="true"] .off { display: inline; }
+  .toggle:focus-visible, button:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  main { flex: 1; overflow-y: auto; padding: 20px 16px; }
+  #chat { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 80%; padding: 9px 13px; border-radius: 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg.user { align-self: flex-end; background: var(--user); color: var(--user-text); border-bottom-right-radius: 4px; }
+  .msg.assistant { align-self: flex-start; background: var(--bot); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  .meta { display: block; font-size: 11px; opacity: .7; margin-top: 2px; }
+  .msg.streaming::after { content: "▍"; animation: pulse 1s infinite; }
+  .notice { align-self: center; color: var(--muted); font-size: 12px; text-align: center; }
+  .empty { color: var(--muted); text-align: center; margin-top: 15vh; }
+  footer { border-top: 1px solid var(--border); padding: 12px 16px; }
+  form { max-width: 760px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end; }
+  textarea {
+    flex: 1; resize: none; max-height: 160px; font: inherit; color: var(--text);
+    background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 9px 12px;
+  }
+  form button {
+    border: 0; border-radius: 12px; background: var(--accent); color: #fff; cursor: pointer;
+    width: 42px; height: 42px; display: grid; place-items: center;
+  }
+  form button:disabled { opacity: .4; cursor: default; }
+  #banner { display: none; background: var(--off-bg); color: var(--off); text-align: center; font-size: 13px; padding: 4px; }
+  #banner.show { display: block; }
+  #recording {
+    display: none; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;
+    background: var(--off-bg); color: var(--off); font-size: 13px; padding: 6px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  #recording.show { display: flex; }
+  #recording .rec { width: 8px; height: 8px; border-radius: 50%; background: #dc2626; animation: pulse 1.2s infinite; }
+  #recording button {
+    border: 1px solid var(--off); background: var(--surface); color: var(--off);
+    border-radius: 999px; padding: 2px 12px; font: inherit; font-size: 12px; cursor: pointer;
+  }
+  /* Debug window */
+  #debug-toggle {
+    position: fixed; right: 16px; bottom: 84px; z-index: 20;
+    width: 40px; height: 40px; border-radius: 50%; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+    display: grid; place-items: center; box-shadow: 0 2px 8px rgb(0 0 0 / .12);
+  }
+  #debug-toggle[aria-expanded="true"] { color: var(--accent); border-color: var(--accent); }
+  #debug-toggle .badge {
+    position: absolute; top: -2px; right: -2px; min-width: 16px; height: 16px; padding: 0 4px;
+    border-radius: 8px; background: var(--accent); color: #fff; font-size: 10px; line-height: 16px;
+    display: none;
+  }
+  #debug-toggle .badge.show { display: block; }
+  #debug {
+    position: fixed; right: 16px; bottom: 132px; z-index: 20;
+    width: min(480px, calc(100vw - 32px)); height: min(340px, calc(100vh - 220px));
+    display: none; flex-direction: column; overflow: hidden;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: 0 8px 28px rgb(0 0 0 / .18);
+  }
+  #debug.open { display: flex; }
+  #debug header { padding: 8px 10px; gap: 8px; font-size: 13px; }
+  #debug header strong { font-weight: 650; }
+  #debug label { display: flex; align-items: center; gap: 4px; color: var(--muted); margin-left: auto; cursor: pointer; }
+  #debug header button {
+    border: 1px solid var(--border); background: transparent; color: var(--text);
+    border-radius: 6px; padding: 2px 8px; font: inherit; font-size: 12px; cursor: pointer;
+  }
+  #debug-log {
+    flex: 1; overflow-y: auto; margin: 0; padding: 6px 10px;
+    font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .log { display: grid; grid-template-columns: auto auto 1fr; gap: 8px; padding: 2px 0; border-left: 2px solid transparent; padding-left: 6px; }
+  .log time { color: var(--muted); }
+  .log .lvl { font-weight: 600; color: var(--muted); }
+  .log .lvl.WARNING { color: var(--off); }
+  .log .lvl.ERROR, .log .lvl.CRITICAL { color: #dc2626; }
+  .log .lvl.DEBUG { opacity: .6; }
+  .log .text { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .log .src { color: var(--muted); }
+  .log.action { border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  #debug.only-actions .log:not(.action) { display: none; }
+  .log-empty { color: var(--muted); text-align: center; margin-top: 30px; font-family: system-ui, sans-serif; }
+  @media (max-width: 520px) { .toggle .label { display: none; } .msg { max-width: 92%; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Flay</h1>
+  <div class="status" id="status" data-state="offline"><span class="dot"></span><span id="status-text">Verbinde …</span></div>
+  <div class="controls">
+    <button class="toggle listen" id="listen" type="button" aria-pressed="false" title="Dauerhaft zuhören einschalten" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h2M6 8v8M10 5v14M14 8v8M18 10v4M22 12h0"/></svg>
+      <span class="label">Zuhören</span>
+    </button>
+    <button class="toggle wake" id="wake" type="button" aria-pressed="false" title="Nur auf „Hey Flay“ reagieren" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M9 10h.01M12 10h.01M15 10h.01"/></svg>
+      <span class="label">Hey Flay</span>
+    </button>
+    <button class="toggle" id="mic" type="button" aria-pressed="false" title="Mikrofon stumm schalten">
+      <svg class="on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      <svg class="off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 10V6a3 3 0 0 0-5.7-1.3M9 9v2a3 3 0 0 0 5 2.2M5 11a7 7 0 0 0 11.5 5.3M19 11a7 7 0 0 1-.6 2.8M12 18v3M3 3l18 18"/></svg>
+      <span class="label">Mikrofon</span>
+    </button>
+    <button class="toggle" id="speaker" type="button" aria-pressed="false" title="Sprachausgabe stumm schalten">
+      <svg class="on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+      <svg class="off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m16 9 6 6M22 9l-6 6"/></svg>
+      <span class="label">Sprache</span>
+    </button>
+  </div>
+</header>
+<div id="banner">Keine Verbindung zu Flay – versuche es erneut …</div>
+<div id="recording" role="status">
+  <span class="rec"></span>
+  <span id="recording-text"></span>
+  <button type="button" id="recording-stop" title="Aufnahme beenden und den Ablauf speichern">Fertig</button>
+</div>
+<main id="scroller"><div id="chat"></div></main>
+<footer>
+  <form id="composer">
+    <textarea id="input" rows="1" placeholder="Nachricht an Flay … (Enter sendet, Umschalt+Enter für neue Zeile)" aria-label="Nachricht"></textarea>
+    <button id="send" type="submit" aria-label="Senden" disabled>
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+    </button>
+  </form>
+</footer>
+<button id="debug-toggle" type="button" aria-expanded="false" aria-controls="debug" title="Debug-Log anzeigen">
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h13"/></svg>
+  <span class="badge" id="debug-badge"></span>
+</button>
+<section id="debug" aria-label="Debug-Log">
+  <header>
+    <strong>Debug-Log</strong>
+    <label><input type="checkbox" id="debug-actions"> Nur Aktionen</label>
+    <button type="button" id="debug-clear">Leeren</button>
+    <button type="button" id="debug-close" aria-label="Schließen">✕</button>
+  </header>
+  <div id="debug-log"><div class="log-empty">Noch keine Einträge.</div></div>
+</section>
+<script>
+  const STATES = { idle: "Bereit", listening: "Hört zu …", thinking: "Denkt nach …", speaking: "Spricht …", offline: "Getrennt" };
+  const chat = document.getElementById("chat");
+  const scroller = document.getElementById("scroller");
+  const input = document.getElementById("input");
+  const send = document.getElementById("send");
+  const mic = document.getElementById("mic");
+  const speaker = document.getElementById("speaker");
+  const listen = document.getElementById("listen");
+  const wake = document.getElementById("wake");
+  const recording = document.getElementById("recording");
+  let continuousOn = false;
+  let wakeOn = null;
+  let socket = null;
+  let streaming = null;  // bubble of the reply currently being generated
+  let retry = 500;
+
+  function atBottom() { return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80; }
+  function scrollDown(force) { if (force || atBottom()) scroller.scrollTop = scroller.scrollHeight; }
+
+  function setEmpty() {
+    if (!chat.children.length) {
+      const hint = document.createElement("div");
+      hint.className = "empty";
+      hint.textContent = "Push-to-Talk-Taste halten und sprechen – oder unten schreiben.";
+      chat.append(hint);
+    }
+  }
+  function clearEmpty() { chat.querySelector(".empty")?.remove(); }
+
+  function bubble(role, text, meta) {
+    clearEmpty();
+    const stick = atBottom();
+    const el = document.createElement("div");
+    el.className = `msg ${role}`;
+    el.textContent = text;
+    if (meta) {
+      const m = document.createElement("span");
+      m.className = "meta";
+      m.textContent = meta;
+      el.append(m);
+    }
+    chat.append(el);
+    scrollDown(stick);
+    return el;
+  }
+
+  function notice(text) {
+    clearEmpty();
+    const el = document.createElement("div");
+    el.className = "notice";
+    el.textContent = text;
+    chat.append(el);
+    scrollDown(true);
+  }
+
+  function setState(state) {
+    const status = document.getElementById("status");
+    status.dataset.state = state;
+    document.getElementById("status-text").textContent = STATES[state] ?? state;
+  }
+
+  function setListening(continuous) {
+    listen.hidden = continuous === null || continuous === undefined;
+    listen.setAttribute("aria-pressed", String(Boolean(continuous)));
+    listen.title = continuous ? "Dauerhaftes Zuhören ausschalten (nur noch Push-to-Talk)" : "Dauerhaft zuhören einschalten";
+    continuousOn = Boolean(continuous);
+    setWakeWord(wakeOn);
+  }
+
+  function setWakeWord(enabled) {
+    wakeOn = enabled ?? null;
+    wake.hidden = wakeOn === null;
+    wake.setAttribute("aria-pressed", String(Boolean(wakeOn)));
+    wake.classList.toggle("idle", !continuousOn);
+    const effect = continuousOn ? "" : " – wirkt beim dauerhaften Zuhören";
+    wake.title = (wakeOn
+      ? "Auf alles reagieren, nicht nur auf „Hey Flay“"
+      : "Nur auf „Hey Flay …“ reagieren (Gespräche nebenbei werden ignoriert)") + effect;
+  }
+
+  function setRecording(name) {
+    recording.classList.toggle("show", Boolean(name));
+    document.getElementById("recording-text").textContent =
+      name ? `Ablauf „${name}“ wird aufgenommen – Klicks, Tastenkürzel und Scrollen, kein getippter Text.` : "";
+  }
+
+  function setMuted(micMuted, speakerMuted) {
+    mic.setAttribute("aria-pressed", String(micMuted));
+    mic.title = micMuted ? "Mikrofon einschalten" : "Mikrofon stumm schalten";
+    speaker.setAttribute("aria-pressed", String(speakerMuted));
+    speaker.title = speakerMuted ? "Sprachausgabe einschalten" : "Sprachausgabe stumm schalten";
+  }
+
+  const handlers = {
+    Init(e) {
+      chat.replaceChildren();
+      streaming = null;
+      for (const m of e.history) bubble(m.role, m.text, m.interrupted ? "unterbrochen" : null);
+      setEmpty();
+      setMuted(e.microphone, e.speaker);
+      setWakeWord(e.wake_word);
+      setListening(e.continuous);
+      setRecording(e.recording);
+      setState(e.state);
+      scrollDown(true);
+      debugLog.replaceChildren();
+      for (const entry of e.logs ?? []) addLog(entry, false);
+      if (!debugLog.children.length) setLogEmpty();
+      unseen = 0;
+      updateBadge();
+      debugLog.scrollTop = debugLog.scrollHeight;
+    },
+    StateChanged(e) { setState(e.state); },
+    MuteChanged(e) { setMuted(e.microphone, e.speaker); },
+    ListeningChanged(e) { setListening(e.continuous); },
+    WakeWordChanged(e) { setWakeWord(e.enabled); },
+    RecordingChanged(e) { setRecording(e.workflow); },
+    UserMessage(e) { bubble("user", e.text, e.source === "voice" ? "gesprochen" : null); streaming = null; },
+    AssistantDelta(e) {
+      if (!streaming) { streaming = bubble("assistant", ""); streaming.classList.add("streaming"); }
+      const stick = atBottom();
+      streaming.textContent += e.text;
+      scrollDown(stick);
+    },
+    AssistantMessage(e) {
+      const el = streaming ?? bubble("assistant", "");
+      el.classList.remove("streaming");
+      el.textContent = e.text;
+      if (e.interrupted) {
+        const m = document.createElement("span");
+        m.className = "meta";
+        m.textContent = "unterbrochen";
+        el.append(m);
+      }
+      streaming = null;
+    },
+    ToolUsed(e) {
+      const labels = {
+        open_project: "Projekt öffnen", close_project: "Projekt schließen", send_to_claude: "Auftrag an Claude",
+        claude_status: "Claude-Status lesen", look_at_screen: "Bildschirm ansehen", click_on_screen: "Klicken",
+        scroll_screen: "Scrollen", open_url: "Link öffnen", read_webpage: "Webseite lesen",
+        fill_web_form: "Formular ausfüllen", read_file: "Datei lesen", workflow: "Ablauf",
+        remember: "Merken", forget: "Vergessen", ssh_connect: "SSH-Verbindung",
+      };
+      const text = e.action ?? `${labels[e.name] ?? e.name}${e.ok ? "" : ` – ${e.result}`}`;
+      notice(`${e.ok ? "⚙" : "⚠"} ${text}`);
+    },
+    LogEntry(e) { addLog(e, true); },
+    Notice(e) { notice(e.text); },
+  };
+
+  function connect() {
+    socket = new WebSocket(`ws://${location.host}/ws`);
+    socket.onopen = () => { retry = 500; document.getElementById("banner").classList.remove("show"); updateSend(); };
+    socket.onmessage = (msg) => { const e = JSON.parse(msg.data); handlers[e.type]?.(e); };
+    socket.onclose = () => {
+      setState("offline");
+      document.getElementById("banner").classList.add("show");
+      updateSend();
+      setTimeout(connect, retry);
+      retry = Math.min(retry * 2, 5000);
+    };
+  }
+
+  function command(payload) {
+    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(payload));
+  }
+
+  function updateSend() {
+    send.disabled = !input.value.trim() || socket?.readyState !== WebSocket.OPEN;
+  }
+
+  function autosize() { input.style.height = "auto"; input.style.height = `${input.scrollHeight}px`; }
+
+  document.getElementById("composer").addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    command({ type: "send", text });
+    input.value = "";
+    autosize();
+    updateSend();
+  });
+  input.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing) {
+      ev.preventDefault();
+      document.getElementById("composer").requestSubmit();
+    }
+  });
+  input.addEventListener("input", () => { autosize(); updateSend(); });
+  listen.addEventListener("click", () => command({ type: "listen", continuous: listen.getAttribute("aria-pressed") !== "true" }));
+  wake.addEventListener("click", () => command({ type: "wake", enabled: wake.getAttribute("aria-pressed") !== "true" }));
+  // Same as saying it: Flay saves the workflow and answers.
+  document.getElementById("recording-stop").addEventListener("click", () => command({ type: "send", text: "Ablauf fertig" }));
+  mic.addEventListener("click", () => command({ type: "mute", microphone: mic.getAttribute("aria-pressed") !== "true" }));
+  speaker.addEventListener("click", () => command({ type: "mute", speaker: speaker.getAttribute("aria-pressed") !== "true" }));
+
+  // Debug window ---------------------------------------------------------------------
+  const debugPanel = document.getElementById("debug");
+  const debugLog = document.getElementById("debug-log");
+  const debugToggle = document.getElementById("debug-toggle");
+  const debugActions = document.getElementById("debug-actions");
+  const MAX_LOG_LINES = 500;
+  let unseen = 0;
+
+  function stored(key, fallback) {
+    try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
+  }
+  function store(key, value) {
+    try { localStorage.setItem(key, value); } catch { /* storage unavailable */ }
+  }
+
+  function setLogEmpty() {
+    const hint = document.createElement("div");
+    hint.className = "log-empty";
+    hint.textContent = "Noch keine Einträge.";
+    debugLog.append(hint);
+  }
+
+  function addLog(entry, live) {
+    debugLog.querySelector(".log-empty")?.remove();
+    const stick = debugLog.scrollHeight - debugLog.scrollTop - debugLog.clientHeight < 40;
+    const row = document.createElement("div");
+    row.className = "log" + (entry.action ? " action" : "");
+    const time = document.createElement("time");
+    time.textContent = entry.time;
+    const level = document.createElement("span");
+    level.className = `lvl ${entry.level}`;
+    level.textContent = entry.action ? "AKTION" : entry.level;
+    const text = document.createElement("span");
+    text.className = "text";
+    const source = document.createElement("span");
+    source.className = "src";
+    source.textContent = `[${entry.source}] `;
+    text.append(source, entry.message);
+    row.append(time, level, text);
+    debugLog.append(row);
+    while (debugLog.children.length > MAX_LOG_LINES) debugLog.firstChild.remove();
+    if (stick) debugLog.scrollTop = debugLog.scrollHeight;
+    if (live && !debugPanel.classList.contains("open") && entry.action) { unseen++; updateBadge(); }
+  }
+
+  function updateBadge() {
+    const badge = document.getElementById("debug-badge");
+    badge.textContent = unseen > 9 ? "9+" : String(unseen);
+    badge.classList.toggle("show", unseen > 0);
+  }
+
+  function setDebugOpen(open) {
+    debugPanel.classList.toggle("open", open);
+    debugToggle.setAttribute("aria-expanded", String(open));
+    debugToggle.title = open ? "Debug-Log schließen" : "Debug-Log anzeigen";
+    store("flay.debug.open", open ? "1" : "0");
+    if (open) { unseen = 0; updateBadge(); debugLog.scrollTop = debugLog.scrollHeight; }
+  }
+
+  function setOnlyActions(only) {
+    debugActions.checked = only;
+    debugPanel.classList.toggle("only-actions", only);
+    store("flay.debug.actions", only ? "1" : "0");
+  }
+
+  debugToggle.addEventListener("click", () => setDebugOpen(!debugPanel.classList.contains("open")));
+  document.getElementById("debug-close").addEventListener("click", () => setDebugOpen(false));
+  document.getElementById("debug-clear").addEventListener("click", () => { debugLog.replaceChildren(); setLogEmpty(); });
+  debugActions.addEventListener("change", () => setOnlyActions(debugActions.checked));
+  document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && debugPanel.classList.contains("open")) setDebugOpen(false); });
+  setOnlyActions(stored("flay.debug.actions", "0") === "1");
+  setDebugOpen(stored("flay.debug.open", "0") === "1");
+
+  setEmpty();
+  connect();
+  input.focus();
+</script>
+</body>
+</html>

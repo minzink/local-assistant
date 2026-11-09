@@ -1,0 +1,27 @@
+# Testsatz für das Denken auf Wunsch: Aufgaben mit prüfbarer Antwort, so formuliert, wie man
+# sie Flay sagen würde. expect.answer: eine dieser Angaben muss in der Antwort stehen.
+#
+#   uv run flay eval --cases eval/thinking.yaml                       # ohne Denken
+#   uv run flay eval --cases eval/thinking.yaml --thinking-model qwen3-vl:8b-thinking
+
+cases:
+  - say: "Denk mal nach: Ein Sprint hat zehn Arbeitstage. Ich habe drei Tage Urlaub und zwei Tage Workshops. Wie viele Tage bleiben zum Entwickeln?"
+    expect: {tool: none, answer: ["5", "fünf"]}
+  - say: "Überleg mal: Die Tests dauern 18 Minuten, das Deployment danach 12 Minuten. Wenn ich um 16:45 Uhr starte, wann ist alles fertig?"
+    expect: {tool: none, answer: ["17:15", "17.15", "17 Uhr 15", "viertel nach fünf", "Viertel nach fünf"]}
+  - say: "Denk nach: Server A ist schneller als Server B, Server C ist langsamer als Server B. Welcher ist der langsamste?"
+    expect: {tool: none, answer: ["C"]}
+  - say: "Überleg mal Schritt für Schritt: Ein Cronjob läuft alle 15 Minuten, beginnend um Mitternacht. Wie oft läuft er an einem Tag?"
+    expect: {tool: none, answer: ["96", "sechsundneunzig"]}
+  - say: "Denk mal nach: Die Datenbank wächst jeden Monat um 20 Gigabyte. Jetzt sind es 140 Gigabyte, die Platte hat 300. Nach wie vielen Monaten ist sie voll?"
+    expect: {tool: none, answer: ["8", "acht"]}
+  - say: "Überleg mal: Heute ist Montag. Welcher Wochentag ist in zehn Tagen?"
+    expect: {tool: none, answer: ["Donnerstag"]}
+  - say: "Schritt für Schritt bitte: Ich verteile sieben Tickets so gleichmäßig wie möglich auf drei Entwickler. Wie viele bekommt der mit den meisten?"
+    expect: {tool: none, answer: ["3", "drei"]}
+  - say: "Denk mal nach: Was ist größer, zwei hoch zehn oder zehn hoch drei?"
+    expect: {tool: none, answer: ["zwei hoch zehn", "2 hoch 10", "2^10", "1024", "2¹⁰"]}
+  - say: "Überleg mal: Ein Release kommt alle drei Wochen, das letzte war am 6. Oktober. Wann ist das nächste?"
+    expect: {tool: none, answer: ["27. Oktober", "27.10", "27. 10"]}
+  - say: "Denk mal nach: Ich habe 5 Microservices, und jeder ruft jeden anderen genau einmal direkt auf. Wie viele Aufrufe sind das insgesamt?"
+    expect: {tool: none, answer: ["20", "zwanzig"]}

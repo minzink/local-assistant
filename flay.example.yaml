@@ -1,0 +1,120 @@
+# Beispielkonfiguration – nach flay.yaml kopieren und anpassen (flay.yaml ist gitignored).
+# Alle Werte sind optional; nicht gesetzte Werte nutzen die Standardwerte.
+
+language:
+  default: de          # de | en
+  auto_detect: true    # Sprache pro Äußerung erkennen und in derselben Sprache antworten
+
+input:
+  mode: push_to_talk   # push_to_talk (Taste halten) | continuous (immer zuhören)
+  continuous:
+    end_silence_ms: 600  # so lange Pause beendet einen Satz
+    barge_in: true       # Flay per Sprache unterbrechen – nur mit Headset, sonst hört es sich selbst
+  trigger: hotkey       # hotkey (Taste halten) | terminal (Enter startet/stoppt)
+  # push_to_talk_key: alt_r   # Standard: alt_r (rechte Option) auf macOS, ctrl_r auf Windows
+
+audio:
+  input_device: null   # null = Systemstandard, sonst Name oder Index
+  output_device: null
+  vad: true            # Stille abschneiden, Aufnahmen ohne Sprache verwerfen (Silero VAD)
+
+stt:
+  backend: parakeet    # parakeet (schnell) | auto = Whisper (genauer, ~0,6 s) | mlx-whisper | faster-whisper
+  model: large-v3-turbo  # nur für Whisper
+
+llm:
+  backend: openai-compatible
+  # Jeder Server mit OpenAI-kompatibler API, z.B.:
+  #   Ollama     http://localhost:11434/v1
+  #   LM Studio  http://localhost:1234/v1   (MLX-Engine auf Apple Silicon)
+  #   llama.cpp  http://localhost:8080/v1   (llama-server)
+  #   mlx-lm     http://localhost:8080/v1   (mlx_lm.server)
+  base_url: http://localhost:11434/v1
+  api_key: null
+  model: qwen3-vl:8b-instruct           # Apache-2.0; Text, Bilder, Tools; ohne Denk-Modus
+  input_modalities: [text, image]       # [text] für reine Textmodelle (dann kein Bildschirm)
+  temperature: 0.7
+  max_tokens: 400
+  keep_warm_minutes: 4                  # Modell warm halten (Ollama entlädt nach 5 min); 0 = aus
+  structured_routing: false             # Aktionen per Formular (JSON-Schema) – mit qwen3-vl nicht besser
+  thinking:                             # Denken nur auf Wunsch („denk mal nach“), vorher „Moment …“
+    enabled: false
+    model: null                         # z.B. qwen3-vl:8b-thinking (Apache 2.0): 100 % statt 75 %
+                                        # bei Rechen-/Logikfragen, 7–30 s; Ollama-Kontext 8k
+    extra_body: {}                      # z.B. {chat_template_kwargs: {enable_thinking: true}}
+    max_tokens: 2000
+  extra_body: {}                        # Server-spezifische Felder je Anfrage, z.B. llama.cpp +
+                                        # Qwen3.5: {chat_template_kwargs: {enable_thinking: false}}
+
+tts:
+  backend: auto        # auto: qwen3 mit GPU (Apple Silicon/NVIDIA), sonst piper
+  voice:               # qwen3: eine Stimme für Deutsch und Englisch
+    name: auto         # auto | own (flay voice record) | ramona | hokuspokus | thorsten | Pfad.wav
+    pitch: 0           # Halbtöne, z.B. -2 tiefer, 2 höher (auch für piper)
+    speed: 1.0         # 1.2 = 20 % schneller (auch für piper)
+  voices:              # piper: eine Stimme je Sprache, beide weiblich
+    de: de_DE-kerstin-low      # CC0; männlich: de_DE-thorsten-medium (CC0)
+    en: en_US-kristin-medium   # gemeinfrei
+  filler:              # kurzes „Mhm.“, solange die Antwort noch vorbereitet wird
+    enabled: true
+    delay_ms: 400      # nur wenn die Antwort so lange nach Sprechende noch nicht läuft
+    # phrases:         { de: ["Mhm.", "Okay.", "Hm."], en: [...] }
+    # action_phrases:  { de: ["Moment.", "Einen Moment."], en: [...] }   # bei Aktionen
+
+persona:
+  name: Flay
+  # system_prompt: "You are Flay, ..."   # englisch formuliert, Antwortsprache wird ergänzt
+  mood:                # frei benennbare Stimmungen, 0–10; fließen in den System-Prompt ein
+    cheerful: 6
+    curious: 5
+
+tools:
+  enabled: [open_project, close_project, send_to_claude, claude_status, look_at_screen,
+            click_on_screen, scroll_screen, open_url, read_webpage, remember, forget, ssh_connect]
+  phpstorm:
+    launcher: null       # null = Toolbox-Skript bzw. `phpstorm` im PATH
+    config_dir: null     # null = neueste PhpStorm-Version (für "zuletzt geöffnete Projekte")
+    use_mcp: true        # PhpStorms MCP-Server nutzen (Settings → Tools → MCP Server aktivieren)
+    mcp_url: null        # null = automatisch finden, sonst z.B. http://127.0.0.1:64442 (/stream oder /sse)
+    mcp_token: null      # nur nötig, wenn der Server im "restricted mode" läuft
+  claude:
+    transport: auto      # auto = in `flay claude`-Sitzung (tmux) tippen, sonst Zwischenablage
+    autostart: true      # keine Sitzung? Claude im Hintergrund starten (anhängen: `flay claude`)
+  screen:
+    monitor: 1           # 1 = Hauptbildschirm, 0 = alle
+    max_size: 1280       # Screenshot wird auf diese Kantenlänge verkleinert
+  pointer:               # click_on_screen
+    model: auto          # Bildmodell zum Orten; auto = 4B-Variante aus flay setup, sonst llm.model; null = llm.model
+    refine: true         # zweiter, genauerer Blick, wenn die Bedienungshilfen nichts bestätigen
+  web:                   # read_webpage
+    max_pages: 3         # höchstens so viele Bildschirme lesen (je ~8 s auf einem M2 Pro)
+    max_steps: 4         # so oft darf Flay auf der Seite scrollen/klicken, bis es das Gesuchte hat
+    direct: true         # Seiten direkt per HTTP laden (unsichtbar, ~0,2 s; ohne Logins/JavaScript)
+    browser_text: true   # Text aus dem Browser lesen (macOS, Bedienungshilfen, im Hintergrund)
+    max_chars: 8000      # so viel Seitentext auf einmal (~4 Zeichen je Token), passende Abschnitte zuerst
+    close_tabs: true     # im Hintergrund geöffnete Tabs nach der Anfrage wieder schließen
+  ssh:
+    config_file: null    # null = ~/.ssh/config (Windows: %USERPROFILE%\.ssh\config); nur diese Server
+    terminal: auto       # auto | terminal | iterm (macOS) | windows-terminal | console (Windows)
+
+ui:
+  enabled: true        # lokale Web-UI: Chatverlauf, Texteingabe, Mikrofon/Sprache stumm
+  port: 8765           # erreichbar nur unter http://127.0.0.1:8765
+  open_browser: true
+  tray: true           # Symbol in Menüleiste/Tray: Status, stumm schalten, UI, Beenden
+
+memory:
+  enabled: true                 # Verlauf + Fakten in <data_dir>/memory.sqlite3 speichern
+  recent_messages: 12           # so viele Nachrichten der Sitzung wörtlich, ältere zusammengefasst
+  session_timeout_minutes: 30   # längere Pause = neue Sitzung (Fakten bleiben)
+  summarize: true
+  extract_facts: true           # LLM merkt sich dauerhafte Fakten ("merk dir ...")
+  max_facts: 50
+  idle_seconds: 3               # Hintergrundarbeit erst nach so viel Ruhe
+  recall:                       # passende Erinnerungen je Anfrage suchen (RAG)
+    enabled: true
+    model: auto                 # qwen3-embedding:0.6b (Apache 2.0, ollama pull …), auto = 2k-Kontext-Variante aus setup
+    base_url: null              # null = Server des LLM
+    limit: 6                    # höchstens so viele Erinnerungen je Anfrage
+    min_similarity: 0.30
+    timeout_ms: 300             # länger wartet die Antwort nicht auf die Suche

@@ -1,0 +1,173 @@
+# Flay – Hinweise für KI-Assistenten
+
+Flay ist ein lokaler Sprachassistent: Spracherkennung (STT) → Sprachmodell (LLM) → Sprachausgabe
+(TTS), dazu Aktionen auf dem Rechner (PhpStorm, Claude Code, Bildschirm, Gedächtnis).
+Hauptfunktion: Projekte in PhpStorm öffnen/schließen und Aufträge an Claude Code im
+PhpStorm-Terminal übergeben.
+
+## Feste Vorgaben
+
+- **Freie Modelle:** Jedes verwendete Modell (LLM, STT, TTS, VAD) muss für jeden Zweck frei
+  nutzbar sein, auch kommerziell (z. B. Apache 2.0, MIT, CC0, CC BY, gemeinfrei). Ausgeschlossen
+  sind Lizenzen mit Nutzungsbeschränkungen wie Llama und Gemma. Bei Stimmen und Modellen immer die
+  Lizenz der konkreten Gewichte prüfen, nicht nur die des Codes.
+- **Multimodal:** Das LLM bzw. Werkzeug, das die Anfragen auswertet, muss mindestens Text + Bild
+  verarbeiten können (Screenshots). Ein reines Textmodell ist als Standard nicht zulässig.
+- **Komplett lokal:** Alles läuft auf dem eigenen Rechner. Zur Laufzeit wird nichts herunter-
+  oder hochgeladen; nur `flay setup` lädt Modelle herunter. Gespräche, Gedächtnis, Aufnahmen und
+  Screenshots verlassen den Rechner nicht. Bewusste Ausnahmen: was der Nutzer in Claude Code
+  abschickt, und Webseiten, die der Nutzer nennt – die lädt `read_webpage` direkt per HTTP
+  (abschaltbar mit `tools.web.direct`).
+- **Austauschbare Backends:** LLM, STT und TTS liegen hinter Protokollen und werden per Config
+  gewählt. Nicht an Ollama gebunden; das LLM wird über eine OpenAI-kompatible API angesprochen.
+- **Plattformen:** macOS Apple Silicon (M2 Pro, 32 GB) und Windows (RTX 4070 Ti, 12 GB). Jede
+  Änderung und jede Optimierung muss Windows mitdenken; Modelle müssen in 12 GB VRAM passen.
+- **Sprachen:** Deutsch und Englisch, Erkennung pro Äußerung.
+- **Antwortzeit:** Die erste hörbare Rückmeldung muss schnell kommen (Ziel < 1 s nach dem
+  Sprechende). Komplexe Aufgaben dürfen länger dauern, aber nie ohne schnelle erste Rückmeldung.
+- **Aktivierungswort nur selbst trainiert:** „Hey Flay“ (`wake.py`, `flay train-wake`) auf den
+  Apache-2.0-Merkmalsmodellen von openWakeWord, mit freien Piper-Stimmen und eigenen
+  Aufnahmen; nie die fertigen openWakeWord-Modelle oder ACAV100M (nicht kommerziell). Der
+  Erkenner filtert nur, der Text entscheidet (ohne „Hey Flay“ am Anfang keine Aktion).
+- **Sicherheit bei Aktionen:** Flay drückt in Claude Code nie Enter – es tippt nur, der Nutzer
+  prüft und schickt ab. Formulare füllt es nur nach „ja“ aus und schickt sie nie ab, nie
+  Passwortfelder; Abläufe zeichnen keinen getippten Text auf. Eigenen Text des Nutzers in Claudes Eingabe nie überschreiben. Flay darf
+  nie behaupten, etwas getan zu haben, das kein Werkzeug getan hat.
+- **Geheimnisse:** Tokens (z. B. `tools.phpstorm.mcp_token`) sind `SecretStr`, werden nie
+  geloggt oder ausgegeben. `flay.yaml` ist gitignored.
+- **Keine privaten Daten im Repo – zu keinem Zeitpunkt, auch nicht in einem einzelnen
+  Commit:** Nichts Personenbezogenes, Privates oder Projektspezifisches aus der echten Umgebung
+  des Nutzers darf ins Repo, weder in Code und Kommentare noch in Tests, Eval-Sätze, Doku oder
+  Commit-Nachrichten. Dazu zählen:
+  - echte Namen von Projekten, Kunden und Firmen,
+  - Personennamen, auch der des Nutzers,
+  - E-Mail-Adressen, Servernamen (z. B. aus `~/.ssh/config`), Benutzer- und Ordnerpfade,
+  - Fenster-, Tab- und Dateinamen, Ticket-Inhalte und Gesprächsausschnitte.
+
+  Fälle aus echten Gesprächen werden vor dem Aufnehmen anonymisiert. Dabei werden erfundene
+  Namen verwendet, die gleich gebaut sind und ähnlich klingen, damit der Test dasselbe
+  Verhalten prüft. Die erfundenen Projekte im Repo sind `project-symfony-kx-ewo`,
+  `component-symfony-kx-command`, `project-symfony-kx-forms`, `lib-react-kx-forms-app`,
+  `stadt-wolkenthal`, `moewe` und `umx`. Neue erfundene Namen dürfen nicht nach echten Firmen
+  oder Kunden klingen. Als Beispieladressen gelten nur `example.org`/`example.com` und
+  öffentliche Seiten. Commits laufen unter `minzink <21335095+minzink@users.noreply.github.com>`.
+  Vor jedem Commit den Diff auf solche Daten prüfen; im Zweifel nachfragen.
+
+## Arbeitsweise im Repo
+
+- Nicht pushen und nicht committen, außer der Nutzer verlangt es; keine PRs.
+- Commits nach Conventional Commits, auf Englisch: `<type>(<scope>): <Beschreibung>`.
+  - `type`: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`.
+  - `scope`: der betroffene Bereich, z. B. `tts`, `stt`, `llm`, `audio`, `config`, `cli`;
+    `all`, wenn mehrere Bereiche betroffen sind.
+  - Beschreibung im Imperativ, groß beginnend, ohne Punkt, z. B.
+    `feat(tts): Add voice training tools`.
+  - Bei Bedarf nach einer Leerzeile ein Text mit dem Warum oder eine Liste der Änderungen.
+  - Ein Commit je zusammengehöriger Änderung.
+  - Am Ende die Zeile `Co-Authored-By:` des Modells.
+- Vor Benchmarks, Modelltests oder Modell-Downloads fragen und danach aufräumen.
+- Python 3.12, uv, ruff (Zeilenlänge 100), mypy strict, pytest (`asyncio_mode = auto`).
+  Vor dem Abschluss: `uv run ruff check src tests`, `uv run ruff format src tests`,
+  `uv run mypy src`, `uv run pytest -q`.
+- Code-Kommentare und Bezeichner auf Englisch; Log- und UI-Texte, Doku (README, Roadmap) auf
+  Deutsch. Kommentare erklären das Warum, nicht das Was.
+- Roadmap in `docs/roadmap.md` pflegen, README bei neuen Funktionen ergänzen.
+- Änderungen am Verhalten des LLM (Prompts, Weiterleitung, Werkzeug-Beschreibungen, Modell- oder
+  Serverwechsel) mit `uv run flay eval` gegen den Testsatz `eval/cases.yaml` prüfen und mit dem
+  letzten Ergebnis vergleichen; neue Fehlerfälle aus echten Gesprächen dort ergänzen –
+  anonymisiert (siehe „Keine privaten Daten im Repo“).
+
+## Bausteine (`src/flay/`)
+
+- `assistant.py` – Orchestrator: Gesprächszüge, Unterbrechungen, Stummschaltung, Weiterleitung
+  an Werkzeuge (`tool_intent`, `_route_tool`), Schutz gegen erfundene Erfolge
+  (`claimed_tool`), Streaming LLM → Sätze → TTS → Lautsprecher, Füllwörter.
+- `config.py` – pydantic-Settings aus `flay.yaml` / `$FLAY_CONFIG`; Beispiel in
+  `flay.example.yaml`.
+- `prompt.py` – System-Prompt, Verlauf, Zeit-/Sprachhinweis in der neuen Nachricht (damit der
+  Prompt-Anfang zwischengespeichert bleibt), Markierung von Unterbrechungen.
+- `core/` – Nachrichtenmodell (`Message`, Text/Bild/Audio-Teile, Tool-Calls), Events für UI und
+  Tray, Satz-Splitter, Spracherkennung aus Text, Hardware-Erkennung.
+- `input/` – Push-to-Talk (Hotkey/Terminal), dauerhaftes Zuhören mit Silero VAD und Barge-in,
+  `SwitchableSource` zum Umschalten zur Laufzeit.
+- `audio/` – Mikrofon, Lautsprecher (gestreamt, sofort stoppbar), Silero VAD (ONNX).
+- `stt/` – Parakeet TDT 0.6B v3 über onnx-asr (Standard, CPU), alternativ mlx-whisper und
+  faster-whisper (optional mit Projektnamen als Prompt) sowie Canary-1B-v2 (übersetzt bei
+  falscher Sprachvorgabe, für gemischtes de/en ungeeignet).
+- `stt_evaluation.py` – `flay record` / `flay eval-stt`: Spracherkenner mit denselben
+  Aufnahmen vergleichen (Testsatz `eval/speech.yaml`).
+- `llm/` – OpenAI-kompatibler Streaming-Client mit Tool-Calls (Standard: Ollama mit
+  `qwen3-vl:8b-instruct`).
+- `tts/` – Piper (`de_DE-kerstin-low` CC0, `en_US-kristin-medium` gemeinfrei; beide weiblich).
+- `routing.py` – Weiterleitung per Formular (JSON-Schema, Projekte nur aus der eigenen Liste);
+  optional (`llm.structured_routing`), mit qwen3-vl nicht besser als Tool-Calls.
+- `evaluation.py` – `flay eval`: Testsatz durch den echten Assistenten mit simulierten
+  Werkzeugen; Trefferquote, falsche Aktionen, Antwortzeiten.
+- `filler.py` – vorab erzeugte Füllwörter („Mhm.“, „Moment.“), wenn die Antwort dauert.
+- `stt/vocabulary.py` – korrigiert Transkripte gegen Projektnamen und Fachbegriffe, erkennt
+  Geräusche beim dauerhaften Zuhören.
+- `memory/` – SQLite-Gedächtnis: Verlauf pro Sitzung, Zusammenfassungen und Erinnerungen
+  (Fakten + Episoden beendeter Gespräche). RAG: `recall.py` sucht je Anfrage hybrid
+  (Embeddings über `embeddings.py`, Standard `qwen3-embedding:0.6b` via Ollama, + FTS5),
+  Treffer gehen mit Datum in die neue Nachricht, nicht in den System-Prompt. Jede Erinnerung
+  hat Schreibdatum und Wichtigkeit (3 wichtig / 2 normal / 1 nebensächlich); wichtige sind
+  Regeln des Nutzers und stehen immer im System-Prompt und in der Weiterleitung.
+  Beispiele (Art `example`): Satz wie gehört → Aktion, gelernt aus nicht widersprochenen
+  Aktionen; ähnliche gehen als Hinweis an Weiterleitung und Modell, bestätigte/wiederholte
+  werden direkt ausgeführt.
+- `training.py` – `flay train-export`: Trainingsdaten (mlx-vlm-SFT-Format) für LoRA aus den
+  Beispielen.
+- `browsing.py` – Aufgaben auf einer Webseite: das Modell folgt nummerierten Links
+  (`browse_text`) bzw. scrollt/klickt im Browserfenster (`browse`, bei Screenshots), höchstens
+  `tools.web.max_steps`, und schreibt dann in einem zweiten Zug die Aufgabe für Claude oder die
+  Antwort. Gleiche Werkzeugliste in allen Zügen (Prompt-Cache); Text im Entscheidungszug gilt
+  als fertig; Suche/Anmelden/Kaufen sind im Code gesperrt; Zusammenfassungen ohne Navigation.
+- `wake.py` / `wake_training.py` – Aktivierungswort: Merkmale (Melspektrogramm → Embeddings),
+  kleines numpy-Netz, `WakeGate` vor dem dauerhaften Zuhören; Training mit freien
+  Piper-Stimmen, Gegenbeispielen (`data/wake_negative.txt`) und eigenen Aufnahmen.
+- `voice_recording.py` – `flay voice dataset` (Sätze für eine eigene Piper-Stimme, Satzlisten
+  in `data/sentences/`) und `flay voice wake` (eigene „Hey Flay“-Aufnahmen).
+- `training_synthetic.py` – erzeugte LoRA-Trainingszeilen (genuschelte Befehle, erfundene
+  Projekte, nie die des Eval-Satzes).
+- `llm/ollama.py` – Varianten mit kleinem Kontext (Ortungsmodell 4B, Embedding), damit sie
+  neben dem Hauptmodell geladen bleiben; „auto“ in der Config, angelegt von `flay setup`.
+- `tools/` – Werkzeuge für das LLM:
+  - `phpstorm.py` / `phpstorm_mcp.py` – Projekte öffnen (Launcher, immer neues Fenster) und
+    schließen (PhpStorms eingebauter MCP-Server auf 127.0.0.1).
+  - `claude_code.py` – Aufträge in Claude Code tippen (tmux-Sitzungen `flay-claude-<projekt>`
+    aus `flay claude`), Status lesen, Claude bei Bedarf starten; Zwischenablage als Notlösung.
+  - `screen.py` – Screenshot von Bildschirm, Monitor oder einzelnem Fenster; `Shot` kennt
+    den aufgenommenen Bereich in Bildschirmpunkten (`to_screen` für Qwen-VL-Punkte 0–1000).
+  - `pointer.py` – `click_on_screen` und `scroll_screen`: erst macOS-Bedienungshilfen
+    (Beschriftung + Rahmen, vorderste App zuerst), sonst Bildmodell (`VisionLocator`, mit
+    Nachschärfen); nie in Flays Fenster, Rückfrage vor riskanten Linksklicks
+    (`ToolResult.confirm`).
+  - `pages.py` – Seiten als Text (`Page`, nummerierte `Link`s, Hauptinhalt zuerst, lange
+    Seiten in Abschnitten, passende zuerst), GET-Suchformulare (`SearchForm`) und direktes
+    Laden per HTTP (`fetch_page`, aiohttp + `html.parser`).
+  - `browser_text.py` – Seiten aus dem Browser über die macOS-Bedienungshilfen (`AXWebArea`):
+    im Hintergrund öffnen (`open -g`), lesen, Links/Buttons mit `AXPress` drücken, Suchfeld
+    füllen, eigenen Tab schließen. Unter Windows dieselben Funktionen aus `browser_uia.py`
+    (UI Automation über comtypes; auf echtem Windows noch ungetestet).
+  - `web.py` – `open_url`, `read_webpage` (Text: direkt → Browser → sonst Screenshots) und
+    das Finden von Links (getippt, gesprochen „punkt de“, Zwischenablage). Die Kette Lesen →
+    Zusammenfassen → Claude steuert der Assistent selbst (`Assistant._web`).
+  - `forms.py` – `fill_web_form`: Formularfelder über ihre Beschriftung finden, nachfragen,
+    ausfüllen, Browser nach vorn; nie abschicken.
+  - `files.py` – `read_file`: lokale Dateien finden (Projekte, Schreibtisch, Downloads,
+    Dokumente) und lesen (Text, PDF über pypdf, Word); Antwort über `browse_text`.
+  - `workflows.py` – `workflow`: Abläufe aufzeichnen (pynput + Bedienungshilfen) und abspielen.
+  - `memory.py` – merken und vergessen.
+  - `state.py` – was gerade offen ist (Projekte, Claude-Sitzungen), für jede Anfrage.
+  - Aktionen geben mit `ToolResult.say` den gesprochenen Satz selbst vor (de/en); das Modell
+    formuliert Aktionsergebnisse nicht um. Ausgeführte Werkzeuge werden mit der Antwort
+    gespeichert (`Message.actions`) und später als echte Tool-Calls gezeigt.
+  - Schutzmechanismen im Assistenten: Projekt muss vom Nutzer (unscharf) genannt sein, sonst
+    Rückfrage; Schließen bei nur ungefährem Namen erst nach „ja“; zurückgenommene Anfragen
+    („never mind“) und Wie-Fragen lösen nichts aus; behauptete, aber nicht ausgeführte Aktionen
+    werden nachgeholt.
+- `ui/` – lokale Web-UI (aiohttp, 127.0.0.1:8765, WebSocket mit Origin-Prüfung), Debug-Log,
+  Tray-/Menüleisten-Symbol (pystray).
+- `cli.py` – `flay run|setup|claude|autostart|memory|mic-test|devices|bench|info`.
+- `offline.py` – erzwingt Offline-Betrieb (keine Hugging-Face-Downloads zur Laufzeit).
+- `autostart.py` – LaunchAgent (macOS) bzw. Autostart-Ordner (Windows).

@@ -1,0 +1,110 @@
+# Beispiele für `flay eval --examples`: so wurden eigene Aufnahmen (eval/speech.yaml)
+# von Whisper und Parakeet gehört, mit der gemeinten Aktion. Absichtlich andere Sätze als
+# in eval/cases.yaml, damit gemessen wird, ob das Modell aus Beispielen verallgemeinert.
+
+examples:
+- say: Öffne das Projekt KX-Forms.
+  tool: open_project
+  arguments:
+    name: project-symfony-kx-forms
+- say: Schließe das Projekt KXEWO.
+  tool: close_project
+  arguments:
+    name: project-symfony-kx-ewo
+- say: Schließe KX-Command.
+  tool: close_project
+  arguments:
+    name: component-symfony-kx-command
+- say: Öffne das Projekt statt Wolkenthal.
+  tool: open_project
+  arguments:
+    name: stadt-wolkenthal
+- say: Mach mal Moewe auf.
+  tool: open_project
+  arguments:
+    name: moewe
+- say: Öffne das Projekt Symfony-kx-de-forms.
+  tool: open_project
+  arguments:
+    name: project-symfony-kx-forms
+- say: Sagt Claude im Projekt Flay, er soll die Readme zusammenfassen.
+  tool: send_to_claude
+  arguments:
+    instruction: Fasse die README zusammen.
+    project: flay
+- say: Sagt Lord, er soll Tests für den Login-Controller schreiben.
+  tool: send_to_claude
+  arguments:
+    instruction: Schreibe Tests für den Login-Controller.
+- say: Fragt Claude im UMX-Projekt, warum der Bild fehlschlägt.
+  tool: send_to_claude
+  arguments:
+    instruction: Warum schlägt der Build fehl?
+    project: umx
+- say: Schreibt Claude, er soll das symfony-formular für die Adresse anpassen.
+  tool: send_to_claude
+  arguments:
+    instruction: Passe das Symfony-Formular für die Adresse an.
+- say: Sagt Claude, er soll die Composer-Abhängigkeiten aktualisieren.
+  tool: send_to_claude
+  arguments:
+    instruction: Aktualisiere die Composer-Abhängigkeiten.
+- say: Ist Cloud schon fertig?
+  tool: claude_status
+  arguments: {}
+- say: Schau dir mein PHP-Stormfenster an.
+  tool: look_at_screen
+  arguments:
+    window: PhpStorm
+- say: Was siehst du auf dem zweiten Bildschirm?
+  tool: look_at_screen
+  arguments:
+    monitor: 2
+- say: Open the project flay.
+  tool: open_project
+  arguments:
+    name: flay
+- say: Close the UMX project.
+  tool: close_project
+  arguments:
+    name: umx
+- say: Tell Claude to update the changelog.
+  tool: send_to_claude
+  arguments:
+    instruction: Update the changelog.
+- say: What's on my second monitor?
+  tool: look_at_screen
+  arguments:
+    monitor: 2
+- say: Öffne das Projekt statt Wolkental.
+  tool: open_project
+  arguments:
+    name: stadt-wolkenthal
+- say: Für das Projekt Simphony Kx Forms.
+  tool: open_project
+  arguments:
+    name: project-symfony-kx-forms
+- say: Sag Claude im Projekt Flay, er soll die Readme zusammenfassen.
+  tool: send_to_claude
+  arguments:
+    instruction: Fasse die README zusammen.
+    project: flay
+- say: Schreibt Claude, er soll das Symphony Formular für die Adresse anpassen.
+  tool: send_to_claude
+  arguments:
+    instruction: Passe das Symfony-Formular für die Adresse an.
+- say: Sagt Lot, er soll die Composer-Abhängigkeiten aktualisieren.
+  tool: send_to_claude
+  arguments:
+    instruction: Aktualisiere die Composer-Abhängigkeiten.
+- say: Ist Claude schon fertig.
+  tool: claude_status
+  arguments: {}
+- say: Tell Claw to update the change block.
+  tool: send_to_claude
+  arguments:
+    instruction: Update the changelog.
+- say: What's on our second monitor?
+  tool: look_at_screen
+  arguments:
+    monitor: 2

@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.idea/
+.vscode/
+
+# Local configuration and secrets
+flay.yaml
+.env
+*token*.txt
+
+# Runtime data – never commit conversations, logs, recordings or models
+*.log
+*.wav
+*.mp3
+# …except the bundled, freely licensed reference voices (see their SOURCES.md)
+!src/flay/tts/voices/*.wav
+models/
+data/
+# …except Flay's own data files (sentence lists, the trained wake word)
+!src/flay/data/
+
+# OS
+.DS_Store
+Thumbs.db
+.flay-claude.sh
+
+# Voice training: dataset, checkpoints and models (see tools/voice-training/README.md)
+tools/voice-training/work/
+
+# Local listening samples and other test output
+test-output/

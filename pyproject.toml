@@ -1,0 +1,90 @@
+[project]
+name = "flay"
+version = "0.1.0"
+description = "Lokaler Sprachassistent mit Push-to-Talk, STT, lokalem LLM und TTS"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "aiohttp>=3.14.5",
+    "comtypes>=1.4 ; sys_platform == 'win32'",
+    "faster-whisper>=1.2.1 ; platform_machine != 'arm64' or sys_platform != 'darwin'",
+    "huggingface-hub>=0.34 ; platform_machine != 'arm64' or sys_platform != 'darwin'",
+    "huggingface-hub>=2.3.0 ; platform_machine == 'arm64' and sys_platform == 'darwin'",
+    "mcp>=2.3.0",
+    "mlx-audio>=0.6.3 ; platform_machine == 'arm64' and sys_platform == 'darwin'",
+    "mlx-whisper>=0.4.3 ; platform_machine == 'arm64' and sys_platform == 'darwin'",
+    "mss>=10.2.0",
+    "numpy>=2.5.4",
+    "onnx-asr>=0.12.0",
+    "onnxruntime>=1.31.0",
+    "openai>=3.37.0",
+    "pillow>=13.0.0",
+    "piper-tts>=1.8.0",
+    "platformdirs>=4.2",
+    "pydantic>=2.7",
+    "pynput>=1.8.2",
+    "pypdf>=5",
+    "pyperclip>=1.11.0",
+    "pystray>=0.19.5",
+    "pyyaml>=6.0",
+    "qwen-tts>=0.1 ; platform_machine != 'arm64' or sys_platform != 'darwin'",
+    "sounddevice>=0.5.6",
+    "torch>=2.9 ; sys_platform == 'win32'",
+    "torchaudio>=2.9 ; sys_platform == 'win32'",
+    "transformers==4.57.3 ; platform_machine != 'arm64' or sys_platform != 'darwin'",
+    "transformers>=5.14 ; platform_machine == 'arm64' and sys_platform == 'darwin'",
+]
+
+[project.scripts]
+flay = "flay.cli:main"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.10",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+    "types-pyyaml>=6.0",
+]
+
+# Qwen3-TTS: mlx-audio on Apple Silicon, the official qwen-tts (PyTorch) elsewhere. Both pin
+# transformers (and through it huggingface-hub) differently, hence the split requirements.
+# Windows needs PyTorch with CUDA, which PyPI does not offer for it.
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'win32'" }]
+torchaudio = [{ index = "pytorch-cu130", marker = "sys_platform == 'win32'" }]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/flay"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+# Word lists read better as one string than as a list of quoted words.
+ignore = ["SIM905"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[[tool.mypy.overrides]]
+module = ["sounddevice", "pynput.*", "mlx.*", "mlx_whisper.*", "faster_whisper.*", "piper.*", "scipy.*", "onnxruntime", "huggingface_hub", "pyperclip", "mcp.*", "pystray", "PyObjCTools.*", "Quartz", "ApplicationServices", "AppKit", "comtypes.*", "onnx_asr.*", "mlx_audio.*", "qwen_tts.*"]
+ignore_missing_imports = true

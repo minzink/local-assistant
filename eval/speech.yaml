@@ -1,0 +1,31 @@
+# Testsatz für `flay eval-stt` und `flay record`: Sätze, wie man sie Flay sagt, in richtiger
+# Schreibweise. terms: Begriffe, die in der Erkennung vorkommen müssen (Groß-/Kleinschreibung,
+# Leerzeichen, Bindestriche und Umlaut-Schreibweise egal: "K X E W O" zählt als "kxewo").
+# Projektnamen und Verben sind die Stellen, an denen die Erkennung bisher scheiterte.
+
+sentences:
+  - {text: "Öffne das Projekt KX Forms.", language: de, terms: [öffne, kxforms]}
+  - {text: "Schließe das Projekt KX EWO.", language: de, terms: [schließe, kxewo]}
+  - {text: "Schließe KX Command.", language: de, terms: [schließe, kxcommand]}
+  - {text: "Öffne das Projekt Stadt Wolkenthal.", language: de, terms: [öffne, stadtwolkenthal]}
+  - {text: "Mach mal Moewe auf.", language: de, terms: [moewe]}
+  - {text: "Schließe bitte Flay und öffne danach Moewe.", language: de, terms: [schließe, flay, öffne, moewe]}
+  - {text: "Öffne das Projekt Project Symfony KX Forms.", language: de, terms: [öffne, symfony, kxforms]}
+  - {text: "Sag Claude im Projekt Flay, er soll die README zusammenfassen.", language: de, terms: [claude, flay, readme]}
+  - {text: "Sag Claude, er soll Tests für den Login-Controller schreiben.", language: de, terms: [claude, tests, login]}
+  - {text: "Frag Claude im UMX-Projekt, warum der Build fehlschlägt.", language: de, terms: [claude, umx, build]}
+  - {text: "Schreib Claude, er soll das Symfony-Formular für die Adresse anpassen.", language: de, terms: [claude, symfony, formular]}
+  - {text: "Sag Claude, er soll die Composer-Abhängigkeiten aktualisieren.", language: de, terms: [claude, composer]}
+  - {text: "Ist Claude schon fertig?", language: de, terms: [claude, fertig]}
+  - {text: "Schau dir mein PhpStorm-Fenster an.", language: de, terms: [phpstorm, fenster]}
+  - {text: "Was siehst du auf dem zweiten Bildschirm?", language: de, terms: [zweiten, bildschirm]}
+  - {text: "Merk dir, dass ich am Freitag Urlaub habe.", language: de, terms: [merk, freitag, urlaub]}
+  - {text: "Vergiss, dass ich Tee mag.", language: de, terms: [vergiss, tee]}
+  - {text: "Denk mal nach: Wie viele Tage bleiben im Sprint?", language: de, terms: [denk, sprint]}
+  - {text: "Kannst du mich hören?", language: de, terms: [hören]}
+  - {text: "Wie spät ist es?", language: de, terms: [spät]}
+  - {text: "Danke, das war's.", language: de, terms: [danke]}
+  - {text: "Open the project Flay.", language: en, terms: [open, flay]}
+  - {text: "Close the UMX project.", language: en, terms: [close, umx]}
+  - {text: "Tell Claude to update the changelog.", language: en, terms: [claude, changelog]}
+  - {text: "What's on my second monitor?", language: en, terms: [second, monitor]}

@@ -1,0 +1,234 @@
+# Testsatz für `flay eval`: Äußerungen so, wie die Spracherkennung sie geliefert hat (inkl.
+# Fehlern), und was Flay daraufhin tun soll. Viele stammen aus echten Gesprächen.
+#
+# expect.tool:     erwartetes Werkzeug, eine Liste erlaubter Werkzeuge oder "none"
+# expect.project:  Projekt(e), auf die das Projekt-Argument zeigen darf (über den gleichen
+#                  Namensabgleich wie die Werkzeuge); mehrdeutig zwischen erlaubten = ok
+# expect.contains: Wörter, von denen eines im Auftrag an Claude, im Fakt, im Klickziel bzw. in
+#                  der Adresse stehen muss
+# expect.then:     Werkzeug, das nach dem ersten außerdem aufgerufen werden muss
+# expect.never:    Werkzeuge, die in der Runde gar nicht aufgerufen werden dürfen
+# history:         vorherige Runden (user/assistant), für Nachfragen; actions: was Flay in
+#                  der Runde ausgeführt hat (tool, arguments)
+
+state:
+  open_projects: [flay, umx, project-symfony-kx-ewo, component-symfony-kx-command,
+                  project-symfony-kx-forms]
+  recent_projects: [flay, umx, project-symfony-kx-ewo, component-symfony-kx-command,
+                    project-symfony-kx-forms, lib-react-kx-forms-app, stadt-wolkenthal, moewe,
+                    bvx-cms, tlr-cms]
+  claude_sessions:
+    - {project: flay, shown: true}
+    - {project: umx, shown: true}
+    - {project: component-symfony-kx-command, shown: false}
+
+cases:
+  # Projekte öffnen
+  - say: "Öffne in PHP Storm das KX Forms Projekt."
+    expect: {tool: open_project, project: [project-symfony-kx-forms, lib-react-kx-forms-app]}
+  - say: "Projekt Symphony Kx Forms."
+    history:
+      - user: "Öffne in PHP Storm das KX Forms Projekt."
+        assistant: "Meinst du lib react kx forms app oder project symfony kx forms?"
+    expect: {tool: open_project, project: [project-symfony-kx-forms]}
+  - say: "Öffne das projekt K X E W O"
+    expect: {tool: open_project, project: [project-symfony-kx-ewo]}
+  - say: "Öffne Projekt KX Command."
+    expect: {tool: open_project, project: [component-symfony-kx-command]}
+  - say: "Öffne das Projekt Stadt Wolkenthal"
+    expect: {tool: open_project, project: [stadt-wolkenthal]}
+  - say: "Mach mal Moewe auf."
+    expect: {tool: open_project, project: [moewe]}
+  - say: "Open the project flay."
+    expect: {tool: open_project, project: [flay]}
+
+  # Projekte schließen
+  - say: "Und schließe das Projekt KEWO wieder."
+    expect: {tool: close_project, project: [project-symfony-kx-ewo]}
+  - say: "Schließe K X E W O."
+    expect: {tool: close_project, project: [project-symfony-kx-ewo]}
+  - say: "Slie K X E V O"
+    expect: {tool: close_project, project: [project-symfony-kx-ewo]}
+  - say: "She K Command."
+    expect: {tool: close_project, project: [component-symfony-kx-command]}
+  - say: "Sließ the KX Command."
+    expect: {tool: close_project, project: [component-symfony-kx-command]}
+  - say: "Close the umx project."
+    expect: {tool: close_project, project: [umx]}
+  - say: "Das Projekt ist geöffnet."
+    history:
+      - user: "Schließe das Projekt KEWO."
+        assistant: "In PhpStorm ist kein Projekt KEWO offen."
+    expect: {tool: [close_project, none], project: [project-symfony-kx-ewo]}
+  - say: "Prüfe das noch einmal, ob du es nicht wirklich schließen kannst."
+    history:
+      - user: "Schließe das Projekt KEWO."
+        assistant: "In PhpStorm ist kein Projekt KEWO offen."
+    expect: {tool: close_project, project: [project-symfony-kx-ewo]}
+  - say: "Schließe bitte flay und öffne danach moewe."
+    expect: {tool: close_project, project: [flay]}
+
+  # Aufträge an Claude
+  - say: "Sagt Claude im Projekt Flay, er soll die Readme zusammenfassen."
+    expect: {tool: send_to_claude, project: [flay], contains: [readme]}
+  - say: "Sagt Claude im Projekt KX Forms er soll die Readme dort zusammenfassen."
+    expect: {tool: send_to_claude, project: [project-symfony-kx-forms, lib-react-kx-forms-app],
+             contains: [readme]}
+  - say: "mal. Im Projekt. Project Symphony KX Forms öffne Claude und sag ihm, er soll die Readme zusammenfassen."
+    expect: {tool: send_to_claude, project: [project-symfony-kx-forms], contains: [readme]}
+  - say: "Sag Claude, er soll Tests für den Login schreiben."
+    expect: {tool: send_to_claude, contains: [test, tests]}
+  - say: "Frag Claude im umx Projekt, warum der Build fehlschlägt."
+    expect: {tool: send_to_claude, project: [umx], contains: [build]}
+  - say: "Tell Claude in flay to update the changelog."
+    expect: {tool: send_to_claude, project: [flay], contains: [changelog]}
+  - say: "Sch uh, schreibe Claude, er soll die um Read Me im Projekt U M X ne, never mind, never mind, never mind."
+    expect: {tool: none}
+  - say: "Ist Claude fertig?"
+    expect: {tool: claude_status}
+  - say: "Was macht Claude gerade im Projekt umx?"
+    expect: {tool: claude_status, project: [umx]}
+
+  # Bildschirm
+  - say: "Schau dir mein Screen an und sag mir, was du siehst."
+    expect: {tool: look_at_screen}
+  - say: "Schau dir mein Firefox-Fenster an und sag mir, was du siehst."
+    expect: {tool: look_at_screen}
+  - say: "What's on my second monitor?"
+    expect: {tool: look_at_screen}
+
+  # Klicken und Scrollen
+  - say: "Klick mal auf das Git-Menü."
+    expect: {tool: click_on_screen, contains: [git]}
+  - say: "Mach einen Rechtsklick auf UTF-8 unten in der Statusleiste."
+    expect: {tool: click_on_screen, contains: [utf]}
+  - say: "Drück in PhpStorm auf Commit."
+    expect: {tool: click_on_screen, contains: [commit]}
+  - say: "Click the Help menu."
+    expect: {tool: click_on_screen, contains: [help]}
+  - say: "Scroll mal eine Seite runter."
+    expect: {tool: scroll_screen}
+  - say: "Scroll in Firefox wieder ganz nach oben."
+    expect: {tool: scroll_screen}
+  - say: "Wie mache ich in PhpStorm einen Rechtsklick?"
+    expect: {tool: none}
+
+  # Webseiten
+  - say: "Öffne diesen Link https://www.google.com/ fasse den Inhalt zusammen und gebe es an Claude."
+    expect: {tool: read_webpage, contains: [google.com], then: send_to_claude}
+  - say: "Lies mal heise punkt de und sag mir, was es Neues gibt."
+    expect: {tool: read_webpage, contains: [heise.de]}
+  - say: "Öffne python punkt org."
+    expect: {tool: open_url, contains: [python.org]}
+  - say: "Summarize docs.python.org/3/tutorial for me."
+    expect: {tool: read_webpage, contains: [docs.python.org]}
+  - say: "Öffne google punkt com und schick Claude als Aufgabe, eine Startseite mit genau diesen Buttons zu bauen."
+    expect: {tool: read_webpage, contains: [google.com], then: send_to_claude}
+  - say: "Schick Claude den Inhalt dieser Webseite."
+    expect: {tool: read_webpage, then: send_to_claude}
+  - say: "Übergib Claude die Links von google.com."
+    expect: {tool: read_webpage, contains: [google.com], then: send_to_claude}
+  - say: "Schick Claude die Installationsschritte von example punkt org als Aufgabe."
+    expect: {tool: read_webpage, contains: [example.org], then: open_link}
+  - say: "Vergleiche python punkt org und ruby-lang punkt org."
+    expect: {tool: read_webpage, contains: [python.org], then: load_page}
+  - say: "Such auf docs punkt example punkt org nach asyncio und sag mir, wofür es gut ist."
+    expect: {tool: read_webpage, contains: [docs.example.org], then: search_page}
+
+  # Formulare
+  - say: "Trag auf dieser Seite bei Name Max Mustermann und bei E-Mail max at example punkt org ein."
+    expect: {tool: fill_web_form, contains: [max mustermann]}
+  - say: "Füll das Kontaktformular auf example punkt org aus: Name Erika, Nachricht Rückruf bitte."
+    expect: {tool: fill_web_form, contains: [erika]}
+  - say: "Trag in deinem Gedächtnis ein, dass ich Tee mag."
+    expect: {tool: remember, contains: [tee]}
+
+  # Lokale Dateien
+  - say: "Lies die README von flay und sag mir, wie man es installiert."
+    expect: {tool: read_file, contains: [readme]}
+  - say: "Fasse die Roadmap im Projekt flay zusammen und gib es Claude."
+    expect: {tool: read_file, contains: [roadmap], then: send_to_claude}
+  - say: "Was steht in der neuesten PDF in meinen Downloads?"
+    expect: {tool: read_file, contains: [pdf]}
+
+  # Abläufe
+  - say: "Merk dir einen Ablauf: Release bauen."
+    expect: {tool: workflow, contains: [release]}
+  - say: "Ablauf fertig."
+    expect: {tool: workflow}
+  - say: "Mach den Ablauf Release bauen."
+    expect: {tool: workflow, contains: [release]}
+
+  # Gedächtnis
+  - say: "Merk dir, dass ich am Freitag Urlaub habe."
+    expect: {tool: remember, contains: [freitag, urlaub]}
+  - say: "Vergiss, dass ich Tee mag."
+    expect: {tool: forget, contains: [tee]}
+
+  # Gespräch ohne Aktion
+  - say: "Kannst du mich hören?"
+    expect: {tool: none}
+  - say: "Schönes Wetter, oder?"
+    expect: {tool: none}
+  - say: "Matchup."
+    expect: {tool: none}
+  - say: "Was ist der Unterschied zwischen Symfony und Laravel?"
+    expect: {tool: none}
+  - say: "Wie schließe ich in PhpStorm ein Projekt?"
+    expect: {tool: none}
+  - say: "Ich habe das Projekt flay gestern geöffnet, es lief gut."
+    expect: {tool: none}
+  - say: "Erklär mir kurz, was ein MCP-Server ist."
+    expect: {tool: none}
+  - say: "Danke, das war's."
+    expect: {tool: none}
+
+  # Folgeanfragen nach einer ausgeführten Aktion: dieselbe Aktion muss wieder möglich sein,
+  # ohne dass ein Dank oder eine Erzählung sie auslöst.
+  - say: "Und jetzt KX Command auch."
+    history:
+      - user: "Schließe das Projekt flay."
+        assistant: "flay ist geschlossen."
+        actions: [{tool: close_project, arguments: {name: flay}}]
+    expect: {tool: close_project, project: [component-symfony-kx-command]}
+  - say: "Mach bitte auch Moewe auf."
+    history:
+      - user: "Öffne das Projekt Stadt Wolkenthal."
+        assistant: "stadt-wolkenthal ist geöffnet."
+        actions: [{tool: open_project, arguments: {name: stadt-wolkenthal}}]
+    expect: {tool: open_project, project: [moewe]}
+  - say: "Schick das Gleiche auch an Claude im Projekt umx."
+    history:
+      - user: "Sag Claude im Projekt flay, er soll die Tests laufen lassen."
+        assistant: "Der Auftrag steht in Claude."
+        actions: [{tool: send_to_claude, arguments: {project: flay, instruction: "Lass die Tests laufen."}}]
+    expect: {tool: send_to_claude, project: [umx], contains: [test, tests]}
+  - say: "Danke, das ging schnell."
+    history:
+      - user: "Schließe das Projekt flay."
+        assistant: "flay ist geschlossen."
+        actions: [{tool: close_project, arguments: {name: flay}}]
+    expect: {tool: none}
+
+  # Erzählungen: klingen wie ein Befehl, bitten aber um nichts
+  - say: "Ich habe gestern Moewe geöffnet, das hat gut geklappt."
+    expect: {tool: none}
+  - say: "Ich hab KX Command vorhin geschlossen, war eh fertig."
+    expect: {tool: none}
+
+  # Aus einem Gespräch am 2026-11-09: Flay öffnete Seiten nur, ohne etwas dazu zu sagen, und
+  # wollte bei „kopiere die Ticket-Beschreibung in Claude“ ein Projekt öffnen
+  - say: "öffne Google.com und sag mir, was du siehst."
+    expect: {tool: read_webpage, contains: [google.com]}
+  - say: "du solltest mir sagen, was du auf google.com siehst."
+    history:
+      - user: "öffne Google.com und sag mir, was du siehst."
+        assistant: "Ich habe google.com geöffnet."
+        actions: [{tool: open_url, arguments: {url: "https://google.com"}}]
+    expect: {tool: read_webpage, contains: [google.com]}
+  - say: "Also, was dieser ganze Kontext jetzt bedeuten soll, ist, du solltest eigentlich google.com öffnen und danach einen Screenshot machen, um mir zu sagen, was du auf der Seite google.com siehst."
+    expect: {tool: [open_url, read_webpage], contains: [google.com], then: look_at_screen}
+  - say: "Schau dir meinen Screen an und kopiere den Text von der Beschreibung in diesem Ticket in den Claude, also in die Claude-Textzeile."
+    expect: {tool: look_at_screen, then: send_to_claude, never: [open_project]}
+  - say: "Schau dir mein Screen an und kopiere den Text aus der Beschreibung für dieses Ticket in das Projekt Flay, also in die Claw-Zeile vom Projekt Flay."
+    expect: {tool: look_at_screen, then: send_to_claude, never: [open_project]}

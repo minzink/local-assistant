@@ -1,0 +1,286 @@
+# Not the wake word: similar sounds first, then everyday sentences (German, English).
+# The sentences are from Flay's own generated voice corpus (Qwen3), free to use.
+Hey Fly
+Hey Play
+Hey Clay
+Hey Flame
+Hey Frey
+Hey Flo
+Hey Flavia
+Okay
+Okay, play
+Hey
+Hey du
+Hey Leute
+Flug
+Play
+Display
+Replay
+Hey Siri
+Hey Google
+Fly away
+Flair
+Freitag
+Flasche
+Flagge
+Hey, fang an
+Hey, frag mal
+Hey Kay
+Hey May
+Hey Ray
+Eh, okay
+Hey Fred
+Hey, play some music please
+Ich fliege morgen nach Hamburg
+The flight was delayed
+Hey Fly, come here
+Fliegen ist schön
+Flamingo
+Fleisch
+Hey, die Flasche ist leer
+Das ist flach
+Hey, Klee
+Play the next song
+Hey, flip it over
+Flex
+Hey, fleißig heute
+Ein Server, der nicht richtig auf das Netzwerk reagiert, wird um elf Uhr automatisch heruntergefahren, um eine eventuelle Schädigung zu vermeiden und später wieder hochzufahren.
+Im Jahr sechzehnhundertvierundzwanzig begannen die Kolonialmächte mit der Eroberung tropischer Gebiete was zu einer globalen Handelsrevolution führte.
+Mein Bruder hat mir letztes Jahr einen Film vorgeschlagen, den ich sofort auf DVD bestellt habe.
+Ich habe mir vorgenommen, nur noch mit dem Fahrrad einkaufen zu gehen, das ist umweltfreundlich und viel cooler!
+Ich gehe heute einkaufen.
+Wenn man über die Kommandozeile arbeitet, muss man sich an die Syntax der Befehle halten und oft auch an die Umgebungsvariablen und die Dateipfade, die sich im aktuellen Arbeitsverzeichnis befinden.
+Wann hast du den letzten Film in einer Kino-Sitzecke gesehen?
+Der Termin ist im März.
+Was ist die Hälfte von zweihundert?
+Wenn du deine Schlafzonen als eine Art Schutz für deinen Körper betrachtest, dann ist es verständlich, dass du deine Schlafzeit auch für deinen Geist schützen musst und nicht unterbrechen solltest.
+Bist du bereit, deine Smart-Home-Technik auszubauen?
+In Budapest habe ich einen sonnigen Tag verbracht und die Stadt mit einem kleinen Boot auf dem Donaukanal erkundet, um die Schatten der Türme zu sehen?
+Das Terminal erlaubt dem Benutzer, auch komplexe Systemoperationen durchzuführen, wie etwa das Starten von Diensten, das Einrichten von Cronjobs oder das Verwalten von Benutzerkonten über Befehlszeilenprogramme und -modulen.
+Hallo, ich freue mich sehr, Sie zu helfen!
+Sehr gerne, mit Freude.
+Bei der Addition von sechsundzwanzig und siebenunddreißig ergibt sich die Zahl einhundertneununddreißig, was eine interessante Zahl im Dezimalsystem ist.
+Kannst du mir mitteilen, ob du den Termin am dreizehnten März wahrnehmen wirst?
+Schlafmangel kann zu chronischem Müdigkeitssyndrom führen, was deine Konzentration und dein emotionales Gleichgewicht negativ beeinflusst und sogar zu Depressionen führen könnte.
+Du hast hier eine kleine Einstellung geändert, die wir jetzt beheben können!
+Forschen kann sehr mühsam sein.
+Hast du eine bestimmte Stunde an deinem Tag, in der du nur Bücher liest?
+Im Frühling ist es oft noch kalt, aber die Sonne scheint langsam stärker, und die Blumen blühen, während die Vögel zurückkehren und die Kinder draußen spielen dürfen.
+Es ist ratsam, vor dem Schlafengehen keine koffeinhaltigen Getränke zu trinken, da diese die Fähigkeit deines Körpers beeinträchtigen, den Schlafprozess langsam und sanft einzuleiten und zu halten.
+Ich wünsche Ihnen einen schönen Tag.
+Du hast es fast geschafft, nur noch ein kleiner Schritt und du bist fertig!
+Welches Buch hat dir am meisten Spaß gemacht gestern abend?
+Ich vergesse oft meine Termine.
+Vor drei Jahren bin ich mit dem Zug von Amsterdam nach Budapest gefahren und war begeistert von den alten Bahnhöfen und den lebhaften Marktplätzen.
+Ich möchte in diesem Jahr mehr über die Softwareentwicklung lernen, um meine Fähigkeiten zu erweitern.
+Die Zahl einhundertfünfzig ist besonders relevant bei der Berechnung von Preisvorschriften und Rabattaktionen bei dem Einkauf von vierzehn Produkten.
+Ein kleiner Fehler? Kein Problem, wir schauen uns das schnell zusammen an!
+Oh, das tut mir echt leid, dass du da hingestolpert bist!
+Was für ein Wetter hat es heute in der Stadt geherrscht?
+Wann hast du den letzten Film gesehen und warum hat er dir gefallen?
+Wie schön war es, in Prag am Flussufer zu spazieren und die Brücken über den Vltava bei Sonnenuntergang zu bewundern!
+Die Geschichte hat uns viele wichtige Lektionen über Menschheit und Kultur gegeben.
+Mein Freund hat mir gesagt, ich soll den Markt nicht vergessen, denn dort gibt es die besten frischen Obstsorten, das muss ich unbedingt probieren!
+Wenn man beispielsweise eine Datei in einem bestimmten Verzeichnis kopieren möchte, muss man den vollständigen Pfad angeben, und ggf. auch die Optionen für den Kopiervorgang angeben und die Zielposition eintragen.
+Wenn man eine Uhrzeit wie sieben Uhr dreizehn betrachtet, kann man auch die Zahlen neunundvierzig und vierzehn in einem geometrischen Kontext betrachten.
+Ich weiß nicht, ob du den Termin am zweiten Juni bestätigen wirst, könntest du mir das bitte bestätigen?
+Guten Tag, wie kann ich Ihnen helfen?
+Ich lese schon seit Kindheit.
+Ich wünschte, ich könnte öfter aus dem Büro herauskommen, um frische Luft zu schnappen und meinen Geist zu erneuern.
+Mein Bruder hat gestern Abend eine riesige Torte gemacht und hat sogar den Kuchenrost mit den Händen gereinigt!
+Die Industrialisierung der zweiten Hälfte des neunzehnten Jahrhunderts brachte enorme technologische Fortschritte mit sich die das Leben der Menschen radikal veränderten.
+Meine Mutter hat mir vor zwanzig Jahren ein altes Fantasybuch geschenkt, das ich bis heute liebe.
+Gerne helfe ich Ihnen weiter.
+Ich habe bereits zwei Projekte abgeschlossen, die beide über einen Monat dauerten.
+Ich war in Wien und habe dort einen ganzen Tag lang durch die Schönbrunn-Palast-Anlagen gestreift, bis meine Füße mich schreiend abgelehnt haben.
+Die Administratoren überwachen täglich das Netzwerk, um sicherzustellen, dass alle Geräte miteinander kommunizieren können und keine Verbindung unterbrochen wird.
+Vielen Dank, dass Sie da sind.
+Ich habe einen Termin am Dienstag.
+Hast du dich schon mal gefragt, warum bestimmte Bücher besser sein könnten als Filme?
+Die Natur ist lebendig und stetig, und wir sollten sie achten und schützen.
+Ich habe letzte Woche mit meinen Freunden einen Tag lang nichts anderes gemacht als uns gegenseitig Geschichten erzählen und lachen, bis wir schließlich müde in den Garten fielen.
+Ein Jahr lang habe ich in Spanien gelebt und jede neue Stadt entdeckt, wie etwa Valencia, die mich mit ihrer lebhaften Flora und Festa-Atmosphäre begeistert hat.
+Die Naturwissenschaften untersuchen die Gesetzmäßigkeiten der Natur, deren Strukturen und Prozesse mit Methoden der Beobachtung und Experimentierung.
+Was war da los? Oh, das ist einfach nur ein kleiner Klickfehler!
+Alles klar, danke dir.
+Was ist dein größter Wunsch bezüglich Technik im Haushalt?
+Obwohl es schwierig ist, eine gesunde Schlafgewohnheit aufrechtzuerhalten, ist es wichtig, sich jeden Tag zu fragen, ob du genug getrunken und richtig gegessen hast, um deinen Schlaf nicht zu beeinträchtigen.
+Das ist eine gute Idee, vielen Dank.
+Im Falle einer Netzwerküberlastung reagieren die Systeme automatisch, indem sie Prioritäten setzen, Traffic regulieren und in manchen Fällen bestimmte Dienste temporär abschalten, um das Gesamtsystem zu schützen.
+Hast du jemals ein Buch gelesen, das du nicht beenden konntest?
+Zwei Monate lang habe ich in Barcelona gelebt und dort die Stadt in allen Farben erlebt.
+Jetzt weiß ich es, das ist wirklich eine große Frage, aber ich habe eine Idee!
+Manchmal hilft es, einen Moment lang tief through zu atmen und dann langsam weiterzumachen.
+Mathematik ist nicht nur ein Fach das uns hilft zu verstehen wie die Welt funktioniert, sondern auch ein Werkzeug um Probleme zu lösen und Muster zu erkennen.
+Ich helfe Ihnen gerne weiter.
+Welches Buch hat dir letztes Jahr am meisten gefallen?
+Wie viele Sekunden sind in einer Stunde?
+Mach dir keine Gedanken, Fehler gehören dazu, auch wenn sie unerwartet auftreten!
+Sie können sicher sein, dass ich Ihnen hierbei vollständig zur Seite stehe.
+Im vergangenen Jahr wurden insgesamt zwanzig Server in neue Container gewechselt, um die Leistung und Sicherheit des gesamten Systems deutlich zu verbessern.
+Software wird täglich verbessert.
+Wie schön, dass Sie hier sind, ich bin immer gerne zur Stelle.
+Ein Fehler kann schnell auftreten.
+Hast du schon einmal einen Roboterstaubsauger in deinem Haus?
+Heute war der Tag, an dem wir alle zusammen im Garten gesessen haben und uns über den Sommer und die Ferien gegesellschaftet haben!
+Während des Winters ist es oft eiskalt, doch wenn der Schnee den Boden bedeckt, schweben die Schneeflocken sanft herab, und es entsteht eine magische Welt, die man kaum beschreiben kann.
+Kannst du mir erklären, wie die Waschmaschine funktioniert?
+Wenn der Benutzer denkt, dass er was falsch gemacht hat, muss man ihm helfen, nicht verurteilen.
+Welches Buch war für dich der erste Versuch, etwas über den Film zu schreiben?
+Meine Freude ist groß, wenn ich Ihnen helfen darf, und ich antworte jetzt.
+Während des Sommers kann es tagsüber heiß und trocken sein, aber abends ist es oft angenehm kühl, besonders wenn der Regen kommt und die Bäume frisch riechen.
+Welcher Film hat dir am meisten Hoffnung gegeben in den letzten zwei Monaten?
+Ich habe in Berlin die berühmte Mauer und gleichzeitig auch die modernen Straßen mit den künstlerischen Wänden erlebt.
+Nichts für ungut, ich bin hier, um Ihnen zu helfen, jederzeit!
+Wann ist der nächste Tag, an dem die Uhr genau auf drei Uhr zeigt?
+Gern geschehen, bitte schön.
+Sie wusste, dass ein Viertel von hundert gleich fünfundzwanzig ist.
+Wenn mein Bodenfeger mir sagt, dass er den Staub nicht mehr saugt, dann muss ich ihn neu einstellen und einen neuen Kaffee aufbrühen, wenn ich um elf Uhr morgens aufwache.
+Software wird oft neu geschrieben.
+Meine Mutter hat gesagt, wir sollen nicht zu spät kommen, weil sie um fünf Uhr schon alles vorbereitet hat?
+Wenn du einen Fehler bekommst, ist das kein Zeichen dafür, dass du etwas falsch gemacht hast.
+Kannst du dir vorstellen, dass es im Juni regnet, obwohl es sonst immer sonnig ist?
+In der Biologie werden beispielsweise die evolutionären Entwicklungen von Organismen, ihre Verhaltensweisen und ihre ökologischen Beziehungen ausführlich erforscht und dokumentiert.
+Gut, dass Sie fragen.
+Die Meteorologie ist eng mit der Klimaforschung verbunden, da sie die Wetterverhältnisse auf der Erde genau analysiert, prognostiziert und in langfristige Trends umwandelt.
+Die Schneefelde am Berg schmelzen langsam, und das Wasser fließt in die Bäche.
+Wenn man die Quadratzahlen von eins bis hundert addiert, ergibt das eine Summe von fünftausendfünfhundertfünfzig, was man durch eine geometrische Reihe oder eine algebraische Formel leicht nachprüfen kann.
+Wann brauchst du den Reinigungsmaschinen im Monat?
+Hat es gestern Abend schon dunkel geworden, obwohl es noch nicht neun Uhr war?
+Welche Uhrzeit haben Sie jetzt gerade?
+Die Natur ist unser wichtigster Lehrer.
+Hast du dir schon überlegt, um welche Uhrzeit du zur Besprechung kommen wirst?
+Hast du den Kaffee vergessen?
+Hast du jemals einen Film gesehen, der dir mehrere Tage lang nachgedacht hat?
+Einige Lehrer verwenden die Uhrzeit vierzehn Uhr fünfzehn Minuten, um ihre Schüler zu motivieren, und verbinden diese Zeit mit einer Übung, die mathematische Problemlösung mit kreativem Denken kombiniert.
+In der Naturwissenschaft sind Experimente und theoretische Modelle gleichermaßen wichtig, um Hypothesen zu überprüfen und neue Erkenntnisse zu gewinnen.
+Zwei Tage lang habe ich in Rom die alten Straßen erkundet und dabei so viele Geschichten von der antiken Welt entdeckt.
+Wann ist der nächste Besuch?
+Vor genau fünf Jahren hat er seine Hochschulnote in Analysis mit einer Eins bekommen.
+Was für ein Filmgenre magst du am liebsten und warum?
+Sie fragte sich, ob das Jahr zweiundzwanzigtausendsiebzig eine Primzahl sein könnte?
+Im Jahr dreizehnzehnhundertfünfzig begann die erste industrielle Revolution in Großbritannien.
+Ich schaue oft im Urlaub.
+Ich war in Dublin und habe dort die Stadt bei Tagesanbruch betreten, als die ersten Straßenverkäufer ihre Stände aufbauten.
+Fragen sollen immer beantwortet sein.
+Im Jahr vierzehnhundertvierundzwanzig eroberte Napoleon seine Armee in Frankreich und gründete ein Imperium das weit über Europa hinaus reichte.
+In the early morning, the raccoon scavenged for scraps under the porch light.
+I walked through the crowded streets of Rome at four o’clock and tasted the best pizza I have ever had!
+The discovery of the Americas in the year 1492 marked the beginning of global trade networks and triggered profound demographic and cultural shifts across continents.
+I started my workday at eight o'clock and finished by five thirty.
+My dad once told me that friendship is like a tree you must water every day or it will wither, and I’ve tried to follow that advice ever since.
+Woo hoo, we caught that error before you even noticed, its all good now, trust us!
+Would you mind telling me how to fix this issue step by step?
+The printing press revolutionized knowledge by spreading books to common people.
+My robot vacuum cleaner navigates the carpeted rooms silently and efficiently even when I am still asleep and the sun has not yet risen.
+Have you ever read or watched something that changed your opinion about a topic?
+You are correct, I will send it right now.
+Did you see that? The basketball player dunked the ball right before halftime!
+The server logs showed unusually high CPU usage during the afternoon, which prompted a detailed analysis to determine if a malicious process or hardware failure was responsible.
+When did you last update the software on your smart home device?
+While solving puzzles, I often reflect on how numerical sequences like Fibonacci or prime numbers emerge organically in nature and human creation alike.
+The quiet morning gave me time to reflect on how I truly feel.
+My cousin lives far away in another country but calls me every weekend to share updates about his job, his dog, and the weather in his city.
+When did you first start using this platform?
+Famous leaders such as Gandhi or Washington inspired entire nations to act.
+The dishwasher finished its cycle and started playing my favorite playlist as a bonus treat!
+How old was Albert Einstein when he got his first math book?
+Can you believe it? I won a prize and I feel like I could fly right now!
+Oh my gosh, the rain outside is making me feel so calm and peaceful.
+The heavy clouds made me feel anxious about what might come next.
+Books allow me to imagine things that might never exist in reality.
+Has your smartphone ever crashed while you were cooking?
+I checked the instructions, but I still cant figure out what I did wrong.
+I just arrived in Paris and it’s already seven o’clock in the evening!
+I skipped my nap in Lisbon and instead jumped into the ocean at five o’clock and it felt like paradise!
+Hey, did you hear the news? My uncle is getting married next month and we’re all invited!
+Could a cat survive if left alone for three weeks?
+The clock struck twelve in Copenhagen and suddenly the entire harbor lit up with fireworks!
+Whoa, my smart oven just beeped and told me dinner is ready right now!
+When I arrived home after the long drive I used the smart refrigerator to check what ingredients I still had for dinner!
+The dishwasher completed its cycle just before dinner time and left the table clean and dry for my guests to enjoy.
+Your request is noted.
+I forgot to update my calendar for the dentist visit on the twenty-third of October, which means I might not remember to call the clinic before the appointment time.
+Films often change how I see the world, especially when they touch on deep emotions.
+What if your home security system alerted you at midnight but you were asleep?
+I like the quiet atmosphere in the office, especially when I write reports.
+At twelve o'clock precisely, the clock tower rang out its chime, reminding me that time, like numbers, is both finite and infinitely divisible in theory.
+I still remember the moment I accidentally deleted a file and had to use the git log command to find the last commit where it existed before restoring it.
+Ein Git Repository enthält nicht nur deinen Code, sondern auch die Geschichte aller Änderungen.
+At what hour did the clock strike when the sleeping beauty woke up?
+Can you tell me which number comes after twenty one?
+Oh my goodness, I just typed pwd and it told me the exact path to my home directory!
+It might take just a few minutes to fix this issue so please stay calm and follow the steps.
+A young wolf puppy learned to hunt by watching its mother’s movements.
+My AI assistant just scheduled my grocery delivery for tomorrow afternoon without me asking!
+We had the most fun last night when my friend came over and we stayed up until twelve o’clock watching movies!
+When did the princess first realize she had to face her fears alone?
+We updated the internal system at three o'clock and fixed all the bugs.
+Collaboration improves code quality.
+Do you have any other questions?
+I have to go now or I will miss the last bus at six o'clock!
+Wowzers, that error message? Its just a friendly nudge saying we need to check one thing first!
+During the Middle Ages, knights and kings ruled lands with iron fists.
+Three hundred and sixty degrees make a full circle around the Earth.
+The invention of the printing press in the fifteenth century enabled the mass production of books and significantly accelerated the dissemination of scientific, religious, and political ideas.
+It’s wonderful to have a sibling who understands your jokes, your fears, and even your silent moments without needing to say a word.
+How many films have you seen in the past year, and how many books have you read?
+Is it possible for a dog to understand more than 100 words?
+The Industrial Revolution, beginning in the late eighteenth century, dramatically increased production, altered social structures, and forced millions of people from rural areas into factory-driven urban centers.
+The Cold War between the United States and the Soviet Union spanned nearly half a century and involved proxy wars, espionage, and technological competition that shaped global politics.
+Hey hey, your password didnt match? Dont panic, it happens all the time, we fixed it!
+Despite the initial complexity of Git commands, I eventually learned how to use branching and merging to handle multiple feature developments without disrupting the main codebase.
+How many hours do you usually spend reading a book before you finish it?
+Thank you for your time.
+By mastering terminal commands, users can troubleshoot technical issues more effectively, including file permissions, disk usage, and network configurations, even without a graphical interface.
+Would you like to ask me a question right now?
+Can someone help me understand why my upload failed at 11 o'clock yesterday?
+Ich kann es kaum glauben, dass ich schon seit drei Jahren mit Git arbeiten darf.
+Wow, I feel so excited right now that I could dance all day long!
+Git macht es mir so leicht, meine Änderungen rückgängig zu machen, dass ich fast schon stolz bin!
+What kind of films do you like best, and why?
+The stars tonight are so bright, I cant help but feel magical and special.
+History teaches us how civilizations rose and fell over centuries.
+Fossils reveal ancient life forms.
+Science helps us solve problems.
+Can we travel through space?
+Plants need sunlight to grow.
+While some individuals may naturally require less sleep, most adults need about seven to nine hours per night to function at their best and maintain optimal health throughout the year.
+Do you know how many hours are in a day?
+The shop is open from nine.
+Oh wow, your file got stuck at 3 o'clock but we fixed it in no time!
+While users might occasionally forget the exact syntax of a command, terminal documentation tools like man or --help provide real-time assistance, allowing even beginners to resolve issues with relative ease.
+The mountain goat balances effortlessly on steep rocky slopes without fear.
+When did you first discover the joy of reading?
+Done, thanks.
+What is the date of your next important meeting?
+Every time I finish a novel, I feel like I’ve shared an adventure with someone.
+Although my parents often disagree about politics, they still find joy in sharing meals and discussing books they’ve recently read.
+Have you ever tried using voice commands to control your lights?
+We have tested this message to make sure it is clear without being too technical.
+The terminal allows for quick automation of repetitive tasks using scripts, enabling users to complete complex operations in a fraction of the time it would take manually.
+Sleep hygiene, including maintaining a consistent sleep schedule and creating a restful environment, can greatly enhance sleep quality, even if you are living in an urban area with constant noise.
+Do you remember the time when the frog prince turned into a gentleman?
+Explorers sailed across oceans seeking new lands and unimaginable wealth.
+My mom's voice always brings comfort, no matter how bad my day has been.
+I just arrived in Paris at ten o’clock this morning and it was already bustling with life!
+It is not uncommon for people to sacrifice sleep for productivity, but this short-term gain often leads to long-term consequences that negatively impact both health and performance over time.
+Isnt that the biggest sale of the year? It starts at twelve o'clock exactly!
+Oops, that didnt work! But guess what? Its all fixed now, you can try again right away!
+I am ready now, at this very moment.
+How many books have you read this year so far?
+The message says my file is too big, but I think it is smaller than 1024 kilobytes.
+The cheerleaders jumped and twirled so energetically that the whole crowd stood up and danced!
+Oh no! I left my phone in the car but I still have time to make it home by six!
+I received an email about a new training session next month.
+Wow, that was the most incredible soccer match I have ever seen!
+That new smart speaker just told me the weather forecast for tomorrow and added some upbeat music!
+Would your robot vacuum cleaner work better if it cleaned twice a day?
+Even if you do not understand every word, you can still take the next step we suggest.
+Ein Commit pro Tag, das ist mein neues Lebensziel, seit ich Git kennengelernt habe!
+I’m sorry, I cannot help.
+Snowflakes dance in December.
+During the winter holidays, my whole family gathers for a big dinner where we tell stories, exchange gifts, and eat too much cake until we feel dizzy.
+How many sides does a regular pentagon have?
+Let me know if you need more.
+I’m ready when you are.
