@@ -19,26 +19,57 @@ Nächstes kommt, steht in [docs/roadmap.md](docs/roadmap.md).
 
 ## Schnellstart
 
-**Voraussetzungen:**
-- [uv](https://docs.astral.sh/uv/): `brew install uv` bzw. `winget install astral-sh.uv`. uv
-  bringt auch Python 3.12 mit.
-- [Git LFS](https://git-lfs.com) für die mitgelieferte Stimme.
-- [Ollama](https://ollama.com) ≥ 0.30 als lokaler Modell-Server.
-- Getestet mit einem Mac mit M2 Pro (32 GB) und unter Windows mit einer RTX 4070 Ti (12 GB).
+Getestet mit einem Mac mit M2 Pro (32 GB) und unter Windows mit einer RTX 4070 Ti (12 GB).
+Das Setup-Skript installiert, was fehlt ([uv](https://docs.astral.sh/uv/) samt Python 3.12,
+[Git LFS](https://git-lfs.com) für die mitgelieferte Stimme, [Ollama](https://ollama.com)
+≥ 0.30 als lokalen Modell-Server), startet Ollama und lädt einmalig alle Modelle –
+Spracherkennung, Stimmen und das Sprachmodell (zusammen ~15–20 GB). Danach läuft alles
+offline. Es kann beliebig oft laufen; was schon da ist, wird übersprungen.
 
-```sh
-git lfs install
+**Windows** (installiert per `winget`):
+
+```bat
 git clone https://github.com/minzink/local-assistant.git
 cd local-assistant
-
-ollama pull qwen3-vl:8b-instruct     # Sprachmodell, versteht Text und Bilder (Apache 2.0)
-ollama pull qwen3-embedding:0.6b     # Suche im Gedächtnis (Apache 2.0)
-ollama pull qwen3-vl:4b-instruct     # genaueres Klicken auf dem Bildschirm (optional)
-
-uv sync
-uv run flay setup    # lädt einmalig Spracherkennung, Stimmen usw. – danach läuft alles offline
-uv run flay run      # startet Flay
+scripts\setup.cmd
+uv run flay run
 ```
+
+**macOS** (installiert per [Homebrew](https://brew.sh)):
+
+```sh
+git clone https://github.com/minzink/local-assistant.git
+cd local-assistant
+scripts/setup.sh
+uv run flay run
+```
+
+Optionen: `-NoInstall` / `--no-install` prüft nur und installiert keine Programme,
+`-SkipModels` / `--skip-models` lässt das Laden der Modelle aus. Jeder Lauf schreibt ein
+ausführliches Log nach `logs/setup-<Zeitstempel>.log` (Systeminfos, Proxy-Einstellungen,
+GPU/Treiber, Ausgabe aller Schritte) – bei Problemen dieses Log mitschicken.
+
+<details>
+<summary>Von Hand einrichten</summary>
+
+```sh
+git lfs install && git lfs pull
+ollama serve                         # bzw. Ollama-App starten
+uv sync
+uv run flay setup    # lädt Spracherkennung, Stimmen und die Ollama-Modelle
+```
+
+`flay setup` lädt fehlende Ollama-Modelle selbst (`qwen3-vl:8b-instruct`,
+`qwen3-embedding:0.6b`, mit genug Speicher auch `qwen3-vl:4b-instruct` fürs Klicken).
+</details>
+
+**„Connection error“ / „All connection attempts failed“ beim Start:** Auf dem Port des
+LLM-Servers (Ollama: 11434) hat niemand geantwortet. Flay wartet beim Start bis zu 45 s auf
+einen Server, der noch hochfährt (z.B. Ollama direkt nach der Anmeldung), und nennt danach die
+Ursache: Ollama läuft nicht, der Port ist von Windows reserviert (Hyper-V/WSL 2/Docker,
+`netsh interface ipv4 show excludedportrange protocol=tcp`), `OLLAMA_HOST` zeigt auf einen
+anderen Port oder `llm.base_url` in der `flay.yaml` stimmt nicht. Das Setup-Skript prüft all
+das ebenfalls und schreibt es ins Log.
 
 Dann die **rechte Option-Taste** (macOS) bzw. **rechte Strg-Taste** (Windows) halten,
 sprechen und loslassen, z.B. „Wie spät ist es?“. Die Web-UI öffnet sich unter

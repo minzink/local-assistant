@@ -570,9 +570,9 @@ def _wake_word(settings: Settings) -> WakeWord:
 
 async def _setup(settings: Settings) -> int:
     """The only command that downloads anything: all models Flay needs, once."""
-    from openai import AsyncOpenAI
-
+    from flay import net
     from flay.audio.vad import SileroVAD
+    from flay.llm.openai_compatible import create_client
     from flay.stt.factory import create_stt
     from flay.tts.factory import create_tts, resolve_backend
 
@@ -594,20 +594,29 @@ async def _setup(settings: Settings) -> int:
     download_features(settings.data_dir / "models")
     print("  ✓ Aktivierungswort-Merkmale (openWakeWord, Apache 2.0)")
 
-    # The LLM is served by its own program; Flay only checks that the model is there.
-    client = AsyncOpenAI(base_url=settings.llm.base_url, api_key="not-needed")
+    from flay.llm import ollama
+    from flay.memory.embeddings import embedding_model
+
+    # The LLM is served by its own program; Flay checks that the model is there and, if the
+    # server is Ollama, downloads it.
+    log.debug("Proxies laut System: %s", net.proxies() or "keine")
+    client = create_client(settings.llm.base_url)
     try:
         models = {model.id async for model in client.models.list()}
     except OpenAIError as exc:
-        print(f"  ? LLM-Server {settings.llm.base_url} nicht erreichbar: {exc}")
+        print("  ✗ " + net.llm_unreachable_message(settings.llm.base_url, str(exc)))
+        log.debug("LLM-Server nicht erreichbar", exc_info=True)
         return 1
+    is_ollama = await asyncio.to_thread(ollama.is_ollama, settings.llm.base_url)
+    if settings.llm.model not in models and is_ollama:
+        print(f"  ↓ LLM {settings.llm.model} wird geladen (einmalig, mehrere GB) ...", flush=True)
+        if await asyncio.to_thread(ollama.pull, settings.llm.base_url, settings.llm.model):
+            models.add(settings.llm.model)
     if settings.llm.model in models:
         print(f"  ✓ LLM {settings.llm.model}")
     else:
         print(f"  ✗ LLM {settings.llm.model} fehlt – z.B. 'ollama pull {settings.llm.model}'")
         return 1
-    from flay.llm import ollama
-    from flay.memory.embeddings import embedding_model
 
     # Small-context variants so the helper models fit next to the main model.
     for line in await asyncio.to_thread(ollama.setup, settings.llm.base_url):
@@ -616,9 +625,15 @@ async def _setup(settings: Settings) -> int:
     if settings.memory.enabled and recall.enabled:
         base_url = recall.base_url or settings.llm.base_url
         if recall.base_url and recall.base_url != settings.llm.base_url:
-            client = AsyncOpenAI(base_url=recall.base_url, api_key="not-needed")
+            client = create_client(recall.base_url)
         models = {model.id async for model in client.models.list()}
         model = await asyncio.to_thread(embedding_model, recall.model, base_url)
+        if (
+            model not in models
+            and await asyncio.to_thread(ollama.is_ollama, base_url)
+            and await asyncio.to_thread(ollama.pull, base_url, model)
+        ):
+            models.add(model)
         if model in models:
             print(f"  ✓ Gedächtnis-Suche {model}")
         else:
@@ -649,6 +664,10 @@ def _autostart(settings: Settings, config: Path | None, action: str) -> int:
     return 0
 
 
+# How long `flay run` waits for an LLM server that is still starting.
+LLM_STARTUP_WAIT = 45
+
+
 def _start(settings: Settings) -> int:
     """Run Flay, with a menu bar / tray icon if enabled."""
     if not settings.ui.tray:
@@ -665,6 +684,7 @@ def _start(settings: Settings) -> int:
 
 async def _run(settings: Settings, tray: Tray | None = None) -> int:
     # Heavy imports (audio, ML) only when the assistant actually starts.
+    from flay import net
     from flay.assistant import Assistant
     from flay.audio.microphone import Microphone
     from flay.audio.speaker import Speaker
@@ -691,6 +711,27 @@ async def _run(settings: Settings, tray: Tray | None = None) -> int:
             "Screenshots verlassen damit den Rechner.",
             settings.llm.base_url,
         )
+
+    # Before loading anything: without the LLM server Flay can't answer anyway, and the
+    # error from deep inside the OpenAI client doesn't say what to do. A server that is
+    # still starting (Ollama at login, next to Flay's autostart) gets some time.
+    def waiting(reason: str) -> None:
+        log.info(
+            "LLM-Server %s antwortet noch nicht (%s) – warte bis zu %d s ...",
+            settings.llm.base_url,
+            reason,
+            LLM_STARTUP_WAIT,
+        )
+
+    problem = await asyncio.to_thread(
+        net.wait_until_reachable,
+        settings.llm.base_url.rstrip("/") + "/models",
+        LLM_STARTUP_WAIT,
+        waiting,
+    )
+    if problem is not None:
+        log.error("%s", net.llm_unreachable_message(settings.llm.base_url, problem))
+        return 1
     hardware = detect_hardware()
     stt = create_stt(settings, hardware)
 

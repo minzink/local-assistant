@@ -12,15 +12,26 @@ from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from typing import Any, cast
 
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, DefaultAsyncHttpxClient
 from openai.types.chat import ChatCompletionMessageParam
 
 from flay.core.messages import AudioPart, ImagePart, Message, Role, TextPart, ToolCall
 from flay.llm.base import LLMEvent, ModelCapabilities, TextDelta, ThinkingOptions, ToolSpec
 from flay.llm.gate import synthesis
+from flay.net import trust_env
 
 # Local servers ignore the key, but the client requires one.
 PLACEHOLDER_API_KEY = "not-needed"
+
+
+def create_client(base_url: str, api_key: str | None = None) -> AsyncOpenAI:
+    """OpenAI client for ``base_url``; a server on this computer is reached without proxy."""
+    return AsyncOpenAI(
+        base_url=base_url,
+        api_key=api_key or PLACEHOLDER_API_KEY,
+        http_client=DefaultAsyncHttpxClient(trust_env=trust_env(base_url)),
+    )
+
 
 AUDIO_FORMATS = {"audio/wav": "wav", "audio/x-wav": "wav", "audio/mpeg": "mp3"}
 
@@ -95,7 +106,7 @@ class OpenAICompatibleChat:
         extra_body: dict[str, Any] | None = None,
         thinking: ThinkingOptions | None = None,
     ) -> None:
-        self._client = AsyncOpenAI(base_url=base_url, api_key=api_key or PLACEHOLDER_API_KEY)
+        self._client = create_client(base_url, api_key)
         self._model = model
         self._capabilities = capabilities
         self._temperature = temperature

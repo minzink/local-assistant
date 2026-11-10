@@ -10,10 +10,9 @@ from collections.abc import Sequence
 from typing import Protocol
 
 import numpy as np
-from openai import AsyncOpenAI
 
 from flay.config import Settings
-from flay.llm.openai_compatible import PLACEHOLDER_API_KEY
+from flay.llm.openai_compatible import create_client
 
 # Qwen3-Embedding is trained with an instruction in front of queries, not documents.
 QUERY_INSTRUCTION = (
@@ -35,7 +34,7 @@ class OpenAICompatibleEmbedder:
     def __init__(
         self, base_url: str, model: str, api_key: str | None = None, query_prefix: str = ""
     ) -> None:
-        self._client = AsyncOpenAI(base_url=base_url, api_key=api_key or PLACEHOLDER_API_KEY)
+        self._client = create_client(base_url, api_key)
         self._model = model
         self._query_prefix = query_prefix
 

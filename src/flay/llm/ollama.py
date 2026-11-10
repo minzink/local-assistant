@@ -18,7 +18,12 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
+
+from flay.net import DIRECT
+from flay.offline import is_local_url
 
 log = logging.getLogger(__name__)
 
@@ -44,9 +49,17 @@ def server_root(base_url: str) -> str:
     return root[: -len("/v1")] if root.endswith("/v1") else root
 
 
+def _open(request: str | urllib.request.Request, timeout: float) -> Any:
+    """urlopen, without proxy for a server on this computer (see flay.net)."""
+    url = request if isinstance(request, str) else request.full_url
+    if is_local_url(url):
+        return DIRECT.open(request, timeout=timeout)
+    return urllib.request.urlopen(request, timeout=timeout)
+
+
 def _get(root: str, path: str, timeout: float) -> dict[str, object] | None:
     try:
-        with urllib.request.urlopen(root + path, timeout=timeout) as response:
+        with _open(root + path, timeout) as response:
             data = json.load(response)
     except (OSError, ValueError, urllib.error.URLError):
         return None
@@ -92,12 +105,49 @@ def create(base_url: str, variant: Variant, timeout: float = 120.0) -> bool:
         headers={"Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with _open(request, timeout) as response:
             result = json.load(response)
     except (OSError, ValueError, urllib.error.URLError) as exc:
         log.info("Variante %s nicht angelegt: %s", variant.name, exc)
         return False
     return bool(isinstance(result, dict) and result.get("status") == "success")
+
+
+def pull(
+    base_url: str,
+    model: str,
+    progress: Callable[[str], None] = print,
+    timeout: float = 120.0,
+) -> bool:
+    """Download ``model`` into Ollama (``/api/pull``); reports every 10 %, True on success."""
+    request = urllib.request.Request(
+        server_root(base_url) + "/api/pull",
+        data=json.dumps({"model": model, "stream": True}).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    reported = -1
+    try:
+        # The timeout applies per read: Ollama reports progress several times a second.
+        with _open(request, timeout) as response:
+            for raw in response:
+                line = json.loads(raw) if raw.strip() else {}
+                if not isinstance(line, dict):
+                    continue
+                if line.get("error"):
+                    progress(f"    Fehler: {line['error']}")
+                    return False
+                total, completed = line.get("total"), line.get("completed")
+                if isinstance(total, int) and isinstance(completed, int) and total > 0:
+                    percent = completed * 100 // total // 10 * 10
+                    if percent != reported:
+                        reported = percent
+                        progress(f"    {model}: {percent} % von {total / 1e9:.1f} GB")
+                if line.get("status") == "success":
+                    return True
+    except (OSError, ValueError, urllib.error.URLError) as exc:
+        log.info("%s nicht geladen: %s", model, exc)
+        progress(f"    Fehler: {exc}")
+    return False
 
 
 def memory_gb() -> float | None:
@@ -121,7 +171,7 @@ def memory_gb() -> float | None:
 
 
 def setup(base_url: str) -> list[str]:
-    """Create the variants whose base model is there; lines to print for `flay setup`."""
+    """Create the variants (pulling missing base models); lines to print for `flay setup`."""
     if not is_ollama(base_url):
         return []
     lines: list[str] = []
@@ -138,11 +188,13 @@ def setup(base_url: str) -> list[str]:
     for variant in wanted:
         if variant.name in have:
             lines.append(f"  ✓ {variant.name}")
-        elif variant.base not in have:
-            lines.append(
-                f"  · {variant.name}: erst 'ollama pull {variant.base}', dann erneut setup"
-            )
-        elif create(base_url, variant):
+            continue
+        if variant.base not in have:
+            print(f"  ↓ {variant.base} wird geladen ...", flush=True)
+            if not pull(base_url, variant.base):
+                lines.append(f"  ✗ {variant.base} konnte nicht geladen werden")
+                continue
+        if create(base_url, variant):
             lines.append(f"  ✓ {variant.name} angelegt (Kontext {variant.context})")
         else:
             lines.append(f"  ✗ {variant.name} konnte nicht angelegt werden")

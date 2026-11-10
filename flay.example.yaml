@@ -25,11 +25,11 @@ stt:
 llm:
   backend: openai-compatible
   # Jeder Server mit OpenAI-kompatibler API, z.B.:
-  #   Ollama     http://localhost:11434/v1
+  #   Ollama     http://127.0.0.1:11434/v1
   #   LM Studio  http://localhost:1234/v1   (MLX-Engine auf Apple Silicon)
   #   llama.cpp  http://localhost:8080/v1   (llama-server)
   #   mlx-lm     http://localhost:8080/v1   (mlx_lm.server)
-  base_url: http://localhost:11434/v1
+  base_url: http://127.0.0.1:11434/v1
   api_key: null
   model: qwen3-vl:8b-instruct           # Apache-2.0; Text, Bilder, Tools; ohne Denk-Modus
   input_modalities: [text, image]       # [text] für reine Textmodelle (dann kein Bildschirm)

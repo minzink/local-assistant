@@ -113,7 +113,8 @@ class LLMSettings(_Section):
     # Any server with an OpenAI-compatible API: Ollama, llama.cpp, LM Studio, mlx-lm, vLLM.
     # In-process backends (e.g. transformers, MLX) can be added as further literals.
     backend: Literal["openai-compatible"] = "openai-compatible"
-    base_url: str = "http://localhost:11434/v1"
+    # 127.0.0.1 rather than localhost: Ollama only listens on IPv4, localhost may be ::1 first.
+    base_url: str = "http://127.0.0.1:11434/v1"
     api_key: SecretStr | None = None
     # Qwen3-VL (Apache-2.0): text, images and tool calls in one model. The "instruct"
     # variant answers directly; the default "qwen3-vl:8b" tag always thinks first (6–10 s).

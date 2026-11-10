@@ -37,5 +37,8 @@ Thumbs.db
 # Voice training: dataset, checkpoints and models (see tools/voice-training/README.md)
 tools/voice-training/work/
 
+# Logs of scripts/setup.*
+logs/
+
 # Local listening samples and other test output
 test-output/

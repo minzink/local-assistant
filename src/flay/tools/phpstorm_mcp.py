@@ -21,12 +21,28 @@ from pathlib import Path
 from typing import Any
 
 import aiohttp
+import httpx2
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 from mcp.client.streamable_http import streamable_http_client
-from mcp.shared._httpx_utils import create_mcp_http_client
+from mcp.shared._httpx_utils import MCP_DEFAULT_SSE_READ_TIMEOUT, MCP_DEFAULT_TIMEOUT
 
 log = logging.getLogger(__name__)
+
+
+def _direct_http_client(
+    headers: dict[str, str] | None = None,
+    timeout: httpx2.Timeout | None = None,
+    auth: httpx2.Auth | None = None,
+) -> httpx2.AsyncClient:
+    """MCP's default client, but never through a proxy: PhpStorm runs on 127.0.0.1."""
+    return httpx2.AsyncClient(
+        headers=headers,
+        timeout=timeout or httpx2.Timeout(MCP_DEFAULT_TIMEOUT, read=MCP_DEFAULT_SSE_READ_TIMEOUT),
+        auth=auth,
+        trust_env=False,  # see flay.net
+    )
+
 
 # PhpStorm picks a free port in this range when the MCP server is enabled.
 DISCOVERY_PORTS = range(64342, 64462)
@@ -107,12 +123,12 @@ class PhpStormMcp:
             raise ConnectionError("PhpStorm MCP server not found (Settings → Tools → MCP Server)")
         headers = {"Authorization": f"Bearer {self._token}"} if self._token else None
         if base.endswith("/sse"):
-            transport = sse_client(base, headers=headers)
+            transport = sse_client(base, headers=headers, httpx_client_factory=_direct_http_client)
         else:
             # Streamable HTTP is the current MCP transport; PhpStorm serves it on /stream.
             url = base if base.endswith("/stream") else base.rstrip("/") + "/stream"
             transport = streamable_http_client(
-                url, http_client=create_mcp_http_client(headers=headers)
+                url, http_client=_direct_http_client(headers=headers)
             )
         async with transport as streams, ClientSession(streams[0], streams[1]) as session:
             await session.initialize()
