@@ -172,3 +172,39 @@ def test_pull_reports_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     printed: list[str] = []
     assert not ollama.pull("http://127.0.0.1:11434/v1", "nope", printed.append)
     assert "does not exist" in printed[0]
+
+
+def _server(monkeypatch: pytest.MonkeyPatch, have: set[str], memory: float | None) -> list[str]:
+    created: list[str] = []
+    monkeypatch.setattr(ollama, "is_ollama", lambda base_url: True)
+    monkeypatch.setattr(ollama, "models", lambda base_url: set(have))
+    monkeypatch.setattr(ollama, "memory_gb", lambda: memory)
+    monkeypatch.setattr(ollama.sys, "platform", "win32")
+    monkeypatch.delenv("OLLAMA_CONTEXT_LENGTH", raising=False)
+    monkeypatch.setattr(
+        ollama, "create", lambda base_url, variant: created.append(variant.name) or True
+    )
+    return created
+
+
+def test_main_model_gets_more_context_on_a_small_gpu(monkeypatch: pytest.MonkeyPatch) -> None:
+    created = _server(monkeypatch, {"qwen3-vl:8b-instruct"}, memory=12.0)
+    assert ollama.main_model("u", "qwen3-vl:8b-instruct") == "qwen3-vl:8b-instruct-ctx8k"
+    assert created == ["qwen3-vl:8b-instruct-ctx8k"]
+
+
+def test_main_model_kept_where_the_default_context_suffices(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created = _server(monkeypatch, {"m"}, memory=24.0)
+    assert ollama.main_model("u", "m") == "m"
+    monkeypatch.setenv("OLLAMA_CONTEXT_LENGTH", "16384")
+    monkeypatch.setattr(ollama, "memory_gb", lambda: 12.0)
+    assert ollama.main_model("u", "m") == "m"
+    assert created == []
+
+
+def test_main_model_uses_an_existing_variant(monkeypatch: pytest.MonkeyPatch) -> None:
+    created = _server(monkeypatch, {"m", "m-ctx8k"}, memory=48.0)
+    assert ollama.main_model("u", "m") == "m-ctx8k"
+    assert created == []

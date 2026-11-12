@@ -47,7 +47,7 @@ llm:
                                         # Qwen3.5: {chat_template_kwargs: {enable_thinking: false}}
 
 tts:
-  backend: auto        # auto: qwen3 mit GPU (Apple Silicon/NVIDIA), sonst piper
+  backend: auto        # auto: qwen3 auf Apple Silicon, sonst piper (qwen3 mit PyTorch ist langsam)
   voice:               # qwen3: eine Stimme für Deutsch und Englisch
     name: auto         # auto | own (flay voice record) | ramona | hokuspokus | thorsten | Pfad.wav
     pitch: 0           # Halbtöne, z.B. -2 tiefer, 2 höher (auch für piper)

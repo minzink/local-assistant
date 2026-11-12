@@ -9,8 +9,11 @@ from flay.tts.qwen3 import Engine, Qwen3TTS
 def resolve_backend(backend: str, hardware: HardwareProfile) -> str:
     if backend != "auto":
         return backend
-    # Qwen3-TTS needs a GPU to answer quickly; Piper is fast on any CPU.
-    return "piper" if hardware.accelerator is Accelerator.CPU else "qwen3"
+    # Only MLX streams Qwen3-TTS fast enough (first sound ~0.2 s on an M2 Pro). The PyTorch
+    # version renders whole sentences: on an RTX 4070 Ti 4.5 s for "Es ist 18:19 Uhr.", and
+    # it competes with the LLM for VRAM, which slowed both to a crawl (90 s for two
+    # sentences). Piper is fast on any CPU and leaves the GPU to the LLM.
+    return "qwen3" if hardware.accelerator is Accelerator.APPLE_SILICON else "piper"
 
 
 def create_tts(

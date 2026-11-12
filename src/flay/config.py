@@ -182,9 +182,9 @@ class VoiceSettings(_Section):
 
 
 class TTSSettings(_Section):
-    # qwen3: Qwen3-TTS (Apache 2.0) clones one voice for German and English; needs Apple
-    # Silicon or an NVIDIA GPU. piper: one voice per language, fast on any CPU.
-    # auto: qwen3 where it is fast enough, else piper.
+    # qwen3: Qwen3-TTS (Apache 2.0) clones one voice for German and English; fast on Apple
+    # Silicon, slow with PyTorch on NVIDIA. piper: one voice per language, fast on any CPU.
+    # auto: qwen3 on Apple Silicon, else piper.
     backend: Literal["auto", "qwen3", "piper"] = "auto"
     voice: VoiceSettings = VoiceSettings()
     # Piper voices, one per language (the qwen3 voice comes from ``voice``).

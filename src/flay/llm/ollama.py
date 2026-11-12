@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 import sys
 import urllib.error
@@ -41,6 +42,15 @@ POINTER = Variant("qwen3-vl:4b-instruct-ctx4k", "qwen3-vl:4b-instruct", 4096)
 # A second model next to the main one needs this much (unified) memory or VRAM: the 4B
 # with 4k context takes ~3.7 GB on top of ~10 GB for the 8B with 32k.
 POINTER_MIN_GB = 20.0
+# Ollama sizes the default context by VRAM: below 24 GB it is 4096 tokens, too few for
+# Flay's prompt with tools and a screenshot (~4600) – such requests fail. With 8k the 8B
+# takes ~1.2 GB more and still fits a 12 GB card.
+MAIN_CONTEXT = 8192
+SMALL_DEFAULT_CONTEXT_BELOW_GB = 24.0
+
+
+def main_variant(model: str) -> Variant:
+    return Variant(f"{model}-ctx{MAIN_CONTEXT // 1024}k", model, MAIN_CONTEXT)
 
 
 def server_root(base_url: str) -> str:
@@ -88,6 +98,35 @@ def resolve(setting: str | None, variant: Variant, fallback: str, base_url: str)
     if setting is None:
         return fallback
     return variant.name if variant.name in models(base_url) else fallback
+
+
+def _small_default_context() -> bool:
+    """Whether Ollama would give the main model only 4k context on this computer."""
+    configured = os.environ.get("OLLAMA_CONTEXT_LENGTH", "")
+    if configured.isdigit() and int(configured) >= MAIN_CONTEXT:
+        return False
+    if sys.platform == "darwin":
+        # Apple Silicon: the default has been large enough on the Macs Flay runs on.
+        return False
+    memory = memory_gb()
+    return memory is None or memory < SMALL_DEFAULT_CONTEXT_BELOW_GB
+
+
+def main_model(base_url: str, model: str) -> str:
+    """The model to chat with: where Ollama's default context is too small, the variant with
+    MAIN_CONTEXT (created from ``model`` if missing; no download), else ``model``."""
+    if not is_ollama(base_url):
+        return model
+    variant = main_variant(model)
+    have = models(base_url)
+    if variant.name in have:
+        return variant.name
+    if model not in have or not _small_default_context():
+        return model
+    if create(base_url, variant):
+        log.info("LLM-Variante %s angelegt (Kontext %d statt 4096)", variant.name, MAIN_CONTEXT)
+        return variant.name
+    return model
 
 
 def create(base_url: str, variant: Variant, timeout: float = 120.0) -> bool:

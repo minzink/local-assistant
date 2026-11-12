@@ -428,11 +428,17 @@ beide Sprachen; trainiert wird auf dem Windows-Rechner mit
 (1.2 = 20 % schneller). Beides wird einmal beim Start auf die Aufnahme angewendet und kostet
 beim Sprechen keine Zeit. Probehören: `flay voice test` (oder `--name ramona`).
 Auf einem M2 Pro (MLX, 4 Bit) kommt der erste Ton nach ~0,2 s; ein Satz braucht ~0,4 s je
-Sekunde Sprache. Unter Windows läuft Qwen3-TTS mit PyTorch auf der NVIDIA-GPU (noch nicht
-gemessen); ohne GPU nimmt Flay Piper (`tts.backend`), mit einer Stimme je Sprache: Kerstin (de)
-und Kristin (en), beide weiblich, damit der Sprachwechsel ähnlich klingt.
+Sekunde Sprache. Unter Windows nimmt Flay Piper (`tts.backend: auto`), mit einer Stimme je
+Sprache: Kerstin (de) und Kristin (en), beide weiblich, damit der Sprachwechsel ähnlich klingt;
+dieselbe Stimme wie Qwen3-TTS gibt es als Piper-Stimme `flay-ramona-medium` (siehe
+`voices/README.md`). Qwen3-TTS mit PyTorch (`tts.backend: qwen3`) erzeugt ganze Sätze statt
+zu streamen – auf einer RTX 4070 Ti ~4,5 s bis zum ersten Ton – und teilt sich den
+Grafikspeicher mit dem LLM, was beide stark ausbremst.
 
-**Ollama:** Ollama entlädt Modelle nach 5 Minuten Leerlauf; die nächste Antwort dauert dann
+**Ollama:** Unter 24 GB Grafikspeicher gibt Ollama Modellen nur 4096 Token Kontext – zu
+wenig für Flays Anweisungen samt Werkzeugen und Screenshot. Flay legt dort beim Start eine
+Variante mit 8k Kontext an (z.B. `qwen3-vl:8b-instruct-ctx8k`, kein Download) und nutzt sie.
+Ollama entlädt Modelle nach 5 Minuten Leerlauf; die nächste Antwort dauert dann
 2–3 s länger. Abhilfe: `OLLAMA_KEEP_ALIVE=1h` (oder `-1`) für den Ollama-Server setzen.
 
 ## Konfiguration

@@ -109,9 +109,10 @@ def profile(accelerator: Accelerator) -> HardwareProfile:
     return HardwareProfile(system="test", machine="test", accelerator=accelerator)
 
 
-def test_qwen3_where_a_gpu_makes_it_fast() -> None:
+def test_qwen3_only_where_it_streams_fast() -> None:
     assert resolve_backend("auto", profile(Accelerator.APPLE_SILICON)) == "qwen3"
-    assert resolve_backend("auto", profile(Accelerator.CUDA)) == "qwen3"
+    assert resolve_backend("auto", profile(Accelerator.CUDA)) == "piper"
+    assert resolve_backend("qwen3", profile(Accelerator.CUDA)) == "qwen3"
     assert resolve_backend("auto", profile(Accelerator.CPU)) == "piper"
     assert resolve_backend("piper", profile(Accelerator.CUDA)) == "piper"
 

@@ -614,6 +614,11 @@ async def _setup(settings: Settings) -> int:
             models.add(settings.llm.model)
     if settings.llm.model in models:
         print(f"  ✓ LLM {settings.llm.model}")
+        model = await asyncio.to_thread(
+            ollama.main_model, settings.llm.base_url, settings.llm.model
+        )
+        if model != settings.llm.model:
+            print(f"  ✓ {model} (Kontext {ollama.MAIN_CONTEXT})")
     else:
         print(f"  ✗ LLM {settings.llm.model} fehlt – z.B. 'ollama pull {settings.llm.model}'")
         return 1
@@ -732,6 +737,16 @@ async def _run(settings: Settings, tray: Tray | None = None) -> int:
     if problem is not None:
         log.error("%s", net.llm_unreachable_message(settings.llm.base_url, problem))
         return 1
+    # Everything that uses the main model (pointer fallback, thinking, memory) must name the
+    # same one, or Ollama loads it twice.
+    from flay.llm import ollama
+
+    model = await asyncio.to_thread(ollama.main_model, settings.llm.base_url, settings.llm.model)
+    if model != settings.llm.model:
+        log.info("LLM: %s", model)
+        settings = settings.model_copy(
+            update={"llm": settings.llm.model_copy(update={"model": model})}
+        )
     hardware = detect_hardware()
     stt = create_stt(settings, hardware)
 
