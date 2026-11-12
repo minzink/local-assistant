@@ -14,7 +14,10 @@ $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $LogDir = Join-Path $Root "logs"
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 $LogFile = Join-Path $LogDir ("setup-{0:yyyyMMdd-HHmmss}.log" -f (Get-Date))
-$OllamaUrl = "http://127.0.0.1:11434"
+# Respect OLLAMA_HOST environment variable, default to 11434
+$OllamaHost = if ($env:OLLAMA_HOST) { $env:OLLAMA_HOST } else { "127.0.0.1:11434" }
+# For connection, replace 0.0.0.0 with 127.0.0.1 (can't connect to 0.0.0.0)
+$OllamaUrl = "http://$($OllamaHost -replace '^0\.0\.0\.0', '127.0.0.1')"
 
 # Python prints UTF-8 (checkmarks, umlauts); piped into PowerShell it would otherwise use
 # the ANSI code page and crash with UnicodeEncodeError.
@@ -250,16 +253,18 @@ function Start-OllamaServer {
         Write-Log "Ollama laeuft auf ${OllamaUrl}: $body" "OK"
         return
     }
-    $reserved = Test-ReservedPort 11434
+    # Extract port from OLLAMA_HOST or use default
+    $port = if ($OllamaHost -match ":(\d+)") { [int]$Matches[1] } else { 11434 }
+    $reserved = Test-ReservedPort $port
     $running = Get-Process -Name "ollama", "ollama app" -ErrorAction SilentlyContinue
     if ($running) {
         Write-Log ("Ollama-Prozesse laufen ({0}), der Server antwortet aber nicht" -f (($running | ForEach-Object { "$($_.ProcessName) PID $($_.Id)" }) -join ", ")) "WARN"
     }
-    $listener = Get-NetTCPConnection -LocalPort 11434 -State Listen -ErrorAction SilentlyContinue
+    $listener = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
     if ($listener) {
         foreach ($l in $listener) {
             $process = Get-Process -Id $l.OwningProcess -ErrorAction SilentlyContinue
-            Write-Log "Port 11434 belegt von $($process.ProcessName) (PID $($l.OwningProcess)) auf $($l.LocalAddress), antwortet aber nicht" "WARN"
+            Write-Log "Port $port belegt von $($process.ProcessName) (PID $($l.OwningProcess)) auf $($l.LocalAddress), antwortet aber nicht" "WARN"
         }
     }
     Write-Log "Ollama antwortet nicht - wird gestartet ..."
@@ -282,7 +287,7 @@ function Start-OllamaServer {
         Write-Log "Letzte Zeilen aus $serverLog`:" "WARN"
         Get-Content $serverLog -Tail 30 | ForEach-Object { Write-Log "    $_" }
     }
-    if ($reserved) { throw "Ollama kann Port 11434 nicht oeffnen (von Windows reserviert, siehe oben)." }
+    if ($reserved) { throw "Ollama kann Port $port nicht oeffnen (von Windows reserviert, siehe oben)." }
     throw "Ollama startet nicht ($OllamaUrl). Ollama-App von Hand starten und das Skript erneut ausfuehren."
 }
 
