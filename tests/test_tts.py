@@ -12,7 +12,7 @@ from flay.config import Settings, TTSSettings, VoiceSettings
 from flay.core.language import Language
 from flay.core.platform import Accelerator, HardwareProfile
 from flay.offline import MissingModelError
-from flay.tts import qwen3
+from flay.tts import piper, qwen3
 from flay.tts.factory import create_tts, resolve_backend
 from flay.tts.piper import PiperTTS
 from flay.tts.qwen3 import SAMPLE_RATE, Qwen3TTS
@@ -223,9 +223,40 @@ def test_setup_does_not_download_a_trained_piper_voice(
     downloads: list[str] = []
     monkeypatch.setattr(piper_module, "download_voice", lambda name, _: downloads.append(name))
     voices = {Language.DE: "flay-ramona-medium", Language.EN: "flay-ramona-medium"}
-    PiperTTS(voices, tmp_path).download()
-    assert downloads == []
+    PiperTTS(voices, tmp_path, repo_voices=None).download()
+    # Only the published fallbacks come from the internet.
+    assert downloads == list(piper_module.FALLBACK_VOICES.values())
     assert caplog.text.count("flay-ramona-medium fehlt") == 1
+
+
+def _voice_files(folder: Path, name: str, size: int) -> None:
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"{name}.onnx").write_bytes(b"x" * size)
+    (folder / f"{name}.onnx.json").write_text("{}")
+
+
+def test_trained_voice_is_taken_from_the_repository(tmp_path: Path) -> None:
+    repo, voices = tmp_path / "repo", tmp_path / "voices"
+    _voice_files(repo, "flay-ramona-medium", piper.MIN_MODEL_BYTES)
+    tts = PiperTTS({Language.DE: "flay-ramona-medium"}, voices, repo_voices=repo)
+
+    assert tts._available(Language.DE, "flay-ramona-medium") == "flay-ramona-medium"
+    assert (voices / "flay-ramona-medium.onnx").stat().st_size == piper.MIN_MODEL_BYTES
+    assert (voices / "flay-ramona-medium.onnx.json").exists()
+
+
+def test_missing_trained_voice_falls_back_to_a_published_one(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    repo, voices = tmp_path / "repo", tmp_path / "voices"
+    _voice_files(repo, "flay-ramona-medium", 130)  # a Git LFS pointer, not the model
+    _voice_files(voices, piper.FALLBACK_VOICES[Language.EN], 10)
+    tts = PiperTTS({}, voices, repo_voices=repo)
+
+    assert tts._available(Language.EN, "flay-ramona-medium") == "en_US-kristin-medium"
+    assert "git lfs pull" in caplog.text
+    with pytest.raises(MissingModelError):
+        tts._available(Language.DE, "flay-ramona-medium")  # no Kerstin either
 
 
 async def test_piper_voices_of_different_rates_play_at_one(tmp_path: Path) -> None:

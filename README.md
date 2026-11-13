@@ -63,6 +63,10 @@ uv run flay setup    # lädt Spracherkennung, Stimmen und die Ollama-Modelle
 `qwen3-embedding:0.6b`, mit genug Speicher auch `qwen3-vl:4b-instruct` fürs Klicken).
 </details>
 
+**Etwas klappt nicht oder ist langsam?** `uv run flay doctor` prüft GPU, Ollama, Kontext,
+Grafikspeicher, Stimme, Mikrofon, Berechtigungen, PhpStorm und tmux und nennt zu jedem
+Problem die Abhilfe.
+
 **„Connection error“ / „All connection attempts failed“ beim Start:** Auf dem Port des
 LLM-Servers (Ollama: 11434) hat niemand geantwortet. Flay wartet beim Start bis zu 45 s auf
 einen Server, der noch hochfährt (z.B. Ollama direkt nach der Anmeldung), und nennt danach die
@@ -190,6 +194,27 @@ Flay kann auf deinem Rechner handeln – nur über die Werkzeuge in `tools.enabl
 | `remember` | „Merk dir, dass Lea am 3. März Geburtstag hat“ | Speichert den Fakt im Gedächtnis |
 | `forget` | „Vergiss, dass ich Tee mag“ | Löscht den passenden Fakt; passen mehrere, fragt Flay nach |
 | `ssh_connect` | „SSH auf prod web“, „Verbinde dich mit dem Server staging“ | Öffnet ein neues Terminalfenster mit `ssh <host>` – nur für Server aus deiner ssh-Config |
+| `control_window` | „Öffne Firefox“, „Wechsel zu Slack“, „Schieb Firefox auf den linken Monitor“, „Leg PhpStorm und Firefox nebeneinander“, „Mach Slack zu“ | Startet, holt nach vorn, schließt, verschiebt, maximiert oder minimiert Apps (installierte und laufende) |
+| `use_keyboard` | „Schreib: Viele Grüße, Timo“, „Speichern“, „Mach das rückgängig“, „Neuer Tab“ | Tippt diktierten Text ins aktive Feld (über die Zwischenablage, die danach wiederhergestellt wird) oder drückt ein Kürzel aus einer festen Liste – **nie Enter** |
+| `phpstorm` | „Öffne die Datei UserController“, „Starte die Tests“, „Welche Fehler zeigt PhpStorm?“, „Was ist im Git geändert?“ | Über PhpStorms MCP-Server im vorderen (oder genannten) Projekt: Datei oder Klasse öffnen, Ausführungskonfiguration starten und das Ergebnis zusammenfassen, Probleme der offenen Datei, Git-Status |
+| `run_command` | „Lass die Tests laufen“ (wenn `tests` eingerichtet ist) | Führt nur Befehle aus `tools.commands` aus; dauert es länger, sagt Flay später, wie es ausging |
+| `find_file` | „Öffne die letzte PDF aus Downloads“, „Wo liegt die Rechnung von Oktober?“ | Sucht nach Namen in Downloads, Schreibtisch und Dokumente (`tools.files.roots`), neueste zuerst, und öffnet mit der passenden App |
+| `timer` | „Erinnere mich in 20 Minuten an den Tee“, „Stell einen Timer auf 5 Minuten“, „Welche Erinnerungen habe ich?“ | Stellt, listet und löscht Timer; sie überstehen einen Neustart |
+| `system_control` | „Mach lauter“, „Lautstärke auf 30“, „Ton aus“, „Nächstes Lied“, „Sperr den Bildschirm“ | Lautstärke, Musik und Bildschirmsperre |
+
+**Markierter Text:** „Übersetz das Markierte“, „Erklär mir den markierten Code“ – Flay
+kopiert die Markierung der vorderen App (die Zwischenablage bleibt, wie sie war) und gibt sie
+dem Modell mit.
+
+**Mehrere Schritte:** „Öffne Firefox, dann mach lauter und danach stell einen Timer auf 5
+Minuten“ – Flay nennt die Schritte und arbeitet sie nacheinander ab; jeder Schritt sieht, was
+die vorigen ergeben haben, ein fehlgeschlagener Schritt stoppt den Rest. Ist ein Schritt
+weitreichend (Claude, Befehle, Tippen, Formulare), fragt Flay vorher „Soll ich loslegen?“.
+
+**Von sich aus:** Flay sagt Bescheid, wenn ein Timer abläuft, ein länger laufender Befehl
+fertig ist und wenn Claude (mit `flay claude` gestartet) nach mindestens 20 s Arbeit fertig
+ist oder auf eine Freigabe wartet (`tools.notifications`). Durchsagen warten, bis Flay nichts
+anderes sagt; sprichst du dazwischen, verstummt Flay wie sonst auch.
 
 **Damit Aktionen stimmen:** Nach einer Aktion spricht Flay den festen Satz des Werkzeugs („flay
 ist geschlossen.“) statt einer Umformulierung durch das Modell – das ist schneller und kann
@@ -223,7 +248,15 @@ neben dem Hauptmodell geladen. Beschriftungen sind also schnell und sicher, Symb
 Beschreibung langsamer und weniger zuverlässig. Flay klickt nie in sein
 eigenes Fenster und fragt vor einem Linksklick auf etwas wie „Löschen“, „Senden“ oder „Push“
 nach („Soll ich wirklich auf Löschen klicken?“); ein Rechtsklick öffnet nur ein Menü. Unter
-Windows gibt es (noch) keine Bedienungshilfen-Suche, dort ortet immer das Bildmodell.
+Windows sucht Flay beschriftete Elemente über UI Automation, das Gegenstück zu den
+Bedienungshilfen (noch nicht auf einem echten Windows-Rechner ausprobiert; scheitert es, ortet
+wie bisher das Bildmodell).
+
+Für Symbole ohne Beschriftung nummeriert Flay die anklickbaren Elemente im Screenshot (blaue
+Rahmen mit Nummer) und lässt das Modell eine Nummer wählen statt einen Punkt zu schätzen;
+findet es keine passende, nennt es wie bisher einen Punkt. Nach dem Klick vergleicht Flay den
+Bildschirm vorher und nachher (~0,6 s, `tools.pointer.verify`): Hat sich nichts geändert, sagt
+es das, statt Erfolg zu melden.
 
 **Webseiten:** „Öffne diesen Link https://www.google.com/, fasse den Inhalt zusammen und gib es
 an Claude“ – Flay sagt „Ich öffne die Seite und lese sie.“ und liest die Seite als Text, ohne
@@ -340,6 +373,16 @@ ein Weg mit `tools.claude.transport: tmux | clipboard`.
   Project → Open project in: New window* (Flay weist beim Start darauf hin).
 - Erwähnst du den Bildschirm („Bildschirm“, „screen“, „was siehst du“, „schau dir das an“),
   hängt Flay den Screenshot direkt an – unabhängig davon, ob das Modell das Werkzeug wählt.
+  Dazu bekommt das Modell die offenen Fenster je Monitor als Text, so kennt es die Namen,
+  ohne sie aus dem Bild zu lesen. Monitore lassen sich auch nach ihrer Lage nennen („der
+  linke Monitor“, „mein anderer Bildschirm“).
+- „Was ist das hier?“, „Erklär mir das hier“, „Was steht unter der Maus?“ zeigt dem Modell
+  nur den Bereich um den Mauszeiger (640×400 Punkte) und sagt ihm, wo der Zeiger steht. Das
+  ist nicht schneller als ein ganzer Bildschirm (Ollama bringt jedes Bild auf ~1100 Token),
+  aber das Modell sieht die gemeinte Stelle schärfer und lässt sich vom Rest nicht ablenken.
+- „Welche Programme sind offen?“, „Was habe ich alles offen?“ beantwortet Flay nur aus der
+  Fensterliste, ohne Screenshot: auf einem M2 Pro kam die Antwort nach ~3,5 s, ein Bild
+  allein kostet dort ~7,5 s.
 - Screenshots bleiben lokal. Was du an Claude weitergibst, geht – wie jede Claude-Nutzung –
   an Anthropic.
 - **macOS-Berechtigungen** für die App, aus der Flay läuft: *Bildschirmaufnahme* (ohne sie
@@ -428,16 +471,20 @@ beide Sprachen; trainiert wird auf dem Windows-Rechner mit
 (1.2 = 20 % schneller). Beides wird einmal beim Start auf die Aufnahme angewendet und kostet
 beim Sprechen keine Zeit. Probehören: `flay voice test` (oder `--name ramona`).
 Auf einem M2 Pro (MLX, 4 Bit) kommt der erste Ton nach ~0,2 s; ein Satz braucht ~0,4 s je
-Sekunde Sprache. Unter Windows nimmt Flay Piper (`tts.backend: auto`), mit einer Stimme je
-Sprache: Kerstin (de) und Kristin (en), beide weiblich, damit der Sprachwechsel ähnlich klingt;
-dieselbe Stimme wie Qwen3-TTS gibt es als Piper-Stimme `flay-ramona-medium` (siehe
-`voices/README.md`). Qwen3-TTS mit PyTorch (`tts.backend: qwen3`) erzeugt ganze Sätze statt
+Sekunde Sprache. Unter Windows nimmt Flay Piper (`tts.backend: auto`) mit Flays eigener
+Ramona-Stimme `flay-ramona-medium` – dieselbe Stimme wie Qwen3-TTS, für beide Sprachen, erster
+Ton nach ~0,05 s. Sie kommt mit dem Repository (Git LFS) und wird beim Start bzw. von
+`flay setup` in den Stimmen-Ordner übernommen. Fehlt sie (ohne `git lfs pull`), spricht Flay
+mit Kerstin (de) und Kristin (en). Qwen3-TTS mit PyTorch (`tts.backend: qwen3`) erzeugt ganze Sätze statt
 zu streamen – auf einer RTX 4070 Ti ~4,5 s bis zum ersten Ton – und teilt sich den
 Grafikspeicher mit dem LLM, was beide stark ausbremst.
 
 **Ollama:** Unter 24 GB Grafikspeicher gibt Ollama Modellen nur 4096 Token Kontext – zu
 wenig für Flays Anweisungen samt Werkzeugen und Screenshot. Flay legt dort beim Start eine
 Variante mit 8k Kontext an (z.B. `qwen3-vl:8b-instruct-ctx8k`, kein Download) und nutzt sie.
+Längere Anfragen kürzt Flay vorher (`llm.context_tokens`, älteste Nachrichten zuerst). Nach
+dem Start prüft Flay, ob die Modelle ganz im Grafikspeicher liegen, und warnt im Log, wenn
+Ollama einen Teil auf die CPU legt – dann werden Antworten um ein Vielfaches langsamer.
 Ollama entlädt Modelle nach 5 Minuten Leerlauf; die nächste Antwort dauert dann
 2–3 s länger. Abhilfe: `OLLAMA_KEEP_ALIVE=1h` (oder `-1`) für den Ollama-Server setzen.
 

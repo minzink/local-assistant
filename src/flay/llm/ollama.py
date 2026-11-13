@@ -129,6 +129,66 @@ def main_model(base_url: str, model: str) -> str:
     return model
 
 
+@dataclass(frozen=True)
+class Loaded:
+    """A model Ollama holds in memory (``/api/ps``)."""
+
+    name: str
+    size: int
+    size_vram: int
+    context: int | None
+
+    @property
+    def gpu_share(self) -> float:
+        return self.size_vram / self.size if self.size else 1.0
+
+
+def loaded(base_url: str, timeout: float = 2.0) -> list[Loaded]:
+    data = _get(server_root(base_url), "/api/ps", timeout) or {}
+    listed = data.get("models")
+    result = []
+    for entry in listed if isinstance(listed, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        context = entry.get("context_length")
+        result.append(
+            Loaded(
+                name=str(entry.get("name", "")),
+                size=int(entry.get("size") or 0),
+                size_vram=int(entry.get("size_vram") or 0),
+                context=context if isinstance(context, int) else None,
+            )
+        )
+    return result
+
+
+# Below this share in VRAM, Ollama runs part of the model on the CPU – several times slower.
+FULL_GPU_SHARE = 0.99
+
+
+def check_loaded(base_url: str, model: str) -> tuple[list[str], int | None]:
+    """Warnings about the loaded models (partly on the CPU), and the main model's context."""
+    if sys.platform == "darwin":
+        # Unified memory: size_vram is what the GPU may use, always the whole model.
+        models_loaded = [m for m in loaded(base_url) if m.name == model]
+        return [], next((m.context for m in models_loaded), None)
+    warnings = []
+    context = None
+    for entry in loaded(base_url):
+        if entry.name == model:
+            context = entry.context
+        if entry.gpu_share < FULL_GPU_SHARE:
+            warnings.append(
+                f"{entry.name} liegt nur zu {entry.gpu_share:.0%} im Grafikspeicher "
+                f"({entry.size_vram / 1e9:.1f} von {entry.size / 1e9:.1f} GB), der Rest läuft "
+                "auf der CPU – Antworten werden dadurch um ein Vielfaches langsamer. Abhilfe: "
+                "andere Programme mit viel Grafikspeicher schließen, tts.backend: piper, "
+                "ein kleineres Modell oder weniger Kontext (llm.context_tokens und die "
+                "Ollama-Variante)."
+            )
+    return warnings, context
+
+
 def create(base_url: str, variant: Variant, timeout: float = 120.0) -> bool:
     body = json.dumps(
         {

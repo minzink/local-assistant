@@ -126,6 +126,11 @@ class LLMSettings(_Section):
     # start stays cached. 0 = off.
     keep_warm_minutes: float = Field(default=4, ge=0)
     max_tokens: int = Field(default=400, gt=0)
+    # Context length the server gives the model: longer requests are shortened before
+    # sending (oldest messages first), instead of being rejected by the server. 8192 is
+    # what Flay sets up for Ollama on GPUs below 24 GB; raise it for a server with more.
+    # 0 = never shorten.
+    context_tokens: int = Field(default=8192, ge=0)
     # Sent with every request as it is, for server-specific switches, e.g. for Qwen3.5 on
     # llama.cpp: {"chat_template_kwargs": {"enable_thinking": false}}.
     extra_body: dict[str, Any] = Field(default_factory=dict)
@@ -190,12 +195,12 @@ class TTSSettings(_Section):
     # Piper voices, one per language (the qwen3 voice comes from ``voice``).
     voices: dict[Language, str] = Field(
         default_factory=lambda: {
-            # Two women, so a language switch keeps a similar voice. German has no female
-            # "medium" voice; Kerstin (16 kHz) is resampled to Kristin's 22 kHz.
-            # Kerstin is CC0, Kristin public domain: both free to use for any purpose.
-            # Male alternative: "de_DE-thorsten-medium" (CC0).
-            Language.DE: "de_DE-kerstin-low",
-            Language.EN: "en_US-kristin-medium",
+            # Flay's own Ramona voice (voices/README.md): the same voice as Qwen3-TTS, one
+            # model for both languages, first sound after ~0.1 s on a CPU. It comes with the
+            # repository (Git LFS); without it Flay speaks with Kerstin (de, CC0) and Kristin
+            # (en, public domain). Male alternative: "de_DE-thorsten-medium" (CC0).
+            Language.DE: "flay-ramona-medium",
+            Language.EN: "flay-ramona-medium",
         }
     )
     filler: FillerSettings = FillerSettings()
@@ -281,6 +286,13 @@ ToolName = Literal[
     "remember",
     "forget",
     "ssh_connect",
+    "control_window",
+    "use_keyboard",
+    "phpstorm",
+    "run_command",
+    "find_file",
+    "timer",
+    "system_control",
 ]
 
 
@@ -321,6 +333,9 @@ class PointerToolSettings(_Section):
     # A second look at a crop around the first guess when accessibility cannot confirm
     # the element: hits small targets reliably, costs a second image (~8 s on an M2 Pro).
     refine: bool = True
+    # After a click, compare the screen before and after (~0.6 s): if nothing changed, Flay
+    # says so instead of reporting success. Needs the screen recording permission.
+    verify: bool = True
 
 
 class WebToolSettings(_Section):
@@ -347,6 +362,26 @@ class SshToolSettings(_Section):
     terminal: Literal["auto", "terminal", "iterm", "windows-terminal", "console"] = "auto"
 
 
+class CommandSettings(_Section):
+    # Run in a shell, as written; only commands listed here can be run at all.
+    command: str
+    # Folder to run it in; default: where Flay was started.
+    cwd: Path | None = None
+    timeout_seconds: float = Field(default=600, gt=0)
+
+
+class FileSearchSettings(_Section):
+    # Folders find_file searches (a few levels deep); default: Downloads, Desktop, Documents.
+    roots: list[Path] = Field(default_factory=list)
+
+
+class NotificationSettings(_Section):
+    # Say when a Claude session (started with `flay claude`) is done or asks for approval.
+    claude: bool = True
+    # Only work that took at least this long is worth "Claude ist fertig".
+    claude_min_work_seconds: float = Field(default=20, ge=0)
+
+
 class ToolsSettings(_Section):
     enabled: list[ToolName] = Field(default_factory=lambda: list(get_args(ToolName)))
     phpstorm: PhpStormToolSettings = PhpStormToolSettings()
@@ -355,6 +390,11 @@ class ToolsSettings(_Section):
     pointer: PointerToolSettings = PointerToolSettings()
     web: WebToolSettings = WebToolSettings()
     ssh: SshToolSettings = SshToolSettings()
+    # Commands run_command may run, by name, e.g.
+    # {"tests": {"command": "composer test", "cwd": "~/projects/shop"}}. Empty: no run_command.
+    commands: dict[str, CommandSettings] = Field(default_factory=dict)
+    files: FileSearchSettings = FileSearchSettings()
+    notifications: NotificationSettings = NotificationSettings()
 
 
 class UISettings(_Section):

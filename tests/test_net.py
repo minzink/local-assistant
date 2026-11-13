@@ -208,3 +208,39 @@ def test_main_model_uses_an_existing_variant(monkeypatch: pytest.MonkeyPatch) ->
     created = _server(monkeypatch, {"m", "m-ctx8k"}, memory=48.0)
     assert ollama.main_model("u", "m") == "m-ctx8k"
     assert created == []
+
+
+def _ps(monkeypatch: pytest.MonkeyPatch, *models: dict[str, object]) -> None:
+    monkeypatch.setattr(ollama, "_get", lambda root, path, timeout: {"models": list(models)})
+    monkeypatch.setattr(ollama.sys, "platform", "win32")
+
+
+def test_check_loaded_warns_when_part_of_a_model_runs_on_the_cpu(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ps(
+        monkeypatch,
+        {"name": "m-ctx8k", "size": 10e9, "size_vram": 6e9, "context_length": 8192},
+        {"name": "embed", "size": 1e9, "size_vram": 1e9, "context_length": 2048},
+    )
+    warnings, context = ollama.check_loaded("http://127.0.0.1:11434/v1", "m-ctx8k")
+    assert context == 8192
+    assert len(warnings) == 1
+    assert "m-ctx8k liegt nur zu 60% im Grafikspeicher (6.0 von 10.0 GB)" in warnings[0]
+
+
+def test_check_loaded_is_quiet_when_everything_fits(monkeypatch: pytest.MonkeyPatch) -> None:
+    _ps(monkeypatch, {"name": "m", "size": 5e9, "size_vram": 5e9, "context_length": 4096})
+    assert ollama.check_loaded("u", "m") == ([], 4096)
+    _ps(monkeypatch)
+    assert ollama.check_loaded("u", "m") == ([], None)
+
+
+def test_limit_context_only_lowers() -> None:
+    from flay.llm.base import ModelCapabilities
+    from flay.llm.openai_compatible import OpenAICompatibleChat
+
+    chat = OpenAICompatibleChat("http://x/v1", "m", ModelCapabilities(), context_tokens=8192)
+    chat.limit_context(4096)
+    chat.limit_context(32768)
+    assert chat._context_tokens == 4096

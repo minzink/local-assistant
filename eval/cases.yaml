@@ -232,3 +232,35 @@ cases:
     expect: {tool: look_at_screen, then: send_to_claude, never: [open_project]}
   - say: "Schau dir mein Screen an und kopiere den Text aus der Beschreibung für dieses Ticket in das Projekt Flay, also in die Claw-Zeile vom Projekt Flay."
     expect: {tool: look_at_screen, then: send_to_claude, never: [open_project]}
+
+  # Computer steuern (Apps, Tastatur, PhpStorm, Dateien, Timer, System)
+  - say: "Öffne Firefox."
+    expect: {tool: control_window, contains: [firefox], never: [open_project, open_url]}
+  - say: "Wechsel mal zu Slack."
+    expect: {tool: control_window, contains: [slack], never: [open_project]}
+  - say: "Schieb Firefox auf den linken Monitor."
+    expect: {tool: control_window, contains: [firefox], never: [look_at_screen, open_url]}
+  - say: "Leg PhpStorm und Firefox nebeneinander."
+    expect: {tool: control_window, never: [open_project]}
+  - say: "Öffne die Datei UserController."
+    expect: {tool: phpstorm, contains: [user]}
+  - say: "Was ist im Git geändert?"
+    expect: {tool: phpstorm}
+  - say: "Welche Fehler zeigt PhpStorm in der Datei?"
+    expect: {tool: phpstorm}
+  - say: "Öffne die letzte PDF aus Downloads."
+    expect: {tool: find_file, never: [read_file, open_url]}
+  - say: "Erinnere mich in 20 Minuten an den Tee."
+    expect: {tool: timer, contains: [tee]}
+  - say: "Mach mal etwas lauter."
+    expect: {tool: system_control}
+  - say: "Sperr den Bildschirm."
+    expect: {tool: system_control, never: [look_at_screen]}
+  - say: "Schreib: Viele Grüße aus Bielefeld."
+    expect: {tool: use_keyboard, contains: [bielefeld], never: [send_to_claude, remember]}
+  - say: "Speichern."
+    expect: {tool: use_keyboard}
+  - say: "Speichere dir, dass ich Tee lieber mag als Kaffee."
+    expect: {tool: remember, never: [use_keyboard]}
+  - say: "Wie öffne ich in Firefox einen neuen Tab?"
+    expect: {tool: none}

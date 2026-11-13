@@ -19,6 +19,9 @@ from flay.core.messages import ImagePart
 from flay.llm.base import ToolSpec
 from flay.tools.base import ToolResult, speech
 
+# A monitor's or window's left, top, width, height in screen points.
+Region = tuple[int, int, int, int]
+
 # The Flay UI in a browser is not what the user wants to show when they say "this window".
 OWN_WINDOW_TITLES = ("Flay",)
 
@@ -111,6 +114,108 @@ def monitor_bounds(monitor: int) -> tuple[float, float, float, float]:
 def monitor_count() -> int:
     with _mss() as screen:
         return len(screen.monitors) - 1
+
+
+def monitor_regions() -> list[Region]:
+    """Each monitor's left, top, width, height; index 0 is monitor 1 (the main one)."""
+    with _mss() as screen:
+        return [(m["left"], m["top"], m["width"], m["height"]) for m in screen.monitors[1:]]
+
+
+def monitor_positions(regions: list[Region]) -> dict[int, str]:
+    """Where each monitor stands ("left", "right", "top", ...), by number from 1.
+
+    Side by side they are named left to right, one above the other top to bottom; a
+    single monitor gets no name.
+    """
+    if len(regions) < 2:
+        return {}
+    numbers = range(1, len(regions) + 1)
+    spread_x = max(r[0] for r in regions) - min(r[0] for r in regions)
+    spread_y = max(r[1] for r in regions) - min(r[1] for r in regions)
+    axis, names = (0, ("left", "right")) if spread_x >= spread_y else (1, ("top", "bottom"))
+    ordered = sorted(numbers, key=lambda n: regions[n - 1][axis])
+    middle = "middle" if len(ordered) == 3 else None
+    positions = {ordered[0]: names[0], ordered[-1]: names[1]}
+    if middle:
+        positions[ordered[1]] = middle
+    return positions
+
+
+def window_monitor(window: Window, regions: list[Region]) -> int:
+    """Number of the monitor the window's centre is on (1 if none)."""
+    x, y, width, height = window.bounds
+    cx, cy = x + width / 2, y + height / 2
+    return next(
+        (
+            n
+            for n, (left, top, w, h) in enumerate(regions, start=1)
+            if left <= cx < left + w and top <= cy < top + h
+        ),
+        1,
+    )
+
+
+# "Was ist das hier?": the area around the mouse pointer, in screen points. Ollama brings
+# every image to about the same number of tokens (~1080 for qwen3-vl, measured), so this is
+# not faster than a whole monitor – but the model sees what is meant, at about 1.5 times the
+# detail, without the rest of the screen to distract it.
+POINTER_AREA = (640, 400)
+POINTER_MAX_SIZE = 768
+
+
+def pointer_position() -> tuple[float, float]:
+    from pynput.mouse import Controller
+
+    from flay.tools import pointer  # noqa: F401 – Windows: physical pixels, like mss
+
+    x, y = Controller().position
+    return float(x), float(y)
+
+
+def area_around(
+    point: tuple[float, float], regions: list[Region], size: tuple[int, int] = POINTER_AREA
+) -> tuple[float, float, float, float]:
+    """``size`` centred on ``point``, moved inside the point's monitor where it would stick
+    out (left, top, width, height)."""
+    x, y = point
+    left, top, width, height = next(
+        (r for r in regions if r[0] <= x < r[0] + r[2] and r[1] <= y < r[1] + r[3]),
+        regions[0] if regions else (0, 0, size[0], size[1]),
+    )
+    w, h = min(size[0], width), min(size[1], height)
+    area_left = min(max(x - w / 2, left), left + width - w)
+    area_top = min(max(y - h / 2, top), top + height - h)
+    return (area_left, area_top, w, h)
+
+
+# Enough for what is open; a long list would only cost prompt time.
+MAX_LISTED_WINDOWS = 15
+MAX_TITLE_CHARS = 80
+
+
+def describe_windows(windows: list[Window], regions: list[Region]) -> str | None:
+    """The visible windows per monitor, for the model: "Monitor 1 (main, left): ..."."""
+    shown = [w for w in windows if not is_own(w)][:MAX_LISTED_WINDOWS]
+    if not shown:
+        return None
+    positions = monitor_positions(regions)
+    lines = []
+    for number in range(1, max(len(regions), 1) + 1):
+        on_monitor = [w for w in shown if window_monitor(w, regions) == number]
+        if not on_monitor:
+            continue
+        labels = []
+        for window in on_monitor:
+            title = window.title[:MAX_TITLE_CHARS]
+            label = window.app if not title or title == window.app else f"{window.app}: {title}"
+            labels.append(label + (" (front)" if window is shown[0] else ""))
+        where = ", ".join(
+            part for part in ("main" if number == 1 else "", positions.get(number, "")) if part
+        )
+        heading = f"Monitor {number}" + (f" ({where})" if where else "")
+        lines.append(f"{heading}: " + "; ".join(labels))
+    return "Open windows – " + " | ".join(lines) + "."
 
 
 def capture_png(monitor: int, max_size: int) -> bytes:
@@ -282,11 +387,45 @@ _MONITOR = re.compile(
     r"|\b(?:bildschirm|monitor|screen|display)\s+(\d)\b",
     re.IGNORECASE,
 )
+_SIDES = {
+    "link": "left", "left": "left", "recht": "right", "right": "right",
+    "mittler": "middle", "middle": "middle", "ober": "top", "top": "top",
+    "unter": "bottom", "bottom": "bottom", "ander": "other", "other": "other",
+}  # fmt: skip
+_SIDE = re.compile(
+    r"\b(link|recht|mittler|ober|unter|ander|left|right|middle|top|bottom|other)\w*\s+"
+    r"(?:bildschirm|monitor|screen|display)",
+    re.IGNORECASE,
+)
+
+
+def _monitor_at(side: str, regions: list[Region]) -> int | None:
+    """Number of the monitor at ``side``; "other" is the second of exactly two."""
+    if side == "other":
+        return 2 if len(regions) == 2 else None
+    return next((n for n, pos in monitor_positions(regions).items() if pos == side), None)
+
+
 _WINDOW = re.compile(r"\b(?:fenster|window)\b", re.IGNORECASE)
+# "Was ist das hier?", "unter der Maus": what the mouse points at.
+AT_POINTER = re.compile(
+    r"\bdas hier\b|\bhier\b.{0,20}\b(?:maus|mauszeiger|zeiger|cursor)\b"
+    r"|\b(?:unter|bei|an)\s+(?:der|dem|meiner|meinem)\s+(?:maus|mauszeiger|zeiger|cursor)\b"
+    r"|\bwo\s+(?:die|meine)\s+maus\b|\bwo\s+(?:der|mein)\s+(?:mauszeiger|zeiger|cursor)\b"
+    r"|\bthis here\b|\bunder\s+(?:the|my)\s+(?:mouse|cursor|pointer)\b"
+    r"|\bwhere\s+(?:the|my)\s+(?:mouse|cursor|pointer)\b",
+    re.IGNORECASE,
+)
 
 
-def screen_arguments(text: str, apps: list[str]) -> dict[str, Any]:
+def screen_arguments(
+    text: str, apps: list[str], regions: list[Region] | None = None
+) -> dict[str, Any]:
     """Arguments for look_at_screen from what the user said, without asking the model."""
+    if (match := _SIDE.search(text)) and (
+        number := _monitor_at(_SIDES[match.group(1).lower()], regions or [])
+    ):
+        return {"monitor": number}
     if match := _MONITOR.search(text):
         number = _ORDINALS.get(match.group(1).lower()) if match.group(1) else int(match.group(2))
         return {"monitor": number}
@@ -298,6 +437,8 @@ def screen_arguments(text: str, apps: list[str]) -> dict[str, Any]:
         return {"window": named}
     if _WINDOW.search(text):
         return {"window": "active"}
+    if AT_POINTER.search(text):
+        return {"pointer": True}
     return {}
 
 
@@ -328,9 +469,32 @@ class LookAtScreenTool:
             },
         )
 
+    async def _look_at_pointer(self) -> ToolResult:
+        point = await asyncio.to_thread(pointer_position)
+        area = area_around(point, await asyncio.to_thread(monitor_regions))
+        shot = await asyncio.to_thread(capture_region, area, POINTER_MAX_SIZE)
+        left, top, width, height = shot.region
+        # Where the pointer is in the picture, as Qwen-VL counts (0–1000): screenshots do
+        # not show the pointer itself, and near an edge it is not in the middle.
+        x = round((point[0] - left) / width * 1000)
+        y = round((point[1] - top) / height * 1000)
+        return ToolResult(
+            "Screenshot of the area around the mouse pointer; the user points at what is at "
+            f"({x}, {y}) on a 0–1000 scale of the image. It is attached as the next message.",
+            images=(ImagePart(shot.png, "image/png"),),
+            action=f"Bereich um den Mauszeiger aufgenommen ({len(shot.png) // 1024} KB)",
+        )
+
     def apps(self) -> list[str]:
         """Names of apps with visible windows, for matching what the user says."""
         return [w.app for w in list_windows() if w.app]
+
+    def monitors(self) -> list[Region]:
+        return monitor_regions()
+
+    def overview(self) -> str | None:
+        """The open windows per monitor as text: names without reading them from pixels."""
+        return describe_windows(list_windows(), monitor_regions())
 
     async def run(self, arguments: dict[str, Any]) -> ToolResult:
         try:
@@ -349,6 +513,8 @@ class LookAtScreenTool:
             )
 
     async def _look(self, arguments: dict[str, Any]) -> ToolResult:
+        if arguments.get("pointer"):
+            return await self._look_at_pointer()
         window_query = arguments.get("window")
         if window_query:
             windows = await asyncio.to_thread(list_windows)

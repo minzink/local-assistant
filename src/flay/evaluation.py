@@ -53,6 +53,11 @@ TEXT_ARGUMENT = {
     "remember": "fact",
     "forget": "fact",
     "click_on_screen": "text",
+    "control_window": "app",
+    "use_keyboard": "text",
+    "phpstorm": "query",
+    "find_file": "query",
+    "timer": "text",
     "read_webpage": "url",
     "open_url": "url",
     "fill_web_form": "fields",
@@ -132,12 +137,21 @@ class _TimedEvents(EventBus):
         super().publish(event)
 
 
+SIMULATED_APPS = ("Firefox", "Google Chrome", "Slack", "PhpStorm", "Terminal", "Finder", "Mail")
+
+
 class _SimulatedTool:
     """A tool with the real spec that only records its calls."""
 
     def __init__(self, spec: ToolSpec, calls: list[dict[str, Any]]) -> None:
         self._spec = spec
         self._calls = calls
+        if spec.name == "control_window":
+            # The apps a typical computer has: requests naming them are recognized as in
+            # real use, where the installed apps are read once.
+            from flay.tools.apps import App
+
+            self._apps = [App(name) for name in SIMULATED_APPS]
 
     @property
     def spec(self) -> ToolSpec:
@@ -273,13 +287,20 @@ _SIMULATED_PAGE = Page(
 
 def _tool_specs() -> list[ToolSpec]:
     """The specs of all tools, exactly as the model sees them in real use."""
+    from flay.notifications import Timers
+    from flay.tools.apps import ControlWindowTool
     from flay.tools.claude_code import ClaudeStatusTool, SendToClaudeTool
     from flay.tools.files import ReadFileTool
+    from flay.tools.finder import FindFileTool
     from flay.tools.forms import FillWebFormTool
+    from flay.tools.ide import IdeTool
+    from flay.tools.keyboard import KeyboardTool
     from flay.tools.memory import ForgetTool, RememberTool
     from flay.tools.phpstorm import CloseProjectTool, OpenProjectTool
     from flay.tools.pointer import ClickTool, ScrollTool
     from flay.tools.screen import LookAtScreenTool
+    from flay.tools.system import SystemTool
+    from flay.tools.timers import TimerTool
     from flay.tools.web import OpenUrlTool, ReadWebpageTool
     from flay.tools.workflows import WorkflowTool
 
@@ -298,6 +319,12 @@ def _tool_specs() -> list[ToolSpec]:
         ReadWebpageTool().spec,
         RememberTool(None).spec,  # type: ignore[arg-type]
         ForgetTool(None).spec,  # type: ignore[arg-type]
+        ControlWindowTool().spec,
+        KeyboardTool().spec,
+        IdeTool(None).spec,  # type: ignore[arg-type]
+        FindFileTool().spec,
+        TimerTool(Timers(Path("timers.json"))).spec,
+        SystemTool().spec,
     ]
 
 

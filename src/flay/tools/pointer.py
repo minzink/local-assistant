@@ -90,6 +90,14 @@ _CLICKABLE = frozenset(
     }
 )  # fmt: skip
 
+# Controls that are often only an icon: the candidates numbered in a screenshot.
+_ICON_ROLES = frozenset(
+    {
+        "AXButton", "AXMenuButton", "AXPopUpButton", "AXCheckBox", "AXRadioButton",
+        "AXImage", "AXLink", "AXTab", "AXDockItem",
+    }
+)  # fmt: skip
+
 Point = tuple[float, float]
 Frame = tuple[float, float, float, float]
 
@@ -247,8 +255,9 @@ def apps_on_screen(app: str | None = None) -> list[tuple[int, str]]:
     return list(seen.items())
 
 
-def elements_of(pid: int, owner: str) -> list[Element]:
-    """Labelled controls of one app, including those of windows lying under others."""
+def elements_of(pid: int, owner: str, unlabeled: bool = False) -> list[Element]:
+    """Labelled controls of one app, including those of windows lying under others
+    (``unlabeled``: buttons and icons without a label too)."""
     import ApplicationServices as AX
 
     deadline = time.monotonic() + SEARCH_SECONDS
@@ -259,7 +268,8 @@ def elements_of(pid: int, owner: str) -> list[Element]:
         element = stack.pop()
         seen += 1
         role = _attribute(element, "AXRole")
-        if role in _CLICKABLE and (label := _label(element)):
+        label = _label(element) if role in _CLICKABLE else ""
+        if role in _CLICKABLE and (label or (unlabeled and role in _ICON_ROLES)):
             frame = _frame(element)
             if (
                 frame
@@ -277,6 +287,11 @@ def elements_of(pid: int, owner: str) -> list[Element]:
 
 def element_groups(app: str | None = None) -> Iterator[list[Element]]:
     """The labelled controls app by app, frontmost first – a search can stop early."""
+    if sys.platform == "win32":
+        from flay.tools.uia_elements import element_groups as windows_groups
+
+        yield from windows_groups(app)
+        return
     if sys.platform != "darwin" or not accessibility_allowed():
         return
     for pid, owner in apps_on_screen(app):
@@ -327,6 +342,71 @@ def is_visible(element: Element) -> bool:
     return False
 
 
+def icon_candidates(app: str | None, region: Frame) -> list[Element]:
+    """Clickable controls with or without a label inside ``region`` of the front app (or
+    ``app``): what can be numbered in a screenshot."""
+    if sys.platform == "win32":
+        from flay.tools.uia_elements import element_groups as windows_groups
+
+        groups: Iterable[list[Element]] = windows_groups(app, unlabeled=True)
+    elif sys.platform == "darwin" and accessibility_allowed():
+        groups = (elements_of(pid, owner, unlabeled=True) for pid, owner in apps_on_screen(app))
+    else:
+        return []
+    left, top, width, height = region
+    for group in groups:
+        inside_region = [
+            e
+            for e in group
+            if left <= e.centre[0] <= left + width and top <= e.centre[1] <= top + height
+        ]
+        if inside_region:
+            return inside_region
+    return []
+
+
+# Numbering more than this many candidates makes the picture too busy to read.
+MAX_MARKS = 40
+
+
+def mark(shot: Shot, elements: Sequence[Element]) -> bytes:
+    """The screenshot with a numbered box around each element (1, 2, …).
+
+    Blue, not red (red buttons exist), thin frames and the number beside the element, not
+    on it: small icons stay visible.
+    """
+    import io
+
+    from PIL import Image, ImageDraw, ImageFont
+
+    image = Image.open(io.BytesIO(shot.png)).convert("RGB")
+    left, top, width, height = shot.region
+    sx, sy = image.width / width, image.height / height
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.load_default(size=15)
+    colour = (0, 90, 255)
+    for number, element in enumerate(elements, start=1):
+        x, y, w, h = element.frame
+        box = ((x - left) * sx, (y - top) * sy, (x - left + w) * sx, (y - top + h) * sy)
+        draw.rectangle(box, outline=colour, width=2)
+        label = str(number)
+        text_width = draw.textlength(label, font=font)
+        # Right of the element if there is room, else left of it.
+        tag_left = box[2] + 2 if box[2] + text_width + 8 < image.width else box[0] - text_width - 8
+        tag = (tag_left, box[1], tag_left + text_width + 6, box[1] + 18)
+        draw.rectangle(tag, fill=colour)
+        draw.text((tag[0] + 3, tag[1] + 1), label, fill=(255, 255, 255), font=font)
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+CHOOSE_PROMPT = (
+    "Blue numbered frames mark clickable elements; each number is next to its frame. "
+    "Which number marks {target}? Answer only with the number, or 0 if none does."
+)
+
+
 # The vision model ---------------------------------------------------------------------------
 
 LOCATE_PROMPT = (
@@ -357,6 +437,22 @@ class VisionLocator:
             return None
         return shot.to_screen(*point)
 
+    async def choose(self, png: bytes, target: str, count: int) -> int | None:
+        """Which numbered box shows ``target`` (1-based), if any."""
+        message = Message(
+            Role.USER,
+            (ImagePart(png, "image/png"), TextPart(CHOOSE_PROMPT.format(target=target))),
+        )
+        answer = "".join(
+            [e.text async for e in self._model.stream([message]) if isinstance(e, TextDelta)]
+        )
+        match = re.search(r"\d+", answer)
+        number = int(match[0]) if match else 0
+        if not 1 <= number <= count:
+            log.info("Markierungen: „%s“ nicht gewählt (%s)", target, answer.strip()[:40])
+            return None
+        return number
+
     async def refine(self, shot: Shot, guess: Point, target: str) -> Point:
         """A second look at a crop around ``guess``; small targets need it."""
         left, top, width, height = shot.region
@@ -379,6 +475,65 @@ def click(point: Point, button: str) -> None:
     time.sleep(0.15)
     which = Button.right if button == "right" else Button.left
     mouse.click(which, 2 if button == "double" else 1)
+
+
+# After a click the screen gets this long to react before it is compared.
+REACT_SECONDS = 0.6
+# Below this share of changed pixels nothing visibly happened.
+MIN_CHANGED_SHARE = 0.002
+
+
+def changed_share(before: Any, after: Any) -> float:
+    """Share of pixels that differ clearly between two small grayscale images."""
+    from PIL import ImageChops
+
+    if before.size != after.size:
+        return 1.0
+    difference = ImageChops.difference(before, after).point(lambda v: 255 if v > 24 else 0)
+    histogram = difference.histogram()
+    pixels = int(before.width) * int(before.height)
+    return float(histogram[255]) / max(1, pixels)
+
+
+def _snapshot(point: Point) -> Any:
+    """The monitor the point is on, small and gray: enough to see whether something changed."""
+    from flay.tools.screen import _grab, monitor_regions
+
+    regions = monitor_regions()
+    region = next(
+        (r for r in regions if r[0] <= point[0] < r[0] + r[2] and r[1] <= point[1] < r[1] + r[3]),
+        regions[0] if regions else None,
+    )
+    if region is None:
+        return None
+    image, _ = _grab({"left": region[0], "top": region[1], "width": region[2], "height": region[3]})
+    small = image.convert("L")
+    small.thumbnail((480, 480))
+    return small
+
+
+def watch_click(point: Point) -> Callable[[], float | None]:
+    """Move to the point and remember the screen (hover effects included); the returned
+    function tells after the click which share of the screen changed (None: unknown)."""
+    from pynput.mouse import Controller
+
+    Controller().position = point
+    time.sleep(0.15)
+    try:
+        before = _snapshot(point)
+    except Exception as exc:  # no screen recording permission
+        log.debug("Klick-Prüfung ohne Bild: %s", exc)
+        return lambda: None
+
+    def after() -> float | None:
+        time.sleep(REACT_SECONDS)
+        try:
+            now = _snapshot(point)
+        except Exception:
+            return None
+        return changed_share(before, now) if before is not None and now is not None else None
+
+    return after
 
 
 def scroll(region: Frame, direction: str, pages: float) -> None:
@@ -448,7 +603,11 @@ class ClickTool:
         max_size: int = 1280,
         refine: bool = True,
         elements: Callable[[str | None], Iterable[list[Element]]] = element_groups,
+        verify: Callable[[Point], Callable[[], float | None]] | None = None,
+        candidates: Callable[[str | None, Frame], list[Element]] | None = None,
     ) -> None:
+        self._verify = verify
+        self._candidates = candidates
         self._locator = locator
         self._monitor = monitor
         self._max_size = max_size
@@ -534,8 +693,22 @@ class ClickTool:
                 ),
                 confirm=ToolCall("confirmed", "click_on_screen", {**arguments, "confirmed": True}),
             )
+        changed = await asyncio.to_thread(self._verify, point) if self._verify else None
         await asyncio.to_thread(click, point, button)
+        share = await asyncio.to_thread(changed) if changed is not None else None
         seconds = time.monotonic() - start
+        if share is not None and share < MIN_CHANGED_SHARE:
+            log.info("Klick auf „%s“: auf dem Bildschirm hat sich nichts geändert", named)
+            return ToolResult(
+                f"Clicked{_BUTTONS_EN[button]} on '{named}' at {point[0]:.0f},{point[1]:.0f}, "
+                "but nothing visibly changed on the screen: the click may have missed, or the "
+                "app is still busy.",
+                action=f"Klick auf „{named}“ ohne sichtbare Wirkung ({how}, {seconds:.1f} s)",
+                say=speech(
+                    f"Ich habe auf {named} geklickt, aber es hat sich nichts sichtbar getan.",
+                    f"I clicked {named}, but nothing visibly happened.",
+                ),
+            )
         return ToolResult(
             f"Clicked{_BUTTONS_EN[button]} on '{named}' at {point[0]:.0f},{point[1]:.0f}.",
             action=(
@@ -571,6 +744,12 @@ class ClickTool:
             return self._not_found(text or description)
         shot = await asyncio.to_thread(self._capture, window)
         target = _describe(text, description)
+        if not text and not candidates:
+            # An icon without a label: number the controls in the picture and let the model
+            # pick one – more reliable than guessing a point (roadmap, phase 12).
+            marked = await self._pick_marked(shot, target, window)
+            if marked is not None:
+                return marked.centre, marked.label, "Bild, nummeriert"
         point = await self._locator.locate(shot, target)
         if point is None:
             return self._not_found(text or description)
@@ -587,6 +766,21 @@ class ClickTool:
             under = await asyncio.to_thread(element_at, point)
         label = under.label if under is not None and text and label_score(text, under.label) else ""
         return point, label, "Bild, nachgeschärft" if self._refine else "Bild"
+
+    async def _pick_marked(self, shot: Shot, target: str, window: Window | None) -> Element | None:
+        if self._locator is None or self._candidates is None:
+            return None
+        found = await asyncio.to_thread(
+            self._candidates, window.app if window else None, shot.region
+        )
+        if len(found) > MAX_MARKS:
+            # Labelled ones would have been found by name already: the icons remain.
+            found = [e for e in found if not e.label]
+        if not 2 <= len(found) <= MAX_MARKS:
+            return None
+        png = await asyncio.to_thread(mark, shot, found)
+        number = await self._locator.choose(png, target, len(found))
+        return found[number - 1] if number is not None else None
 
     def _capture(self, window: Window | None) -> Shot:
         if window is not None:

@@ -16,6 +16,7 @@ from openai import AsyncOpenAI, DefaultAsyncHttpxClient
 from openai.types.chat import ChatCompletionMessageParam
 
 from flay.core.messages import AudioPart, ImagePart, Message, Role, TextPart, ToolCall
+from flay.llm import budget
 from flay.llm.base import LLMEvent, ModelCapabilities, TextDelta, ThinkingOptions, ToolSpec
 from flay.llm.gate import synthesis
 from flay.net import trust_env
@@ -105,8 +106,10 @@ class OpenAICompatibleChat:
         max_tokens: int = 400,
         extra_body: dict[str, Any] | None = None,
         thinking: ThinkingOptions | None = None,
+        context_tokens: int | None = None,
     ) -> None:
         self._client = create_client(base_url, api_key)
+        self._context_tokens = context_tokens
         self._model = model
         self._capabilities = capabilities
         self._temperature = temperature
@@ -118,13 +121,32 @@ class OpenAICompatibleChat:
     def capabilities(self) -> ModelCapabilities:
         return self._capabilities
 
+    def limit_context(self, tokens: int) -> None:
+        """The server gives the model less context than configured: plan with that."""
+        if self._context_tokens is None or tokens < self._context_tokens:
+            self._context_tokens = tokens
+
+    def _messages(
+        self,
+        messages: Sequence[Message],
+        tools: Sequence[dict[str, Any]] = (),
+        max_tokens: int = 0,
+    ) -> list[ChatCompletionMessageParam]:
+        """The request's messages, shortened to the context if one is set."""
+        if self._context_tokens is not None:
+            messages = budget.fit(
+                messages, self._context_tokens - max_tokens, budget.tools_tokens(tools)
+            )
+        return cast(list[ChatCompletionMessageParam], [to_api_message(m) for m in messages])
+
     async def warm(self, messages: Sequence[Message], tools: Sequence[ToolSpec] = ()) -> None:
         """Process a prompt without generating: keeps the model loaded and its prefix cached."""
-        extra: dict[str, Any] = {"tools": [to_api_tool(t) for t in tools]} if tools else {}
+        api_tools = [to_api_tool(t) for t in tools]
+        extra: dict[str, Any] = {"tools": api_tools} if tools else {}
         await synthesis.wait()  # see flay.llm.gate
         await self._client.chat.completions.create(
             model=self._model,
-            messages=cast(list[ChatCompletionMessageParam], [to_api_message(m) for m in messages]),
+            messages=self._messages(messages, api_tools, 1),
             max_tokens=1,
             extra_body=self._extra_body,
             **extra,
@@ -136,7 +158,7 @@ class OpenAICompatibleChat:
         await synthesis.wait()  # see flay.llm.gate
         response = await self._client.chat.completions.create(
             model=self._model,
-            messages=cast(list[ChatCompletionMessageParam], [to_api_message(m) for m in messages]),
+            messages=self._messages(messages, max_tokens=self._max_tokens),
             # Deterministic: the same request should always be routed the same way.
             temperature=0,
             max_tokens=self._max_tokens,
@@ -156,7 +178,8 @@ class OpenAICompatibleChat:
         self, messages: Sequence[Message], tools: Sequence[ToolSpec] = (), think: bool = False
     ) -> AsyncIterator[LLMEvent]:
         self._capabilities.ensure_supported(messages)
-        extra: dict[str, Any] = {"tools": [to_api_tool(t) for t in tools]} if tools else {}
+        api_tools = [to_api_tool(t) for t in tools]
+        extra: dict[str, Any] = {"tools": api_tools} if tools else {}
         model, max_tokens, body = self._model, self._max_tokens, self._extra_body
         if think and self._thinking is not None:
             model = self._thinking.model or model
@@ -165,7 +188,7 @@ class OpenAICompatibleChat:
         await synthesis.wait()  # see flay.llm.gate
         response = await self._client.chat.completions.create(
             model=model,
-            messages=cast(list[ChatCompletionMessageParam], [to_api_message(m) for m in messages]),
+            messages=self._messages(messages, api_tools, max_tokens),
             temperature=self._temperature,
             max_tokens=max_tokens,
             stream=True,

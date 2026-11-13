@@ -12,7 +12,7 @@ def test_info_prints_resolved_config(capsys: pytest.CaptureFixture[str]) -> None
 
     out = capsys.readouterr().out
     assert "Beschleuniger" in out
-    assert "de_DE-kerstin-low" in out
+    assert "flay-ramona-medium" in out
 
 
 def test_info_reports_invalid_config(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

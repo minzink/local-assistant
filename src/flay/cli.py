@@ -769,6 +769,23 @@ async def _run(settings: Settings, tray: Tray | None = None) -> int:
         asyncio.to_thread(vad.load),
         run_prompt(llm, settings.persona.system_prompt, "Hallo"),
     )
+    # The warm-up loaded the model: see whether it fits the GPU and how much context it got.
+    if await asyncio.to_thread(ollama.is_ollama, settings.llm.base_url):
+        warnings, context = await asyncio.to_thread(
+            ollama.check_loaded, settings.llm.base_url, settings.llm.model
+        )
+        for warning in warnings:
+            log.warning("%s", warning)
+        limit = getattr(llm, "limit_context", None)
+        if context and callable(limit) and context < settings.llm.context_tokens:
+            log.warning(
+                "Ollama gibt %s nur %d Token Kontext (llm.context_tokens: %d) – Flay kürzt "
+                "Anfragen entsprechend",
+                settings.llm.model,
+                context,
+                settings.llm.context_tokens,
+            )
+            limit(context)
 
     speaker = Speaker(settings.audio.output_device)
     speaker.prepare(tts.sample_rate)
@@ -837,7 +854,16 @@ async def _run(settings: Settings, tray: Tray | None = None) -> int:
     # Loads the embedding model in the background; until then recall uses keywords only.
     warm_memory = getattr(memory, "warm_up", None)
     memory_ready = asyncio.create_task(warm_memory()) if callable(warm_memory) else None
-    tools = create_tools(settings, memory if isinstance(memory, PersistentMemory) else None)
+    from flay.notifications import Announcements, ClaudeWatcher, Timers
+
+    announcements = Announcements()
+    timers = Timers(settings.data_dir / "timers.json")
+    tools = create_tools(
+        settings,
+        memory if isinstance(memory, PersistentMemory) else None,
+        announcements,
+        timers,
+    )
     if tools:
         log.info("Werkzeuge: %s", ", ".join(spec.name for spec in tools.specs))
     if "open_project" in tools:
@@ -875,6 +901,14 @@ async def _run(settings: Settings, tray: Tray | None = None) -> int:
         wake_word_available=wake is not None,
     )
     await assistant.prepare_fillers()
+    announcements.connect(assistant.announce)
+    background = [asyncio.create_task(timers.run(announcements))]
+    if settings.tools.notifications.claude and "send_to_claude" in tools:
+        from flay.tools.claude_code import Tmux
+
+        watcher = ClaudeWatcher(Tmux(), announcements)
+        watcher.min_work_seconds = settings.tools.notifications.claude_min_work_seconds
+        background.append(asyncio.create_task(watcher.run()))
     if tray is not None:
         tray.attach(assistant)
     ui = WebUI(assistant, settings.ui.port) if settings.ui.enabled else None
@@ -892,6 +926,8 @@ async def _run(settings: Settings, tray: Tray | None = None) -> int:
         log.info("Bereit. %s Ctrl+C beendet flay.", ready)
         await assistant.run()
     finally:
+        for task in background:
+            task.cancel()
         if ui is not None:
             await ui.stop()
         speaker.close()
@@ -911,6 +947,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     autostart = commands.add_parser("autostart", help="Flay bei der Anmeldung starten")
     autostart.add_argument("action", nargs="?", choices=["on", "off", "status"], default="status")
     commands.add_parser("info", help="Hardware und aufgelöste Konfiguration anzeigen")
+    commands.add_parser("doctor", help="Prüfen, was Flay braucht, mit Abhilfe")
     commands.add_parser("devices", help="Audio-Geräte auflisten")
     memory = commands.add_parser(
         "memory", help="Erinnerungen anzeigen, durchsuchen, vergessen, löschen"
@@ -1036,6 +1073,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _autostart(settings, args.config, args.action)
         if args.command == "setup":
             return asyncio.run(_setup(settings))
+        if args.command == "doctor":
+            from flay import doctor
+
+            return doctor.run(settings)
         if args.command == "info":
             return _info(settings, args.config)
         if args.command == "devices":

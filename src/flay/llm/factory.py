@@ -22,4 +22,5 @@ def create_chat_model(settings: LLMSettings) -> ChatModel:
         )
         if settings.thinking.enabled
         else None,
+        context_tokens=settings.context_tokens or None,
     )

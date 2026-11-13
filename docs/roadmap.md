@@ -543,7 +543,8 @@ als Aufgabe.
   genuschelten Befehle ohne Beispiele daneben
 - [ ] Echter Test auf einer Doku-Seite (z. B. Installation hinter einem Menüpunkt) und
   Zeitmessung: jeder Schritt mit neuem Bild kostet ~8 s
-- [ ] Mehrere Seiten in einer Aufgabe („vergleiche …“), Text eintippen (Suche auf der Seite)
+- [x] Mehrere Seiten in einer Aufgabe („vergleiche …“: weitere Adressen werden mitgelesen),
+  Text eintippen (Suche auf der Seite: `search_page`)
 
 ### Webseiten als Text lesen (Mischform)
 
@@ -714,6 +715,38 @@ Prototyp ohne Modell (M2 Pro, Firefox als Standardbrowser):
   #59. Der Adapter verengt das Modell auf die drei geübten Werkzeuge → nicht übernommen,
   Modell und Adapter wieder gelöscht
 - [ ] Nur mit echten Beispielen aus dem Verlauf über alle Werkzeuge erneut versuchen
+
+## Phase 14 – Den Rechner bedienen
+
+- [x] Windows schneller: Sprachausgabe dort per Piper mit der Ramona-Stimme (Qwen3-TTS mit
+  PyTorch: 4,5 s bis zum ersten Ton und Streit um den Grafikspeicher mit dem LLM); 8k-Kontext-
+  Variante des Hauptmodells unter 24 GB (Ollama gab nur 4096, Anfragen mit Screenshot
+  scheiterten); Warnung, wenn Ollama Teile eines Modells auf die CPU legt
+- [x] Token-Budget (`llm.context_tokens`): ältere Nachrichten erst verdichten, dann weglassen,
+  dann lange Werkzeugergebnisse kürzen; Bilder zählen mindestens 1200 Token (gemessen)
+- [x] Aktionsprüfung: „Im Editor …“ galt als „I'm“ und löste `open_project` aus
+- [x] Fensterliste je Monitor als Text zu jedem Screenshot (vorab gelesen), „Welche Programme
+  sind offen?“ ohne Bild, Monitore nach Lage („der linke Monitor“), „Was ist das hier?“ = Bereich
+  um den Mauszeiger, markierter Text als Zusammenhang
+- [x] Neue Werkzeuge: `control_window` (Apps öffnen, wechseln, schließen, verschieben,
+  nebeneinander), `use_keyboard` (diktieren, Kürzel – nie Enter), `phpstorm` (Datei öffnen,
+  Ausführungskonfiguration, Probleme, Git-Status über MCP), `run_command` (nur Befehle aus
+  der Config), `find_file`, `timer`, `system_control`
+- [x] Von sich aus: Timer, fertige Befehle, Claude fertig / wartet auf Freigabe
+- [x] Mehrere Schritte („…, dann …, danach …“) als Plan; weitreichende Schritte erst nach „ja“
+- [x] Klicks: UI Automation unter Windows, nummerierte Kandidaten für Symbole ohne
+  Beschriftung, Bildvergleich nach dem Klick (ohne Änderung sagt Flay das)
+- [x] `flay doctor`: prüft GPU, Ollama, Kontext, Grafikspeicher, Stimme, Mikrofon,
+  Berechtigungen, PhpStorm, tmux
+- [x] `flay eval` (M2 Pro, qwen3-vl:8b-instruct, je 2 Läufe): vorher 89,3 % (108/124 Aktionen,
+  26/26 Gespräche, Median 1,96 s), nachher mit 15 neuen Fällen 91,1 % (136/152, 28/28,
+  1,59 s); alle neuen Fälle richtig, die Fehler sind dieselben 8 Fälle wie vorher. Frei
+  angeboten griff das Modell bei Erzählungen zu `phpstorm` – die Rechner-Werkzeuge gibt es
+  daher nur über erkannte Anfragen (spart ~1000 Token je Anfrage)
+- [ ] Windows: alles oben auf dem RTX-Rechner ausprobieren (UI Automation, Fenster nach vorn
+  holen, Start-Menü-Verknüpfungen, Lautstärke per Medientasten), `flay eval` dort laufen lassen
+- [ ] Nummerierte Kandidaten: PhpStorms eigene Symbolleisten fehlen in den Bedienungshilfen –
+  dort bleibt nur das Schätzen eines Punkts
 
 ## Verworfen (bei Bedarf wieder aufnehmen)
 

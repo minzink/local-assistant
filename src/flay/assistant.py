@@ -7,7 +7,7 @@ import contextlib
 import logging
 import re
 import time
-from collections.abc import AsyncIterator, Callable, Coroutine, Iterable, Sequence
+from collections.abc import AsyncIterator, Callable, Coroutine, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
@@ -33,21 +33,33 @@ from flay.core.events import (
     WakeWordChanged,
 )
 from flay.core.language import Language
-from flay.core.messages import ImagePart, Message, Role, TextPart, ToolCall, ToolOutcome
+from flay.core.messages import (
+    ImagePart,
+    Message,
+    Modality,
+    Role,
+    TextPart,
+    ToolCall,
+    ToolOutcome,
+)
 from flay.core.sentences import SentenceSplitter
 from flay.core.text_language import detect_text_language
 from flay.filler import FillerVoice, TurnFiller
 from flay.input.base import UtteranceSource
-from flay.llm.base import ChatModel, StructuredChat
+from flay.intents import computer_intent, mentions_selection
+from flay.llm.base import ChatModel, StructuredChat, ToolSpec
 from flay.llm.gate import synthesis
 from flay.memory.base import Fact, Memory, ShortTermMemory
+from flay.plans import FAR_REACHING, plan_intents, split_steps
+from flay.plans import describe as describe_plan
 from flay.prompt import LANGUAGE_NAMES, build_messages, format_examples
 from flay.stt.base import SpeechToText, Transcript
 from flay.stt.vocabulary import Vocabulary, is_noise
 from flay.tools.base import ToolRegistry, ToolResult, speech, spoken
+from flay.tools.keyboard import describe_selection, selected_text
 from flay.tools.pages import Page
 from flay.tools.phpstorm import Project, match_projects, mention
-from flay.tools.screen import Window, screen_arguments
+from flay.tools.screen import AT_POINTER, Window, screen_arguments
 from flay.tools.web import (
     clipboard_url,
     find_url,
@@ -81,8 +93,42 @@ _SCREEN_WORDS = re.compile(
 )
 
 
+# Tools that act on the computer themselves: a word like "Monitor" in their request ("schieb
+# Firefox auf den linken Monitor") is no reason for a screenshot.
+COMPUTER_TOOLS = frozenset(
+    {
+        "control_window",
+        "use_keyboard",
+        "phpstorm",
+        "run_command",
+        "find_file",
+        "timer",
+        "system_control",
+    }
+)
+
+
+async def _discard(work: Coroutine[Any, Any, Any]) -> None:
+    await work
+
+
 def mentions_screen(text: str) -> bool:
-    return _SCREEN_WORDS.search(text) is not None
+    return _SCREEN_WORDS.search(text) is not None or AT_POINTER.search(text) is not None
+
+
+# "Welche Programme sind offen?" is answered from the window list: no screenshot, which
+# costs the model seconds (~7.5 s on an M2 Pro) and tells it less about names.
+_WHAT_IS_OPEN = re.compile(
+    r"\bwelche\s+(?:programme|apps?|anwendungen|fenster)\b"
+    r"|\bwas\s+(?:ist|habe ich|hab ich|hast du)\s+(?:\w+\s+){0,2}(?:offen|geöffnet|auf)\b"
+    r"|\bwhat(?:'s| is| do i have)\s+(?:\w+\s+){0,2}open\b"
+    r"|\bwhich\s+(?:apps?|programs?|applications|windows)\b",
+    re.IGNORECASE,
+)
+
+
+def asks_what_is_open(text: str) -> bool:
+    return _WHAT_IS_OPEN.search(text) is not None
 
 
 # "Claude" as Whisper tends to write it in German speech. "Cloud" only counts without an
@@ -110,7 +156,7 @@ _STATUS_WORDS = re.compile(
 
 
 _REMEMBER = re.compile(
-    r"\b(?:merk\w*|notier\w*|remember|note that)\b|"
+    r"\b(?:merk\w*|notier\w*|remember|note that)\b|\bspeicher\w* (?:dir|ab)\b.*\b(?:dass|that)\b|"
     # "Trag in deinem Gedächtnis ein, dass …" – a request, not a question about memory.
     r"^(?![^?]*\?\s*$).*\b(?:trag\w*|speicher\w*|schreib\w*|save|store)\b.*"
     r"\b(?:gedächtnis|memory)\b",
@@ -150,9 +196,15 @@ FOLLOW_UP_SECONDS = 120.0
 # is made up ("Das Projekt ist jetzt geschlossen." after misheard speech), so the tool is
 # called after all. Only first person or completed forms count, so explanations like "du
 # schließt ein Projekt über File" do not trigger anything.
+# The apostrophe is required: German "Im Editor ist … geöffnet" is no "I'm".
 _CLAIM_MARKER = re.compile(
-    r"\b(?:ich|i|i'?ve|i'?ll|i'?m|jetzt|nun|wurden?|erfolgreich|erledigt|now|has been|"
-    r"successfully|done)\b",
+    r"\b(?:ich|i|i['’]ve|i['’]ll|i['’]m|jetzt|nun|wurden?|erfolgreich|erledigt|now|"
+    r"has been|successfully|done)\b",
+    re.IGNORECASE,
+)
+# Describing what is on screen ("Ich sehe, dass flay geöffnet ist") claims no action.
+_DESCRIPTION = re.compile(
+    r"\b(?:sehe|siehst|sieht|zu sehen|erkenne|i see|i can see|visible|shows?|showing)\b",
     re.IGNORECASE,
 )
 _NEGATION = re.compile(
@@ -201,7 +253,11 @@ def fixed_reply(results: list[ToolResult], language: Language) -> str | None:
 
 def claimed_tool(sentence: str) -> str | None:
     """Tool whose action a sentence of the reply claims to have done, if any."""
-    if not _CLAIM_MARKER.search(sentence) or _NEGATION.search(sentence):
+    if (
+        not _CLAIM_MARKER.search(sentence)
+        or _NEGATION.search(sentence)
+        or _DESCRIPTION.search(sentence)
+    ):
         return None
     return next((name for name, claim in _CLAIMS.items() if claim.search(sentence)), None)
 
@@ -319,8 +375,10 @@ _SCROLL = re.compile(
     re.IGNORECASE,
 )
 # A web page: a link, a URL or an address ("heise punkt de").
+# "linke", "linken", "links" are the left side, not links.
 _WEB_WORDS = re.compile(
-    r"\b(?:link\w*|url|webseite\w*|website\w*|web ?page\w*|homepage|internetseite\w*)\b",
+    r"\b(?:link(?!e[nrsm]?\b|s\b)\w*|(?:die|den|alle|the|all) links|url|webseite\w*|"
+    r"website\w*|web ?page\w*|homepage|internetseite\w*)\b",
     re.IGNORECASE,
 )
 # What to do with a page beyond opening it: read it.
@@ -544,8 +602,14 @@ class Assistant:
         # The current request's action was recognized by a learned verb ("She K NVS").
         self._by_learned_verb = False
         self._state_task: asyncio.Task[str | None] | None = None
+        self._overview_task: asyncio.Task[str | None] | None = None
         self.events = events or EventBus()
         self._turn: asyncio.Task[None] | None = None
+        # A plan with far-reaching steps waits for a yes: its steps and when it was asked.
+        self._pending_plan: tuple[list[str], float] | None = None
+        # Things to say on Flay's own initiative, and the task that says them when idle.
+        self._announcement_queue: list[Mapping[Language, str]] = []
+        self._announcer: asyncio.Task[None] | None = None
         self._last_activity = time.monotonic()
         self._prefetch: tuple[bytes, asyncio.Task[Transcript | None]] | None = None
         self._microphone_muted = False
@@ -680,6 +744,42 @@ class Assistant:
             keep_warm.cancel()
             await self._cancel_turn()
 
+    def announce(self, say: Mapping[Language, str]) -> None:
+        """Say something on Flay's own initiative (a timer, Claude is done) once idle."""
+        self._announcement_queue.append(say)
+        if self._announcer is None or self._announcer.done():
+            self._announcer = asyncio.get_running_loop().create_task(self._announce_when_idle())
+
+    async def _announce_when_idle(self) -> None:
+        while self._announcement_queue:
+            # Never into an answer: wait until the current turn is over.
+            while (self._turn is not None and not self._turn.done()) or (
+                self.state is not AssistantState.IDLE
+            ):
+                await asyncio.sleep(0.2)
+            say = self._announcement_queue.pop(0)
+            text = say.get(self._language) or next(iter(say.values()))
+            await self._start_turn(self._speak_announcement(text))
+            if self._turn is not None:
+                await asyncio.wait([self._turn])
+
+    async def _speak_announcement(self, text: str) -> None:
+        language = self._language
+        self._notice(text)
+        self.events.publish(AssistantMessage(text, language))
+        if self._speaker_muted:
+            return
+        self._set_state(AssistantState.SPEAKING)
+        try:
+
+            async def chunks() -> AsyncIterator[AudioBuffer]:
+                async for chunk in self._tts.synthesize(text, language):
+                    yield chunk
+
+            await self._output.play(chunks())
+        finally:
+            self._set_state(AssistantState.IDLE)
+
     async def submit_text(self, text: str) -> None:
         """Answer typed text; replaces a turn that is still running."""
         if text.strip():
@@ -702,11 +802,19 @@ class Assistant:
         self._memory.turn_started()
         # Read in parallel to speech recognition, so it costs no time.
         self._state_task = asyncio.create_task(self._state()) if self._state else None
+        # The window list too: screen requests need it, and it costs ~0.3 s to read.
+        self._overview_task = (
+            asyncio.create_task(self._read_window_overview())
+            if SCREEN_TOOL in self._tools
+            else None
+        )
         try:
             await turn
         finally:
             if self._state_task is not None:
                 self._state_task.cancel()
+            if self._overview_task is not None:
+                self._overview_task.cancel()
             # Searches a fixed reply did not need must not outlive the turn.
             for task in self._turn_tasks:
                 task.cancel()
@@ -747,7 +855,7 @@ class Assistant:
             tools=bool(self._tools),
         )
         try:
-            await warm(messages, self._tools.specs)
+            await warm(messages, self._conversation_specs)
             log.debug("LLM warm gehalten")
         except Exception as exc:
             log.debug("Warmhalten fehlgeschlagen: %s", exc)
@@ -931,6 +1039,9 @@ class Assistant:
         )
         examples: tuple[Fact, ...] = ()
         user_message = Message.from_text(Role.USER, text, language)
+        if (plan := self._confirmed_plan(text)) is not None:
+            await self._run_plan(user_message, plan, language, timings, filler, state)
+            return
         if (answer := await self._confirmation(text, language)) is not None:
             await self._respond(user_message, language, timings, filler=filler, fixed=answer)
             return
@@ -940,6 +1051,9 @@ class Assistant:
             await self._respond(
                 user_message, language, timings, filler=filler, fixed=CANCELLED[language]
             )
+            return
+        if (steps := self._plan_steps(text)) is not None:
+            await self._plan(user_message, steps, language, timings, filler, state)
             return
         if file_intent(text) and "read_file" in self._tools:
             await self._file(user_message, text, language, timings, filler, state)
@@ -952,10 +1066,29 @@ class Assistant:
         ):
             return
         intent, request = self._intent(text)
+        overview_only = SCREEN_TOOL in self._tools and intent is None and asks_what_is_open(text)
         # "Klick im PhpStorm-Fenster auf Git": the click looks itself.
         screen = (
-            SCREEN_TOOL in self._tools and mentions_screen(text) and intent not in SCREEN_ACTIONS
+            SCREEN_TOOL in self._tools
+            and mentions_screen(text)
+            and intent not in SCREEN_ACTIONS
+            and intent not in COMPUTER_TOOLS
+            and not overview_only
         )
+        if "use_keyboard" in self._tools and mentions_selection(text):
+            # "Übersetz das Markierte": the selection, copied from the front app. Sent with
+            # the request, never stored.
+            selection = describe_selection(await asyncio.to_thread(selected_text))
+            state = f"{state} {selection}" if state else selection
+        if screen or overview_only:
+            # Which windows are where, by name: the model need not read titles from pixels,
+            # and "the left monitor" means something. Sent with the request, never stored.
+            overview = await self._window_overview()
+            if overview:
+                state = f"{state} {overview}" if state else overview
+            elif overview_only:
+                # No window list on this system: look at the screen as before.
+                screen = mentions_screen(text) and intent not in SCREEN_ACTIONS
         if filler is not None:
             filler.action = screen or (intent is not None and intent in self._tools)
         # A reply that is fixed by what the tools reported, without asking the model.
@@ -1109,7 +1242,7 @@ class Assistant:
             # offers no tools so it has to answer in words.
             for round_ in range(MAX_TOOL_ROUNDS + 1):
                 specs = (
-                    [s for s in self._tools.specs if s.name not in done]
+                    [s for s in self._conversation_specs if s.name not in done]
                     if round_ < MAX_TOOL_ROUNDS
                     else []
                 )
@@ -1194,7 +1327,11 @@ class Assistant:
                 emit(THINKING[language])
                 speak(splitter.flush())
             try:
-                await converse([*base, *(prelude or [])], check_claims=not prelude)
+                # A reply about a screenshot describes what is open; it claims nothing.
+                described = Modality.IMAGE in user_message.modalities
+                await converse(
+                    [*base, *(prelude or [])], check_claims=not prelude and not described
+                )
             except UnbackedClaimError as claim:
                 # Made-up success: do what was claimed and answer from the real result.
                 log.info("Antwort behauptete %s ohne Werkzeug – führe es aus", claim.tool)
@@ -1580,16 +1717,42 @@ class Assistant:
         Models do not reliably choose the screen tool on their own ("look at my screen" was
         sometimes only answered with words), so explicit mentions do not depend on it.
         """
-        list_apps = getattr(self._tools.get(SCREEN_TOOL), "apps", None)
+        tool = self._tools.get(SCREEN_TOOL)
+        list_apps = getattr(tool, "apps", None)
         apps: list[str] = await asyncio.to_thread(list_apps) if callable(list_apps) else []
-        # Which part of the screen ("the PhpStorm window", "second monitor") is read from the
-        # words directly: no extra model call, so no extra waiting.
-        call = ToolCall("auto_screenshot", SCREEN_TOOL, screen_arguments(message.text, apps))
+        list_monitors = getattr(tool, "monitors", None)
+        monitors = await asyncio.to_thread(list_monitors) if callable(list_monitors) else []
+        # Which part of the screen ("the PhpStorm window", "the left monitor") is read from
+        # the words directly: no extra model call, so no extra waiting.
+        arguments = screen_arguments(message.text, apps, monitors)
+        call = ToolCall("auto_screenshot", SCREEN_TOOL, arguments)
         result = await self._execute(call)
         if not result.images:
             note = f"\n(Screenshot failed: {result.text})"
             return replace(message, parts=(*message.parts, TextPart(note))), result
         return replace(message, parts=(*message.parts, *result.images)), result
+
+    async def _window_overview(self) -> str | None:
+        """The window list read at the start of the turn (or now, if there was none)."""
+        task, self._overview_task = self._overview_task, None
+        if task is not None:
+            try:
+                return await task
+            except asyncio.CancelledError:
+                pass
+        return await self._read_window_overview()
+
+    async def _read_window_overview(self) -> str | None:
+        """The open windows per monitor, if the screen tool can list them."""
+        overview = getattr(self._tools.get(SCREEN_TOOL), "overview", None)
+        if not callable(overview):
+            return None
+        try:
+            result = await asyncio.to_thread(overview)
+        except Exception as exc:
+            log.debug("Fensterliste nicht lesbar: %s", exc)
+            return None
+        return result if isinstance(result, str) else None
 
     def _intent(self, text: str) -> tuple[str | None, str]:
         """Tool to force for this request, and the request text the tool call is made from.
@@ -1601,6 +1764,9 @@ class Assistant:
         intent = tool_intent(text)
         now = time.monotonic()
         self._by_learned_verb = False
+        if intent is None and (computer := self._computer_intent(text)) is not None:
+            self._project_request = None
+            return computer, text
         if intent in _PROJECT_TOOLS:
             self._project_request = (text, now)
             return intent, text
@@ -1617,6 +1783,175 @@ class Assistant:
             if follow_up is not None and now - at <= FOLLOW_UP_SECONDS:
                 return follow_up, f"{previous}\n{text}"
         return None, text
+
+    @property
+    def _conversation_specs(self) -> list[ToolSpec]:
+        """The tools the model may pick on its own. The computer tools are only reached
+        through their recognized requests: offered freely, the model took "Ich habe flay
+        gestern geöffnet" for phpstorm and "Mach mal Moewe auf" for system_control
+        (flay eval). It also keeps ~1000 tokens out of every request."""
+        return [s for s in self._tools.specs if s.name not in COMPUTER_TOOLS]
+
+    def _step_intent(self, step: str) -> str | None:
+        """The tool one step of a plan clearly asks for."""
+        for found in (tool_intent(step), self._computer_intent(step), web_intent(step)):
+            if found is not None and found in self._tools:
+                return found
+        if file_intent(step) and "read_file" in self._tools:
+            return "read_file"
+        return None
+
+    def _plan_steps(self, text: str) -> list[str] | None:
+        """The steps if the request is a plan of several actions."""
+        steps = split_steps(text)
+        if len(steps) < 2:
+            return None
+        intents = plan_intents(steps, self._step_intent)
+        if intents is None:
+            return None
+        # "Öffne heise.de, dann klick auf Impressum" is one task on a page: read_webpage
+        # does it inside the page, better than two separate steps.
+        page_steps = {"open_url", "read_webpage", "click_on_screen", "scroll_screen", None}
+        if web_intent(text) is not None and set(intents) <= page_steps:
+            return None
+        return steps
+
+    def _confirmed_plan(self, text: str) -> list[str] | None:
+        """The waiting plan, if ``text`` says yes to it."""
+        pending, self._pending_plan = self._pending_plan, None
+        if pending is None or time.monotonic() - pending[1] > CONFIRM_SECONDS:
+            return None
+        if len(text.split()) <= 6 and _YES.search(text):
+            return pending[0]
+        if not _NO.search(text):
+            return None
+        self._pending_plan = None
+        return []  # declined: nothing to run, said below
+
+    async def _plan(
+        self,
+        user_message: Message,
+        steps: list[str],
+        language: Language,
+        timings: TurnTimings,
+        filler: TurnFiller | None,
+        state: str | None,
+    ) -> None:
+        """Say the steps; ask first if one reaches far, else do them right away."""
+        intents = [self._step_intent(step) for step in steps]
+        log.info(
+            "Plan: %s", " → ".join(f"{s} [{i or '?'}]" for s, i in zip(steps, intents, strict=True))
+        )
+        described = describe_plan(steps, language.value)
+        if FAR_REACHING & set(filter(None, intents)):
+            self._pending_plan = (steps, time.monotonic())
+            question = speech("Soll ich loslegen?", "Shall I start?")[language]
+            await self._respond(
+                user_message, language, timings, filler=filler, fixed=f"{described} {question}"
+            )
+            return
+        await self._run_plan(user_message, steps, language, timings, filler, state, described)
+
+    async def _run_plan(
+        self,
+        user_message: Message,
+        steps: list[str],
+        language: Language,
+        timings: TurnTimings,
+        filler: TurnFiller | None,
+        state: str | None,
+        described: str | None = None,
+    ) -> None:
+        if not steps:
+            await self._respond(
+                user_message, language, timings, filler=filler, fixed=CANCELLED[language]
+            )
+            return
+
+        async def work(say: Callable[[str], None]) -> tuple[list[Message], str | None]:
+            preludes: list[Message] = []
+            reports: list[str] = []
+            silent = False
+            for number, step in enumerate(steps, start=1):
+                # Each step sees what the earlier ones reported ("schick Claude die Fehler").
+                context = step + (
+                    f"\n(Earlier steps reported: {' | '.join(reports)})" if reports else ""
+                )
+                routed = Message.from_text(Role.USER, context, language)
+                intent = self._step_intent(step)
+                if intent is not None:
+                    prelude, results = await self._route_tool(intent, routed, language, state)
+                else:
+                    prelude, results = await self._route_any(routed, language, state)
+                timings.mark("tool")
+                preludes += prelude
+                if not results:
+                    stop = speech(
+                        f"Bei Schritt {number}, {step}, wusste ich nicht, was zu tun ist. Ich habe "
+                        "dort aufgehört.",
+                        f"At step {number}, {step}, I didn't know what to do. I stopped there.",
+                    )
+                    return [], stop[language]
+                spoken = fixed_reply(results, language)
+                if not all(result.ok for result in results):
+                    stopped = speech(
+                        " Die übrigen Schritte habe ich gelassen.", " I left the remaining steps."
+                    )[language]
+                    return [], (
+                        spoken or speech("Das hat nicht geklappt.", "That failed.")[language]
+                    ) + stopped
+                if spoken:
+                    say(spoken)
+                else:
+                    silent = True  # the model sums up what this step found
+                reports += [f"{step}: {result.text[:300]}" for result in results]
+            if silent:
+                return preludes, None
+            return [], speech("Fertig.", "Done.")[language]
+
+        await self._respond(
+            user_message,
+            language,
+            timings,
+            filler=filler,
+            state=state,
+            announce=described,
+            work=work,
+        )
+
+    async def _route_any(
+        self, user_message: Message, language: Language, state: str | None
+    ) -> tuple[list[Message], list[ToolResult]]:
+        """One step without a clear tool: the model picks the tool and fills it in."""
+        router = Message.from_text(
+            Role.SYSTEM,
+            "Turn the user's request into exactly one tool call. Only name a project if the "
+            "user names one." + (f"\n{state}" if state else "") + self._rules(),
+        )
+        request = Message.from_text(Role.USER, user_message.text, language)
+        calls = [
+            event
+            async for event in self._llm.stream([router, request], self._tools.specs)
+            if isinstance(event, ToolCall)
+        ]
+        if not calls:
+            return [], []
+        return await self._act(calls[0], language)
+
+    def _computer_intent(self, text: str) -> str | None:
+        """Apps, keyboard, PhpStorm, timers ...: a tool the request clearly asks for."""
+        windows = self._tools.get("control_window")
+        apps = getattr(windows, "_apps", None)
+        if windows is not None and apps is None:
+            # Read once in the background (~0.3 s); until then apps are not recognized.
+            load = getattr(windows, "app_names", None)
+            if callable(load):
+                self._background(_discard(asyncio.to_thread(load)))
+        commands = getattr(self._tools.get("run_command"), "names", [])
+        intent = computer_intent(
+            text, apps or [], self._projects() if self._projects else [], commands
+        )
+        return intent if intent is not None and intent in self._tools else None
 
     def _learned_verb(self, text: str) -> tuple[str, str] | None:
         """A verb learned from earlier requests with a project name: "She K NVS",

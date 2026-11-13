@@ -408,7 +408,8 @@ def test_factory_drops_screen_tool_for_text_only_models() -> None:
 
     assert names == [
         "open_project", "close_project", "send_to_claude", "claude_status", "open_url",
-        "fill_web_form", "read_file", "workflow", "ssh_connect",
+        "fill_web_form", "read_file", "workflow", "ssh_connect", "control_window",
+        "use_keyboard", "phpstorm", "find_file", "system_control",
     ]  # fmt: skip
 
 
@@ -1331,6 +1332,10 @@ async def test_close_project_reports_when_phpstorm_closed_another_project() -> N
         ("Möchtest du das Projekt jetzt schließen?", None),
         ("Du schließt ein Projekt über File, Close Project.", None),
         ("Hallo, wie kann ich helfen?", None),
+        # From a screen description on Windows: "Im" is no "I'm".
+        ("Im Editor ist die Datei „pyproject.toml“ mit Projektinformationen geöffnet.", None),
+        ("Ich sehe, dass das Projekt flay geöffnet ist.", None),
+        ("I'm opening the project flay now.", "open_project"),
     ],
 )
 def test_claimed_tool(sentence: str, expected: str | None) -> None:
@@ -1696,3 +1701,161 @@ async def test_rules_reach_the_instruction_for_claude() -> None:
 
     router_prompt = llm.prompts[0][0][0].text
     assert "nie den Befehl, etwas zu committen" in router_prompt
+
+
+SIDE_BY_SIDE = [(0, 0, 1920, 1080), (-1920, 0, 1920, 1080)]  # main right, second left
+
+
+def test_monitor_positions() -> None:
+    from flay.tools.screen import monitor_positions
+
+    assert monitor_positions([(0, 0, 1920, 1080)]) == {}
+    assert monitor_positions(SIDE_BY_SIDE) == {1: "right", 2: "left"}
+    assert monitor_positions([(0, 0, 1920, 1080), (0, -1080, 1920, 1080)]) == {
+        1: "bottom",
+        2: "top",
+    }
+    three = [(0, 0, 100, 100), (100, 0, 100, 100), (-100, 0, 100, 100)]
+    assert monitor_positions(three) == {3: "left", 1: "middle", 2: "right"}
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Schau dir den linken Monitor an", {"monitor": 2}),
+        ("Was ist auf dem rechten Bildschirm?", {"monitor": 1}),
+        ("Nimm dir meinen anderen Monitor", {"monitor": 2}),
+        ("Look at the left screen", {"monitor": 2}),
+        ("Was ist auf dem zweiten Bildschirm?", {"monitor": 2}),
+    ],
+)
+def test_screen_arguments_by_position(text: str, expected: dict[str, object]) -> None:
+    from flay.tools.screen import screen_arguments
+
+    assert screen_arguments(text, [], SIDE_BY_SIDE) == expected
+
+
+def test_describe_windows_per_monitor() -> None:
+    from flay.tools.screen import Window, describe_windows
+
+    windows = [
+        Window(1, "Firefox", "Flay", (0, 0, 800, 600)),  # Flay's own UI: left out
+        Window(2, "PhpStorm", "flay – assistant.py", (100, 100, 1200, 800)),
+        Window(3, "Slack", "Slack", (-1800, 50, 1000, 700)),
+    ]
+
+    text = describe_windows(windows, SIDE_BY_SIDE)
+
+    assert text == (
+        "Open windows – Monitor 1 (main, right): PhpStorm: flay – assistant.py (front)"
+        " | Monitor 2 (left): Slack."
+    )
+    assert describe_windows([windows[0]], SIDE_BY_SIDE) is None
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Welche Programme sind gerade offen?", True),
+        ("Was habe ich alles offen?", True),
+        ("Welche Fenster sind auf dem linken Monitor?", True),
+        ("What do I have open?", True),
+        ("Which apps are running?", True),
+        ("Was siehst du auf dem Bildschirm?", False),
+        ("Welches Projekt soll ich öffnen?", False),
+    ],
+)
+def test_asks_what_is_open(text: str, expected: bool) -> None:
+    from flay.assistant import asks_what_is_open
+
+    assert asks_what_is_open(text) is expected
+
+
+class OverviewScreenTool(FakeScreenTool):
+    def overview(self) -> str:
+        return "Open windows – Monitor 1 (main): PhpStorm: flay (front)."
+
+
+async def test_what_is_open_is_answered_from_the_window_list() -> None:
+    screen = OverviewScreenTool(images=(ImagePart(b"png", "image/png"),))
+    llm = ScreenLLM()
+    assistant = Assistant(
+        Settings(), FakeSource(), FakeSTT("x"), llm, FakeTTS(), FakeOutput(),
+        tools=ToolRegistry([screen]),
+    )  # fmt: skip
+
+    await assistant.handle_text("Welche Programme sind gerade offen?")
+
+    user = llm.prompts[0][0][-1]
+    assert not any(isinstance(part, ImagePart) for part in user.parts)
+    assert "PhpStorm: flay" in user.text
+    # The list is sent, not stored.
+    assert assistant.history[0].text == "Welche Programme sind gerade offen?"
+
+
+async def test_screenshot_comes_with_the_window_list() -> None:
+    screen = OverviewScreenTool(images=(ImagePart(b"png", "image/png"),))
+    llm = ScreenLLM()
+    assistant = Assistant(
+        Settings(), FakeSource(), FakeSTT("x"), llm, FakeTTS(), FakeOutput(),
+        tools=ToolRegistry([screen]),
+    )  # fmt: skip
+
+    await assistant.handle_text("Schau dir meinen Bildschirm an")
+
+    user = llm.prompts[0][0][-1]
+    assert ImagePart(b"png", "image/png") in user.parts
+    assert "Open windows" in user.text
+
+
+def test_area_around_the_pointer_stays_on_its_monitor() -> None:
+    from flay.tools.screen import area_around
+
+    assert area_around((960, 540), SIDE_BY_SIDE) == (640, 340, 640, 400)
+    # Near the edge the area moves inside instead of being cut off.
+    assert area_around((10, 1075), SIDE_BY_SIDE) == (0, 680, 640, 400)
+    # On the left monitor (negative coordinates).
+    assert area_around((-5, 5), SIDE_BY_SIDE) == (-640, 0, 640, 400)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Was ist das hier?", {"pointer": True}),
+        ("Erklär mir das hier", {"pointer": True}),
+        ("Was steht unter der Maus?", {"pointer": True}),
+        ("What is under the cursor?", {"pointer": True}),
+        ("Was ist das hier im Terminal?", {"window": "Terminal"}),
+        ("Was ist das hier auf dem linken Monitor?", {"monitor": 2}),
+        ("Guck mal hier, was ist das für ein Fehler?", {}),
+    ],
+)
+def test_screen_arguments_at_the_pointer(text: str, expected: dict[str, object]) -> None:
+    from flay.assistant import mentions_screen
+    from flay.tools.screen import screen_arguments
+
+    assert mentions_screen(text)
+    assert screen_arguments(text, ["Terminal"], SIDE_BY_SIDE) == expected
+
+
+async def test_look_at_pointer_says_where_the_pointer_is(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from flay.tools import screen
+    from flay.tools.screen import LookAtScreenTool, Shot
+
+    captured: list[tuple[tuple[float, ...], int]] = []
+
+    def capture(region: tuple[float, float, float, float], max_size: int) -> Shot:
+        captured.append((region, max_size))
+        return Shot(b"png", region)
+
+    monkeypatch.setattr(screen, "pointer_position", lambda: (10.0, 540.0))
+    monkeypatch.setattr(screen, "monitor_regions", lambda: SIDE_BY_SIDE)
+    monkeypatch.setattr(screen, "capture_region", capture)
+
+    result = await LookAtScreenTool().run({"pointer": True})
+
+    assert captured == [((0, 340, 640, 400), screen.POINTER_MAX_SIZE)]
+    assert result.images == (ImagePart(b"png", "image/png"),)
+    assert "(16, 500)" in result.text

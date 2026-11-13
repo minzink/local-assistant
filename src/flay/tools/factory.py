@@ -8,6 +8,7 @@ from flay.core.messages import Modality
 from flay.memory.base import FactMemory
 
 if TYPE_CHECKING:
+    from flay.notifications import Announcements, Timers
     from flay.tools.phpstorm_mcp import PhpStormMcp
     from flay.tools.state import ComputerState
 from flay.tools.base import Tool, ToolRegistry
@@ -34,10 +35,17 @@ def create_state(settings: Settings) -> ComputerState | None:
     return ComputerState(phpstorm, tmux)
 
 
-def create_tools(settings: Settings, facts: FactMemory | None = None) -> ToolRegistry:
+def create_tools(
+    settings: Settings,
+    facts: FactMemory | None = None,
+    announcements: Announcements | None = None,
+    timers: Timers | None = None,
+) -> ToolRegistry:
     """Registry of the tools enabled in the config; nothing else is callable.
 
     ``facts`` is the persistent memory; without it remember/forget are left out.
+    ``announcements`` lets tools speak later (a command finished); ``timers`` keeps the
+    timers (without it there is no timer tool).
     """
     config = settings.tools
     tools: list[Tool] = []
@@ -121,6 +129,52 @@ def create_tools(settings: Settings, facts: FactMemory | None = None) -> ToolReg
 
             hosts = partial(read_ssh_hosts, config.ssh.config_file)
             tools.append(SshConnectTool(hosts, config.ssh.terminal))
+        elif name == "control_window":
+            from flay.tools.apps import ControlWindowTool
+
+            tools.append(ControlWindowTool())
+        elif name == "use_keyboard":
+            from flay.tools.keyboard import KeyboardTool
+
+            tools.append(KeyboardTool())
+        elif name == "phpstorm":
+            if not config.phpstorm.use_mcp:
+                log.debug("phpstorm braucht PhpStorms MCP-Server (use_mcp) – deaktiviert.")
+                continue
+            from flay.tools.ide import IdeTool
+
+            tools.append(IdeTool(phpstorm()))
+        elif name == "run_command":
+            if not config.commands:
+                log.debug("run_command: keine Befehle in tools.commands – deaktiviert.")
+                continue
+            from flay.tools.commands import Command, RunCommandTool
+
+            commands = {
+                key: Command(
+                    key,
+                    c.command,
+                    c.cwd.expanduser() if c.cwd else None,
+                    c.timeout_seconds,
+                )
+                for key, c in config.commands.items()
+            }
+            tools.append(RunCommandTool(commands, announcements))
+        elif name == "find_file":
+            from flay.tools.finder import FindFileTool
+
+            roots = [r.expanduser() for r in config.files.roots] or None
+            tools.append(FindFileTool(roots))
+        elif name == "timer":
+            if timers is None:
+                continue
+            from flay.tools.timers import TimerTool
+
+            tools.append(TimerTool(timers))
+        elif name == "system_control":
+            from flay.tools.system import SystemTool
+
+            tools.append(SystemTool())
         elif name in ("remember", "forget"):
             if facts is None:
                 log.debug(
@@ -141,19 +195,29 @@ def _screen_tool(name: str, settings: Settings) -> Tool:
         from flay.tools.pointer import ClickTool, VisionLocator
 
         # Deterministic and short: the answer is one point.
+        model = resolve(config.pointer.model, POINTER, settings.llm.model, settings.llm.base_url)
         llm = settings.llm.model_copy(
             update={
-                "model": resolve(
-                    config.pointer.model, POINTER, settings.llm.model, settings.llm.base_url
-                ),
+                "model": model,
+                # The 4B variant has a context of its own.
+                "context_tokens": POINTER.context
+                if model == POINTER.name
+                else settings.llm.context_tokens,
                 "temperature": 0.0,
                 "max_tokens": 60,
                 "thinking": settings.llm.thinking.model_copy(update={"enabled": False}),
             }
         )
         locator = VisionLocator(create_chat_model(llm), config.screen.max_size)
+        from flay.tools.pointer import icon_candidates, watch_click
+
         return ClickTool(
-            locator, config.screen.monitor, config.screen.max_size, config.pointer.refine
+            locator,
+            config.screen.monitor,
+            config.screen.max_size,
+            config.pointer.refine,
+            verify=watch_click if config.pointer.verify else None,
+            candidates=icon_candidates,
         )
     if name == "scroll_screen":
         from flay.tools.pointer import ScrollTool

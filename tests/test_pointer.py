@@ -4,6 +4,7 @@ import pytest
 
 from flay.assistant import Assistant, tool_intent
 from flay.config import Settings
+from flay.core.language import Language
 from flay.core.messages import ToolCall
 from flay.llm.base import ToolSpec
 from flay.tools import pointer
@@ -290,3 +291,164 @@ async def test_label_given_only_in_the_description_is_found(
 )
 def test_risky_labels(label: str, risky: bool) -> None:
     assert bool(pointer._RISKY.search(label)) is risky
+
+
+def test_changed_share() -> None:
+    from PIL import Image, ImageDraw
+
+    from flay.tools.pointer import changed_share
+
+    before = Image.new("L", (100, 100), 200)
+    after = before.copy()
+    assert changed_share(before, after) == 0.0
+    ImageDraw.Draw(after).rectangle((0, 0, 49, 99), fill=0)  # a dialog over half the screen
+    assert changed_share(before, after) == pytest.approx(0.5)
+
+
+async def test_click_without_visible_effect_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+    from flay.tools import pointer
+    from flay.tools.pointer import ClickTool, Element
+
+    button = Element("Speichern", "AXButton", (10, 10, 80, 20), "App")
+    monkeypatch.setattr(pointer, "accessibility_allowed", lambda prompt=False: True)
+    monkeypatch.setattr(pointer, "list_windows", lambda: [])
+    monkeypatch.setattr(pointer, "click", lambda point, button: None)
+    monkeypatch.setattr(pointer, "is_visible", lambda element: True)
+    tool = ClickTool(None, elements=lambda app: iter([[button]]), verify=lambda p: lambda: 0.0)
+
+    result = await tool.run({"text": "Speichern"})
+
+    assert result.ok
+    assert "nothing visibly changed" in result.text
+    assert result.say is not None and "nichts sichtbar" in result.say[Language.DE]
+
+
+def test_windows_elements_from_ui_automation(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+
+    from flay.tools import browser_uia, uia_elements
+    from flay.tools.screen import Window
+
+    def element(name: str, kind: int, rect: tuple[int, int, int, int], off: bool = False) -> Any:
+        left, top, right, bottom = rect
+        return SimpleNamespace(
+            CurrentName=name,
+            CurrentControlType=kind,
+            CurrentIsOffscreen=off,
+            CurrentBoundingRectangle=SimpleNamespace(
+                left=left, top=top, right=right, bottom=bottom
+            ),
+        )
+
+    found = [
+        element("Speichern", 50000, (10, 10, 90, 30)),
+        element("", 50000, (10, 40, 90, 60)),  # no label
+        element("Versteckt", 50000, (10, 70, 90, 90), off=True),
+        element("Editor", 50004, (0, 0, 1800, 900)),  # an area, not a control
+        element("Datei", 50011, (0, 0, 40, 20)),
+    ]
+    collection = SimpleNamespace(Length=len(found), GetElement=lambda i: found[i])
+    uia = SimpleNamespace(
+        CreatePropertyCondition=lambda prop, value: value,
+        CreateOrCondition=lambda a, b: (a, b),
+        ElementFromHandle=lambda handle: SimpleNamespace(FindAll=lambda scope, cond: collection),
+    )
+    monkeypatch.setattr(browser_uia, "_uia", lambda: (None, uia))
+    monkeypatch.setattr(uia_elements.sys, "platform", "win32")
+    monkeypatch.setattr(
+        "flay.tools.screen.list_windows",
+        lambda: [Window(7, "Notepad", "x – Notepad", (0, 0, 9, 9))],
+    )
+
+    (group,) = list(uia_elements.element_groups())
+
+    assert [(e.label, e.role) for e in group] == [
+        ("Speichern", "AXButton"),
+        ("Datei", "AXMenuItem"),
+    ]
+    assert group[0].frame == (10.0, 10.0, 80.0, 20.0)
+
+
+class NumberModel:
+    def __init__(self, answer: str) -> None:
+        self.answer = answer
+        self.images: list[bytes] = []
+
+    async def stream(self, messages: Any, tools: Any = ()) -> Any:
+        from flay.core.messages import ImagePart
+        from flay.llm.base import TextDelta
+
+        self.images += [p.data for p in messages[0].parts if isinstance(p, ImagePart)]
+        yield TextDelta(self.answer)
+
+
+def _png(width: int, height: int) -> bytes:
+    import io
+
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (width, height), "white").save(buffer, "PNG")
+    return buffer.getvalue()
+
+
+async def test_unlabelled_icon_is_picked_by_number(monkeypatch: pytest.MonkeyPatch) -> None:
+    from flay.tools import pointer
+    from flay.tools.pointer import ClickTool, Element, VisionLocator
+
+    icons = [
+        Element("", "AXButton", (10, 10, 20, 20), "App"),
+        Element("", "AXButton", (50, 10, 20, 20), "App"),
+        Element("Hilfe", "AXButton", (90, 10, 40, 20), "App"),
+    ]
+    clicks: list[tuple[float, float]] = []
+    monkeypatch.setattr(pointer, "accessibility_allowed", lambda prompt=False: True)
+    monkeypatch.setattr(pointer, "list_windows", lambda: [])
+    monkeypatch.setattr(pointer, "click", lambda point, button: clicks.append(point))
+    monkeypatch.setattr(
+        pointer, "capture_monitor", lambda m, s: Shot(_png(200, 100), (0, 0, 200, 100))
+    )
+    model = NumberModel("2")
+    tool = ClickTool(
+        VisionLocator(model),  # type: ignore[arg-type]
+        elements=lambda app: iter([]),
+        candidates=lambda app, region: icons,
+    )
+
+    result = await tool.run({"description": "Zahnrad-Symbol oben"})
+
+    assert result.ok and clicks == [(60.0, 20.0)]
+    assert "nummeriert" in (result.action or "")
+    assert model.images and model.images[0] != _png(200, 100)  # the boxes were drawn
+
+
+async def test_no_number_falls_back_to_a_point(monkeypatch: pytest.MonkeyPatch) -> None:
+    from flay.tools import pointer
+    from flay.tools.pointer import ClickTool, Element, VisionLocator
+
+    icons = [Element("", "AXButton", (10, 10, 20, 20)), Element("", "AXButton", (50, 10, 20, 20))]
+    monkeypatch.setattr(pointer, "accessibility_allowed", lambda prompt=False: True)
+    monkeypatch.setattr(pointer, "list_windows", lambda: [])
+    monkeypatch.setattr(pointer, "click", lambda point, button: None)
+    monkeypatch.setattr(pointer, "element_at", lambda point: None)
+    monkeypatch.setattr(
+        pointer, "capture_monitor", lambda m, s: Shot(_png(200, 100), (0, 0, 200, 100))
+    )
+
+    class Answers(NumberModel):
+        async def stream(self, messages: Any, tools: Any = ()) -> Any:
+            from flay.llm.base import TextDelta
+
+            yield TextDelta(self.answer)
+            self.answer = '{"point_2d": [500, 500]}'
+
+    tool = ClickTool(
+        VisionLocator(Answers("0")),  # type: ignore[arg-type]
+        refine=False,
+        elements=lambda app: iter([]),
+        candidates=lambda app, region: icons,
+    )
+
+    result = await tool.run({"description": "Glocke"})
+
+    assert result.ok and "Bild" in (result.action or "")

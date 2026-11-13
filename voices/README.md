@@ -15,13 +15,8 @@ Die `.onnx`-Dateien liegen in Git LFS. Ohne LFS enthält der Klon nur Platzhalte
 
 ## Verwenden
 
-1. Beide Dateien in den Stimmen-Ordner kopieren:
-   Windows `%LOCALAPPDATA%\flay\voices`, Mac `~/Library/Application Support/flay/voices`.
-2. In `flay.yaml`:
-   ```yaml
-   tts:
-     backend: piper
-     voices:
-       de: flay-ramona-medium
-       en: flay-ramona-medium
-   ```
+Flay nimmt `flay-ramona-medium` für Piper standardmäßig (`tts.voices`), unter Windows also
+immer, auf dem Mac mit `tts.backend: piper`. Beim Start bzw. mit `flay setup` kopiert Flay
+beide Dateien selbst in den Stimmen-Ordner (Windows `%LOCALAPPDATA%\flay\voices`, Mac
+`~/Library/Application Support/flay/voices`). Sind hier nur LFS-Zeiger, spricht Flay mit
+Kerstin (de) und Kristin (en) und schreibt einen Hinweis ins Log.
