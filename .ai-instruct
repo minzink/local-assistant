@@ -33,6 +33,9 @@ PhpStorm-Terminal übergeben.
   prüft und schickt ab. Formulare füllt es nur nach „ja“ aus und schickt sie nie ab, nie
   Passwortfelder; Abläufe zeichnen keinen getippten Text auf. Eigenen Text des Nutzers in Claudes Eingabe nie überschreiben. Cassi darf
   nie behaupten, etwas getan zu haben, das kein Werkzeug getan hat.
+  Neue Fähigkeiten, die den Rechner steuern, und neue Sicherungen im README-Abschnitt
+  „Sicherheitshinweise: Cassi bedient deinen Rechner“ nachtragen – dort steht nur, was der
+  Code wirklich tut.
 - **Geheimnisse:** Tokens (z. B. `tools.phpstorm.mcp_token`) sind `SecretStr`, werden nie
   geloggt oder ausgegeben. `cassi.yaml` ist gitignored.
 - **Keine privaten Daten im Repo – zu keinem Zeitpunkt, auch nicht in einem einzelnen

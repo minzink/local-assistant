@@ -17,6 +17,35 @@ Cassi ist für die Arbeit am Rechner gedacht:
 Dazu gibt es eine Web-UI mit Chat und ein Symbol in der Menüleiste bzw. im Tray. Was als
 Nächstes kommt, steht in [docs/roadmap.md](docs/roadmap.md).
 
+## Sicherheitshinweise: Cassi bedient deinen Rechner
+
+Cassi handelt mit deinen Rechten: Es klickt, tippt, drückt Tasten, öffnet und schließt
+Programme, füllt Formulare aus und führt Befehle aus, die du in `cassi.yaml` einträgst. Die
+Entscheidungen trifft ein lokales Sprachmodell, und das kann sich irren: Es kann dich falsch
+verstehen, ein Element auf dem Bildschirm verwechseln oder an die falsche Stelle klicken oder
+tippen. Die Nutzung erfolgt auf eigenes Risiko.
+
+Eingebaute Sicherungen: Vor Klicks auf „Löschen“, „Senden“ u. ä. und vor Enter fragt Cassi
+nach, ebenso vor weitreichenden Schritten in einem Plan. Formulare füllt es nur nach „ja“ aus
+und schickt sie nie ab, Passwörter und Zahlungsdaten tippt es nie, in Claude Code schickt es
+nie selbst ab, und es führt nur Befehle aus, die du vorher eingetragen hast. Diese Sicherungen
+verringern das Risiko, schließen Fehler aber nicht aus.
+
+Empfehlungen:
+
+- **Beim Bedienen zusehen**, besonders bei „Bedien den Rechner …“-Aufgaben und Abläufen, und
+  Rückfragen nur bestätigen, wenn du weißt, was passiert.
+- **Wichtiges sichern:** aktuelle Backups, Arbeit gespeichert, Änderungen in Git committet.
+- **Sensibles schließen**, bevor Cassi den Bildschirm bedient: Passwortmanager, Online-Banking,
+  Admin-Oberflächen, produktive Server, vertrauliche Dokumente. Cassi sieht, was auf dem
+  Bildschirm ist, und könnte dort etwas ändern.
+- **Nur harmlose Befehle eintragen** (`tools.commands`): nichts, was Daten löscht,
+  veröffentlicht oder deployt.
+- **Dauerhaftes Zuhören bewusst einschalten:** Ohne Aktivierungswort reagiert Cassi auf alles,
+  was es hört – auch auf Gespräche im Raum, Videos oder Anrufe.
+- **Anhalten:** Sprechen oder die Taste unterbricht Cassi; ganz beenden über „Beenden“ im
+  Menüleisten-/Tray-Symbol oder Strg+C im Terminal.
+
 ## Schnellstart
 
 Getestet mit einem Mac mit M2 Pro (32 GB) und unter Windows mit einer RTX 4070 Ti (12 GB).
