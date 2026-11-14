@@ -139,6 +139,10 @@ ui:
   open_browser: true
   tray: true           # Symbol in Menüleiste/Tray: Status, stumm schalten, UI, Beenden
 
+updates:
+  switch: true         # neuere installierte Version übernehmen (Hinweis im Chat, Neustart wenn frei)
+  check_seconds: 60    # so oft prüfen; beim Entwickeln ggf. switch: false (sonst Neustart je Commit)
+
 memory:
   enabled: true                 # Verlauf + Fakten in <data_dir>/memory.sqlite3 speichern
   recent_messages: 12           # so viele Nachrichten der Sitzung wörtlich, ältere zusammengefasst

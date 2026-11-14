@@ -34,9 +34,12 @@ def event_to_json(event: Event) -> dict[str, Any]:
 
 
 class WebUI:
-    def __init__(self, assistant: Assistant, port: int) -> None:
+    def __init__(self, assistant: Assistant, port: int, notices: list[str] | None = None) -> None:
         self._assistant = assistant
         self._port = port
+        # Shown to every page that connects, e.g. "restarted with a new version": the page
+        # reconnects only after the restart, an event before it would be lost.
+        self.notices: list[str] = notices if notices is not None else []
         self._runner: web.AppRunner | None = None
         self._sockets: set[web.WebSocketResponse] = set()
         self._log_handler: UILogHandler | None = None
@@ -96,6 +99,9 @@ class WebUI:
             "continuous": assistant.continuous,
             "wake_word": assistant.wake_word,
             "recording": assistant.workflow_recording,
+            "name": assistant.name,
+            "wake_phrase": assistant.wake_phrase,
+            "notices": list(self.notices),
             "logs": [
                 dataclasses.asdict(entry)
                 for entry in (self._log_handler.entries if self._log_handler else ())
@@ -141,6 +147,8 @@ class WebUI:
             await self._assistant.submit_text(command["text"][:2000])
         elif command.get("type") == "listen" and isinstance(command.get("continuous"), bool):
             self._assistant.set_continuous(command["continuous"])
+        elif command.get("type") == "new_session":
+            self._assistant.new_session("über die Web-UI")
         elif command.get("type") == "wake" and isinstance(command.get("enabled"), bool):
             self._assistant.set_wake_word(command["enabled"])
         elif command.get("type") == "mute":

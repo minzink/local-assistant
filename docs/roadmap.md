@@ -886,3 +886,29 @@ läuft immer über Claude, Cassi formuliert nur den Auftrag.
 
 Kamera, Audio direkt ans Modell, Benchmark weiterer
 LLM-Server, semantische Suche im Gedächtnis, Windows-Tests.
+
+## Phase 20 – Einfache Installation und Verwaltung
+
+- [x] Installieren per Doppelklick: `install.command` (macOS), `install.cmd`/`install.ps1`
+  (Windows); ohne Checkout per `curl … | bash` bzw. `irm … | iex` (klont nach `~/cassi`)
+- [x] Setup-Skripte richten auch Pakete ein, die Cassi einbinden (`--project`, `--command`), und
+  zum Schluss den Befehl (`cassi install-command`: Starter in `~/.local/bin`, PATH per
+  `uv tool update-shell`)
+- [x] Verwaltung im Browser (`cassi manage`, auch im Tray-Menü): Übersicht, Wartung (Diagnose,
+  Reparieren, Updates suchen/installieren, Autostart, Starten, Ordner öffnen), Deinstallieren
+  (Daten und Modelle nur auf Wunsch); Adapter fügen Tabs hinzu (`Adapter.manage_tabs`) und
+  räumen beim Deinstallieren auf (`Adapter.uninstall`)
+- [x] Starten und Beenden im Kopf der Seite: „▶ Cassi starten“ bzw. „Chat öffnen“, daneben
+  „■ Beenden“ (beendet den Prozess auf dem Chat-Port, nur wenn er Cassi/ein Adapter ist)
+- [x] Windows: Reparieren/Updaten in eigenem Fenster (laufende Programme sperren Dateien)
+- [x] CI parst die PowerShell- und Shell-Skripte
+- [x] Neuere Version übernimmt: ein laufendes Cassi prüft minütlich Version, Git-Stand und
+  wohin der Befehl zeigt; Hinweis im Chat, Neustart sobald frei (`updates.switch`); ohne
+  startbare neue Version beendet es sich und gibt den Port frei (Anlass: eine alte, schon
+  gelöschte Installation belegte tagelang Port 8765 und lieferte nur noch Fehler 500)
+- [x] Name aus der Konfiguration überall (Chat, Tray, Prompt, `wake_phrase`); Flay heißt Flay
+- [x] „Neues Gespräch“ (Web-UI, Tray) leert den Kontext; anderer Name oder anderes Modell als
+  zuletzt beginnt automatisch ein neues Gespräch (Anlass: Cassi hielt sich nach Flay für Flay,
+  weil beide den Datenordner teilen und die Sitzung zeitlich weiterlief)
+- [ ] Installer auf einem frischen Windows-Rechner ausprobieren (bisher nur macOS)
+- [ ] Programmordner beim Deinstallieren mit entfernen (nach dem Beenden, per Hilfsskript)

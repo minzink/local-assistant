@@ -14,6 +14,10 @@ hooks are called by the CLI:
 - ``prepare`` before the LLM is used (``download=False``: ``run``, ``eval``, ``bench``,
   ``eval-computer``) and in ``cassi setup`` (``download=True``, the only time an adapter may
   download anything). Returns lines to print; raises ``AdapterError`` if Cassi cannot start.
+- ``manage_tabs`` adds tabs to the management UI (``cassi manage``): information and actions,
+  described as data (``cassi.manage.Tab``) – no HTML.
+- ``uninstall`` when the user uninstalls: remove what the adapter created outside its folder
+  (``models``: its models too). Returns lines to show.
 
 ``adapters`` in the config chooses which installed adapters are used (default: all).
 """
@@ -27,6 +31,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from cassi.config import Settings
+    from cassi.manage import Tab
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +51,12 @@ class Adapter:
         return settings
 
     def prepare(self, settings: Settings, download: bool) -> list[str]:
+        return []
+
+    def manage_tabs(self, settings: Settings) -> list[Tab]:
+        return []
+
+    def uninstall(self, settings: Settings, models: bool) -> list[str]:
         return []
 
 

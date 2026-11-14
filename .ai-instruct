@@ -183,10 +183,27 @@ PhpStorm-Terminal übergeben.
     werden nachgeholt.
 - `ui/` – lokale Web-UI (aiohttp, 127.0.0.1:8765, WebSocket mit Origin-Prüfung), Debug-Log,
   Tray-/Menüleisten-Symbol (pystray).
-- `cli.py` – `cassi run|setup|claude|autostart|memory|mic-test|devices|bench|info`.
+- `cli.py` – `cassi run|setup|manage|update|uninstall|install-command|claude|autostart|memory|mic-test|devices|bench|info`.
 - `adapters.py` – Hooks für Pakete, die Cassi einbinden und personalisieren (Entry-Point-Gruppe
   `cassi.adapters`, z. B. Flay): `configure` (Einstellungen, ohne I/O) und `prepare` (Modelle
-  bereitstellen, Download nur in `cassi setup`). Cassi muss ohne Adapter unverändert laufen;
-  Hooks sind eine öffentliche Schnittstelle – Änderungen daran mit Flay abstimmen.
+  bereitstellen, Download nur in `cassi setup`), `manage_tabs` (eigene Tabs in der
+  Verwaltung) und `uninstall`. Cassi muss ohne Adapter unverändert laufen; Hooks sind eine
+  öffentliche Schnittstelle – Änderungen daran mit Flay abstimmen.
+- `app.py` – welches Programm läuft (`cassi` oder ein Adapter-Befehl wie `flay`, den
+  `cli.main(prog=…)` setzt), sein uv-Projekt und Cassis Quellordner mit `scripts/`.
+- `maintenance.py` – Befehl in `~/.local/bin` (Starter mit `uv run --project`), Git-Stand,
+  Updaten (nur Fast-Forward, nie über lokale Änderungen), Reparieren (= `scripts/setup.*` mit
+  `--project/--command`), Deinstallieren. Unterprozesse laufen ohne Terminal-Eingabe (die
+  Verwaltung ist im Browser – eine Passwortabfrage würde ewig warten).
+- `manage.py` + `ui/static/manage.html` – Verwaltung im Browser (`cassi manage`): Tabs als
+  Daten (`Tab`, `Section`, `Row`, `Action`, `Option`), Seite zeigt nur Text (kein HTML aus
+  Tabs). Nur 127.0.0.1, Schlüssel im URL-Fragment, Aktionen nur von der eigenen Herkunft.
+  Neue Wartungsfunktionen hier als `Action` ergänzen; die Installer (`install.command`,
+  `install.cmd`/`install.ps1`) bleiben dünne Hüllen um `scripts/setup.*`.
+- `updates.py` – laufendes Cassi wechselt zu einer neueren installierten Version (Version/Commit
+  geändert, Befehl zeigt auf andere Installation, eigene gelöscht): Hinweis im Chat
+  (`Notice`, für später verbundene Seiten über `WebUI.notices`), Neustart erst wenn
+  `Assistant.wait_until_idle()`; `updates.switch` schaltet es ab. Zustand, der einen Neustart
+  überleben muss, gehört auf die Platte (wie `timers.json`).
 - `offline.py` – erzwingt Offline-Betrieb (keine Hugging-Face-Downloads zur Laufzeit).
 - `autostart.py` – LaunchAgent (macOS) bzw. Autostart-Ordner (Windows).

@@ -137,7 +137,7 @@
 </head>
 <body>
 <header>
-  <h1>Cassi</h1>
+  <h1 id="name">Cassi</h1>
   <div class="status" id="status" data-state="offline"><span class="dot"></span><span id="status-text">Verbinde …</span></div>
   <div class="controls">
     <button class="toggle listen" id="listen" type="button" aria-pressed="false" title="Dauerhaft zuhören einschalten" hidden>
@@ -146,7 +146,11 @@
     </button>
     <button class="toggle wake" id="wake" type="button" aria-pressed="false" title="Nur auf „Hey Cassi“ reagieren" hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M9 10h.01M12 10h.01M15 10h.01"/></svg>
-      <span class="label">Hey Cassi</span>
+      <span class="label" id="wake-label">Hey Cassi</span>
+    </button>
+    <button class="toggle" id="new-session" type="button" title="Neues Gespräch: der bisherige Verlauf wird vergessen (Gelerntes bleibt)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M12 8v8M8 12h8"/></svg>
+      <span class="label">Neues Gespräch</span>
     </button>
     <button class="toggle" id="mic" type="button" aria-pressed="false" title="Mikrofon stumm schalten">
       <svg class="on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
@@ -160,7 +164,7 @@
     </button>
   </div>
 </header>
-<div id="banner">Keine Verbindung zu Cassi – versuche es erneut …</div>
+<div id="banner">Keine Verbindung – versuche es erneut …</div>
 <div id="recording" role="status">
   <span class="rec"></span>
   <span id="recording-text"></span>
@@ -258,6 +262,22 @@
     setWakeWord(wakeOn);
   }
 
+  // Cassi's, or an adapter's (Flay): from the server, so the page names who answers.
+  let wakePhrase = "Hey Cassi";
+  function setName(name, phrase) {
+    if (name) {
+      document.title = name;
+      document.getElementById("name").textContent = name;
+      document.getElementById("input").placeholder =
+        `Nachricht an ${name} … (Enter sendet, Umschalt+Enter für neue Zeile)`;
+      document.getElementById("banner").textContent = `Keine Verbindung zu ${name} – versuche es erneut …`;
+    }
+    if (phrase) {
+      wakePhrase = phrase;
+      document.getElementById("wake-label").textContent = phrase;
+    }
+  }
+
   function setWakeWord(enabled) {
     wakeOn = enabled ?? null;
     wake.hidden = wakeOn === null;
@@ -265,8 +285,8 @@
     wake.classList.toggle("idle", !continuousOn);
     const effect = continuousOn ? "" : " – wirkt beim dauerhaften Zuhören";
     wake.title = (wakeOn
-      ? "Auf alles reagieren, nicht nur auf „Hey Cassi“"
-      : "Nur auf „Hey Cassi …“ reagieren (Gespräche nebenbei werden ignoriert)") + effect;
+      ? `Auf alles reagieren, nicht nur auf „${wakePhrase}“`
+      : `Nur auf „${wakePhrase} …“ reagieren (Gespräche nebenbei werden ignoriert)`) + effect;
   }
 
   function setRecording(name) {
@@ -284,9 +304,11 @@
 
   const handlers = {
     Init(e) {
+      setName(e.name, e.wake_phrase);
       chat.replaceChildren();
       streaming = null;
       for (const m of e.history) bubble(m.role, m.text, m.interrupted ? "unterbrochen" : null);
+      for (const text of e.notices ?? []) notice(text);
       setEmpty();
       setMuted(e.microphone, e.speaker);
       setWakeWord(e.wake_word);
@@ -338,6 +360,11 @@
     },
     LogEntry(e) { addLog(e, true); },
     Notice(e) { notice(e.text); },
+    ContextCleared(e) {
+      chat.replaceChildren();
+      streaming = null;
+      notice(`Neues Gespräch${e.reason ? ` (${e.reason})` : ""} – der bisherige Verlauf ist vergessen, Gelerntes bleibt.`);
+    },
   };
 
   function connect() {
@@ -383,6 +410,11 @@
   wake.addEventListener("click", () => command({ type: "wake", enabled: wake.getAttribute("aria-pressed") !== "true" }));
   // Same as saying it: Cassi saves the workflow and answers.
   document.getElementById("recording-stop").addEventListener("click", () => command({ type: "send", text: "Ablauf fertig" }));
+  document.getElementById("new-session").addEventListener("click", () => {
+    if (confirm("Neues Gespräch beginnen? Der bisherige Verlauf wird vergessen (Gelerntes bleibt).")) {
+      command({ type: "new_session" });
+    }
+  });
   mic.addEventListener("click", () => command({ type: "mute", microphone: mic.getAttribute("aria-pressed") !== "true" }));
   speaker.addEventListener("click", () => command({ type: "mute", speaker: speaker.getAttribute("aria-pressed") !== "true" }));
 

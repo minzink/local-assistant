@@ -23,6 +23,7 @@ from cassi.core.events import (
     AssistantDelta,
     AssistantMessage,
     AssistantState,
+    ContextCleared,
     EventBus,
     ListeningChanged,
     MuteChanged,
@@ -343,6 +344,25 @@ class Assistant:
             restart()
         self.events.publish(WakeWordChanged(enabled))
 
+    def new_session(self, reason: str = "") -> None:
+        """Start a new conversation: what was said leaves the context (learned facts stay),
+        and a question that waited for "yes" is dropped – a "yes" now must not run it."""
+        self._memory.new_session()
+        self._pending = None
+        self._planner.pending = None
+        self._wake_follow_up = 0.0
+        log.info("Neues Gespräch%s", f" ({reason})" if reason else "")
+        self.events.publish(ContextCleared(reason))
+
+    @property
+    def name(self) -> str:
+        """The name shown in the chat and the tray (an adapter like Flay sets its own)."""
+        return self._settings.persona.name
+
+    @property
+    def wake_phrase(self) -> str:
+        return self._settings.input.continuous.wake_phrase
+
     @property
     def workflow_recording(self) -> str | None:
         """Name of the workflow being recorded, if any."""
@@ -384,6 +404,16 @@ class Assistant:
         self._announcement_queue.append(say)
         if self._announcer is None or self._announcer.done():
             self._announcer = asyncio.get_running_loop().create_task(self._announce_when_idle())
+
+    async def wait_until_idle(self, poll: float = 0.2) -> None:
+        """Until no turn runs, nothing is spoken and no workflow is being recorded."""
+        while (
+            (self._turn is not None and not self._turn.done())
+            or self.state is not AssistantState.IDLE
+            or self.workflow_recording is not None
+            or self._announcement_queue
+        ):
+            await asyncio.sleep(poll)
 
     async def _announce_when_idle(self) -> None:
         while self._announcement_queue:
@@ -1838,7 +1868,7 @@ class Assistant:
         recent = [m for m in self.history if m.role in (Role.USER, Role.ASSISTANT)][-4:]
         if recent:
             said = " | ".join(
-                f"{'User' if m.role is Role.USER else 'Cassi'}: {m.text[:300]}" for m in recent
+                f"{'User' if m.role is Role.USER else self.name}: {m.text[:300]}" for m in recent
             )
             lines.append(f"Conversation just before (for references like 'das'): {said}")
         editor = await asyncio.to_thread(_phpstorm_title)

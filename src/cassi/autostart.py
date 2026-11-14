@@ -11,9 +11,14 @@ from pathlib import Path
 LABEL = "de.cassi.assistant"
 
 
-def flay_command() -> list[str]:
-    cassi = shutil.which("cassi")
-    return [cassi] if cassi else [sys.executable, "-m", "cassi"]
+def program_command() -> list[str]:
+    """The running program (``cassi``, or an adapter's command like ``flay``): its launcher
+    if installed, else this Python with the module."""
+    from cassi.app import current
+
+    name = current().name
+    launcher = shutil.which(name)
+    return [launcher] if launcher else [sys.executable, "-m", name]
 
 
 def entry_path() -> Path:
@@ -45,7 +50,7 @@ def launch_agent(config: Path | None, log_file: Path) -> bytes:
     return plistlib.dumps(
         {
             "Label": LABEL,
-            "ProgramArguments": [*flay_command(), "run", "--background"],
+            "ProgramArguments": [*program_command(), "run", "--background"],
             "EnvironmentVariables": environment,
             "RunAtLoad": True,
             "ProcessType": "Interactive",
@@ -56,7 +61,7 @@ def launch_agent(config: Path | None, log_file: Path) -> bytes:
 
 
 def startup_script(config: Path | None) -> str:
-    command = " ".join(f'"{part}"' for part in [*flay_command(), "run", "--background"])
+    command = " ".join(f'"{part}"' for part in [*program_command(), "run", "--background"])
     lines = ["@echo off"]
     if config is not None:
         lines.append(f'set "CASSI_CONFIG={config.resolve()}"')

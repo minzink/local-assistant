@@ -86,6 +86,20 @@ class PersistentMemory:
     def _timeout(self) -> float:
         return self._settings.session_timeout_minutes * 60
 
+    def new_session(self) -> None:
+        self._store.start_session()
+
+    def switch_to(self, identity: str) -> str | None:
+        """Who talks now (name and model). If someone else talked last – Flay, then Cassi, or
+        another model – their conversation is not this one's: a new session starts. Returns
+        who talked before in that case, else None."""
+        before = self._store.meta("identity")
+        self._store.set_meta("identity", identity)
+        if before is None or before == identity:
+            return None
+        self._store.start_session()
+        return before
+
     def context(self) -> MemoryContext:
         session = self._store.session_at(self._clock(), self._timeout)
         recent = self._store.recent(session, self._settings.recent_messages)

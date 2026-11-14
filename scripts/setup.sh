@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Cassi unter macOS einrichten: Programme (uv, Git LFS, Ollama), Python-Pakete, Modelle.
-# Kann beliebig oft ausgeführt werden; was schon da ist, wird übersprungen.
-#   scripts/setup.sh [--no-install] [--skip-models]
+# Cassi unter macOS einrichten: Programme (uv, Git LFS, Ollama), Python-Pakete, Modelle, Befehl.
+# Kann beliebig oft ausgeführt werden (= Reparieren); was schon da ist, wird übersprungen.
+#   scripts/setup.sh [--no-install] [--skip-models] [--project DIR --command NAME]
 # Jeder Lauf schreibt ein ausführliches Log nach logs/setup-<Zeitstempel>.log.
+# --project/--command richten ein Paket ein, das Cassi einbindet (z.B. Flay: ../flay, flay).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -12,13 +13,18 @@ LOG_FILE="$LOG_DIR/setup-$(date +%Y%m%d-%H%M%S).log"
 OLLAMA_URL="http://127.0.0.1:11434"
 NO_INSTALL=0
 SKIP_MODELS=0
-for arg in "$@"; do
-    case "$arg" in
+PROJECT="$ROOT"  # the uv project to install (Cassi itself, or a package built on it)
+COMMAND=cassi    # its command
+while [ $# -gt 0 ]; do
+    case "$1" in
         --no-install) NO_INSTALL=1 ;;   # fehlende Programme nicht per Homebrew installieren
         --skip-models) SKIP_MODELS=1 ;; # 'cassi setup' (Modelle laden) auslassen
-        -h | --help) sed -n '2,5p' "$0"; exit 0 ;;
-        *) echo "Unbekannte Option: $arg" >&2; exit 2 ;;
+        --project) PROJECT="$(cd "${2:?--project braucht einen Ordner}" && pwd)"; shift ;;
+        --command) COMMAND="${2:?--command braucht einen Namen}"; shift ;;
+        -h | --help) sed -n '2,6p' "$0"; exit 0 ;;
+        *) echo "Unbekannte Option: $1" >&2; exit 2 ;;
     esac
+    shift
 done
 export NO_COLOR=1 UV_NO_PROGRESS=1 PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
@@ -49,7 +55,8 @@ diagnostics() {
     step "Systeminformationen (für Fehlersuche)"
     info "macOS $(sw_vers -productVersion 2>/dev/null) ($(uname -m)), $(sysctl -n machdep.cpu.brand_string 2>/dev/null)"
     info "RAM: $(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1073741824 )) GB"
-    info "Projekt: $ROOT ($(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo 'kein Git'))"
+    info "Cassi: $ROOT ($(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo 'kein Git'))"
+    [ "$PROJECT" = "$ROOT" ] || info "Projekt: $PROJECT ($COMMAND, $(git -C "$PROJECT" rev-parse --short HEAD 2>/dev/null || echo 'kein Git'))"
     local free_gb
     free_gb=$(df -g "$ROOT" | awk 'NR==2 {print $4}')
     info "Freier Speicher: ${free_gb} GB"
@@ -140,7 +147,7 @@ ollama_server() {
 
 python_packages() {
     step "Python-Pakete (uv sync)"
-    cd "$ROOT" || fail "$ROOT nicht gefunden"
+    cd "$PROJECT" || fail "$PROJECT nicht gefunden"
     run uv sync || fail "uv sync fehlgeschlagen"
     run uv run python --version
     run uv run python -c "import urllib.request; print('Python-Proxies:', urllib.request.getproxies() or 'keine')"
@@ -151,11 +158,17 @@ python_packages() {
 }
 
 models() {
-    step "Modelle laden (cassi setup: Spracherkennung, Stimmen, LLM über Ollama)"
-    cd "$ROOT" || fail "$ROOT nicht gefunden"
-    run uv run cassi -v setup || fail "cassi setup fehlgeschlagen (Details oben)"
-    run uv run cassi info >>"$LOG_FILE" 2>&1 # only into the log
+    step "Modelle laden ($COMMAND setup: Spracherkennung, Stimmen, LLM über Ollama)"
+    cd "$PROJECT" || fail "$PROJECT nicht gefunden"
+    run uv run "$COMMAND" -v setup || fail "$COMMAND setup fehlgeschlagen (Details oben)"
+    run uv run "$COMMAND" info >>"$LOG_FILE" 2>&1 # only into the log
     ok "Modelle vollständig"
+}
+
+launcher() {
+    step "Befehl $COMMAND einrichten"
+    cd "$PROJECT" || fail "$PROJECT nicht gefunden"
+    run uv run "$COMMAND" install-command || warn "Befehl nicht eingerichtet – starten mit: uv run $COMMAND run"
 }
 
 step "Cassi-Setup gestartet, Log: $LOG_FILE"
@@ -165,8 +178,9 @@ lfs
 ollama_server
 python_packages
 if [ "$SKIP_MODELS" -eq 1 ]; then warn "Modelle übersprungen (--skip-models)"; else models; fi
+launcher
 
-printf '\nFertig. Starten mit:  uv run cassi run\n'
+printf '\nFertig. Starten mit:  %s run   (Verwaltung: %s manage)\n' "$COMMAND" "$COMMAND"
 printf 'Einmalig in Systemeinstellungen → Datenschutz & Sicherheit für das Terminal erlauben:\n'
 printf '  Mikrofon, Bedienungshilfen, Eingabeüberwachung (und Bildschirmaufnahme für Screenshots).\n'
 printf 'Log: %s\n' "$LOG_FILE"

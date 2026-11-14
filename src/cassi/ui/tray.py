@@ -82,7 +82,9 @@ def _on_main_thread(function: Callable[[], None]) -> None:
 
 
 class Tray:
-    def __init__(self, ui_url: str | None) -> None:
+    def __init__(
+        self, ui_url: str | None, name: str = "Cassi", wake_phrase: str = "Hey Cassi"
+    ) -> None:
         import pystray
 
         self._ui_url = ui_url
@@ -100,11 +102,11 @@ class Tray:
         self._answered = ""
         item = pystray.MenuItem
         self._icon = pystray.Icon(
-            "cassi",
+            name.lower(),
             icon_image(self._state, False),
-            "Cassi",
+            name,
             menu=pystray.Menu(
-                item(lambda _: f"Cassi – {STATE_LABELS[self._state]}", None, enabled=False),
+                item(lambda _: f"{name} – {STATE_LABELS[self._state]}", None, enabled=False),
                 item(
                     lambda _: f"Verstanden: {self._heard}",
                     None,
@@ -130,7 +132,7 @@ class Tray:
                     visible=lambda _: self._continuous is not None,
                 ),
                 item(
-                    "Nur auf „Hey Cassi“ reagieren",
+                    f"Nur auf „{wake_phrase}“ reagieren",
                     self._toggle_wake_word,
                     checked=lambda _: bool(self._wake_word),
                     visible=lambda _: self._wake_word is not None,
@@ -150,7 +152,9 @@ class Tray:
                     self._toggle_screen,
                     checked=lambda _: _screen_paused(),
                 ),
+                item("Neues Gespräch (Kontext leeren)", self._new_session),
                 item("Web-UI öffnen", self._open_ui, visible=ui_url is not None),
+                item("Verwaltung öffnen …", self._open_manage),
                 pystray.Menu.SEPARATOR,
                 item("Beenden", self._quit),
             ),
@@ -265,9 +269,29 @@ class Tray:
         log.info("Bildschirm %s", "pausiert" if PRIVACY.paused else "wieder freigegeben")
         self._refresh()
 
+    def _new_session(self) -> None:
+        if self._assistant is not None:
+            self._call(functools.partial(self._assistant.new_session, "über das Menü"))
+
     def _open_ui(self) -> None:
         if self._ui_url:
             threading.Thread(target=webbrowser.open, args=(self._ui_url,), daemon=True).start()
+
+    def _open_manage(self) -> None:
+        """Repair, update, uninstall: its own process, so it works while Cassi runs."""
+        import subprocess
+
+        from cassi.app import current
+
+        try:
+            subprocess.Popen(
+                current().command("manage"),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=sys.platform != "win32",
+            )
+        except OSError:
+            log.exception("Verwaltung ließ sich nicht starten")
 
     def _quit(self) -> None:
         main = self._main

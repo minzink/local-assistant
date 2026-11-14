@@ -93,6 +93,10 @@ class Memory(Protocol):
 
     async def close(self) -> None: ...
 
+    def new_session(self) -> None:
+        """Start a new conversation: the messages so far leave the context (facts stay)."""
+        ...
+
 
 class FactMemory(Protocol):
     """Long-term facts the user manages explicitly ("remember …", "forget …")."""
@@ -131,3 +135,6 @@ class ShortTermMemory:
 
     async def close(self) -> None:
         pass
+
+    def new_session(self) -> None:
+        self._messages.clear()

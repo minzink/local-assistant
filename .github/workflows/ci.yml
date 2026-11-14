@@ -23,3 +23,19 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy
       - run: uv run pytest
+      # The install and setup scripts cannot run here (they install programs and models),
+      # but they must at least parse.
+      - name: Shell scripts parse
+        if: runner.os == 'macOS'
+        run: for f in scripts/*.sh install.command; do bash -n "$f" || exit 1; done
+      - name: PowerShell scripts parse
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $failed = $false
+          foreach ($file in @(Get-ChildItem scripts\*.ps1, install.ps1, tools\voice-training\*.ps1)) {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$null, [ref]$errors) | Out-Null
+            if ($errors) { $errors | ForEach-Object { Write-Host "$($file.Name): $_" }; $failed = $true }
+          }
+          if ($failed) { exit 1 }

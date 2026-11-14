@@ -279,3 +279,42 @@ def test_actions_are_stored_with_the_reply(tmp_path: Path) -> None:
         "Closed.",
         True,
     )
+
+
+def test_a_new_session_empties_the_context_but_keeps_the_messages(store: MemoryStore) -> None:
+    clock = Clock()
+    memory = make_memory(store, ScriptedLLM(), clock, recent_messages=4)
+    memory.record(user("Wer bist du?"), assistant("Ich bin Flay."))
+
+    memory.new_session()
+
+    assert memory.context().recent == ()
+    memory.record(user("Hallo"), assistant("Hi!"))
+    assert [m.text for m in memory.context().recent] == ["Hallo", "Hi!"]
+    assert len(store.recent(1, 10)) == 2  # the old conversation is still stored
+
+
+def test_another_assistant_or_model_starts_a_new_conversation(store: MemoryStore) -> None:
+    clock = Clock()
+    flay = make_memory(store, ScriptedLLM(), clock, recent_messages=4)
+    assert flay.switch_to("Flay (flay:7963c3e0)") is None  # first start: nothing to compare
+    flay.record(user("Wer bist du?"), assistant("Ich bin Flay."))
+
+    clock.now += 60  # Cassi starts a minute later: the same session by time
+    cassi = make_memory(store, ScriptedLLM(), clock, recent_messages=4)
+    assert cassi.switch_to("Cassi (qwen3-vl:8b-instruct)") == "Flay (flay:7963c3e0)"
+
+    assert cassi.context().recent == ()
+    cassi.record(user("Hallo"), assistant("Hi!"))
+    again = make_memory(store, ScriptedLLM(), clock, recent_messages=4)
+    assert again.switch_to("Cassi (qwen3-vl:8b-instruct)") is None  # same one: continues
+    assert [m.text for m in again.context().recent] == ["Hallo", "Hi!"]
+
+
+def test_short_term_memory_starts_over_too() -> None:
+    memory = ShortTermMemory()
+    memory.record(user("Hallo"), assistant("Hi!"))
+
+    memory.new_session()
+
+    assert memory.context().recent == ()

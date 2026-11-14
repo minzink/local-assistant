@@ -95,6 +95,13 @@ class LogEntry:
 
 
 @dataclass(frozen=True, slots=True)
+class ContextCleared:
+    """A new conversation started: the chat empties, what was said is no longer context."""
+
+    reason: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class Notice:
     """Something the user should know, e.g. a mute recording or "nothing understood"."""
 
@@ -119,6 +126,7 @@ Event = (
     | RecordingChanged
     | ToolUsed
     | Notice
+    | ContextCleared
     | LogEntry
     | TurnProfiled
 )

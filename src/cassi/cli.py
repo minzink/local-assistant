@@ -18,7 +18,6 @@ import yaml
 from openai import OpenAIError
 from pydantic import ValidationError
 
-from cassi import __version__
 from cassi.adapters import Adapter, AdapterError
 from cassi.adapters import configure as configure_adapters
 from cassi.adapters import load as load_adapters
@@ -34,6 +33,7 @@ from cassi.core.platform import detect_hardware
 from cassi.input.base import InputMode
 
 if TYPE_CHECKING:
+    from cassi.assistant import Assistant
     from cassi.training import Counts
     from cassi.ui.tray import Tray
     from cassi.wake import WakeWord
@@ -51,8 +51,11 @@ TRAINING_WORTHWHILE = 300
 
 
 def _info(settings: Settings, config: Path | None) -> int:
+    from cassi.app import current
+
     hardware = detect_hardware()
-    print(f"cassi {__version__}")
+    program = current()
+    print(f"{program.name} {program.version}")
     print(f"System:        {hardware.system} ({hardware.machine})")
     print(f"Beschleuniger: {hardware.accelerator}")
     print(f"Config:        {resolve_config_path(config) or 'Standardwerte'}")
@@ -679,6 +682,35 @@ async def _setup(settings: Settings, adapters: Sequence[Adapter] = ()) -> int:
     return 0
 
 
+def _maintenance(settings: Settings, adapters: Sequence[Adapter], args: argparse.Namespace) -> int:
+    from cassi import app, maintenance
+
+    program = app.current()
+    if args.command == "install-command":
+        if args.remove:
+            maintenance.remove_command(program, print)
+            return 0
+        return 0 if maintenance.install_command(program, print) else 1
+    if args.command == "update":
+        if args.check:
+            return 0 if maintenance.check_updates(program, print) else 1
+        if not maintenance.pull(program, print):
+            return 1
+        command = maintenance.setup_command(program)
+        if command is None:
+            print("Kein Quellordner mit scripts/setup gefunden – nur der Code wurde aktualisiert.")
+            return 1
+        return 0 if maintenance.run_process(command, print) else 1
+    if not args.yes:
+        what = ["Autostart", f"Befehl {program.name}"]
+        what += ["Datenordner"] if args.data else []
+        what += ["Modelle in Ollama"] if args.models else []
+        if input(f"{', '.join(what)} entfernen? [j/N] ").strip().lower() not in ("j", "ja", "y"):
+            return 1
+    ok = maintenance.uninstall(program, settings, adapters, print, args.data, args.models)
+    return 0 if ok else 1
+
+
 def _autostart(settings: Settings, config: Path | None, action: str) -> int:
     from cassi import autostart
 
@@ -702,17 +734,46 @@ def _autostart(settings: Settings, config: Path | None, action: str) -> int:
 LLM_STARTUP_WAIT = 45
 
 
+# Why Cassi ended to make way for a newer version (set by the update watcher in _run).
+_SWITCH: list[str] = []
+
+
 def _start(settings: Settings) -> int:
-    """Run Cassi, with a menu bar / tray icon if enabled."""
-    if not settings.ui.tray:
+    """Run Cassi, with a menu bar / tray icon if enabled; then hand over to a newer version
+    if one took over while it ran."""
+    code = _start_once(settings)
+    if _SWITCH:
+        from cassi import app, updates
+
+        command = updates.restart_command(app.current(), sys.argv[1:])
+        if command is None:
+            log.info("Neuere Version gefunden (%s), aber nichts zu starten – beendet.", _SWITCH[0])
+        else:
+            updates.switch(command, _SWITCH[0])
+    return code
+
+
+def _without_tray(settings: Settings) -> int:
+    try:
         return asyncio.run(_run(settings))
+    except asyncio.CancelledError:  # ended to switch to a newer version
+        return 0
+
+
+def _start_once(settings: Settings) -> int:
+    if not settings.ui.tray:
+        return _without_tray(settings)
     try:
         from cassi.ui.tray import Tray
 
-        tray = Tray(f"http://127.0.0.1:{settings.ui.port}/" if settings.ui.enabled else None)
+        tray = Tray(
+            f"http://127.0.0.1:{settings.ui.port}/" if settings.ui.enabled else None,
+            settings.persona.name,
+            settings.input.continuous.wake_phrase,
+        )
     except Exception as exc:  # e.g. no graphical session
         log.warning("Menüleisten-Symbol nicht verfügbar (%s) – Cassi läuft ohne.", exc)
-        return asyncio.run(_run(settings))
+        return _without_tray(settings)
     return tray.run(lambda tray: _run(settings, tray))
 
 
@@ -889,8 +950,14 @@ async def _run(settings: Settings, tray: Tray | None = None) -> int:
             ready += " Unterbrechen per Sprache ist an (Headset empfohlen)."
 
     memory = _create_memory(settings, llm)
+    switched_from = None
     if isinstance(memory, PersistentMemory):
         log.info("Training: %s", _training_line(memory.training_counts()))
+        # Cassi and adapters like Flay share the data folder: the last conversation of
+        # another assistant or model is not this one's (it would think it were Flay).
+        switched_from = memory.switch_to(identity(settings))
+        if switched_from:
+            log.info("Zuletzt sprach %s – neues Gespräch begonnen", switched_from)
     # Loads the embedding model in the background; until then recall uses keywords only.
     warm_memory = getattr(memory, "warm_up", None)
     memory_ready = asyncio.create_task(warm_memory()) if callable(warm_memory) else None
@@ -984,7 +1051,13 @@ async def _run(settings: Settings, tray: Tray | None = None) -> int:
         background.append(asyncio.create_task(watcher.run()))
     if tray is not None:
         tray.attach(assistant)
-    ui = WebUI(assistant, settings.ui.port) if settings.ui.enabled else None
+    notices = _watch_for_updates(settings, assistant, background)
+    if switched_from:
+        notices.append(
+            f"Neues Gespräch: zuletzt sprach {switched_from}, jetzt {identity(settings)}. "
+            "Der Verlauf von damals gehört nicht hierher; Gelerntes bleibt."
+        )
+    ui = WebUI(assistant, settings.ui.port, notices) if settings.ui.enabled else None
     try:
         if ui is not None:
             try:
@@ -1012,6 +1085,52 @@ async def _run(settings: Settings, tray: Tray | None = None) -> int:
             memory_ready.cancel()
         await memory.close()
     return 0
+
+
+def identity(settings: Settings) -> str:
+    """Who talks: name and model – a change starts a new conversation."""
+    return f"{settings.persona.name} ({settings.llm.model})"
+
+
+def _watch_for_updates(
+    settings: Settings, assistant: Assistant, background: list[asyncio.Task[Any]]
+) -> list[str]:
+    """Switch to a newer installed version once idle (``cassi.updates``); the notices for the
+    chat (after a switch: what replaced what)."""
+    from cassi import app, updates
+    from cassi.core.events import Notice
+
+    notices = []
+    previous = os.environ.pop(updates.SWITCHED_ENV, None)
+    if previous:
+        notices.append(f"Neu gestartet mit {updates.installed(app.current()).label} – {previous}.")
+    if not settings.updates.switch:
+        return notices
+    main = asyncio.current_task()
+
+    async def switch_when_idle(reason: str) -> None:
+        await assistant.wait_until_idle()
+        assistant.events.publish(Notice("Starte jetzt neu …"))
+        await asyncio.sleep(1.5)  # the chat shows it before the connection drops
+        _SWITCH.append(reason)
+        if main is not None:
+            main.cancel()
+
+    def on_newer(reason: str) -> None:
+        program = app.current()
+        if updates.restart_command(program, sys.argv[1:]) is None:
+            text = (
+                f"Neue Version: {reason}. Diese Installation kann sie nicht starten – ich beende "
+                f"mich, damit die neue starten kann ({program.name} run)."
+            )
+        else:
+            text = f"Neue Version: {reason}. Ich starte neu, sobald ich nichts zu tun habe."
+        assistant.events.publish(Notice(text))
+        background.append(asyncio.create_task(switch_when_idle(reason)))
+
+    watcher = updates.UpdateWatcher(app.current(), on_newer, settings.updates.check_seconds)
+    background.append(asyncio.create_task(watcher.run()))
+    return notices
 
 
 def _resolved(settings: Settings) -> Settings:
@@ -1067,9 +1186,13 @@ def _warm_ocr() -> None:
         log.debug("Texterkennung nicht vorgewärmt: %s", exc)
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cassi", description="Lokaler Sprachassistent")
-    parser.add_argument("--version", action="version", version=f"cassi {__version__}")
+def main(argv: Sequence[str] | None = None, prog: str = "cassi") -> int:
+    """Cassi's command line; an adapter's own command (``flay``) passes its name as ``prog``."""
+    from cassi import app
+
+    app.set_name(prog)
+    parser = argparse.ArgumentParser(prog=prog, description="Lokaler Sprachassistent")
+    parser.add_argument("--version", action="version", version=f"{prog} {app.current().version}")
     parser.add_argument("-c", "--config", type=Path, help="Pfad zur YAML-Konfiguration")
     parser.add_argument("-v", "--verbose", action="store_true", help="Debug-Ausgaben")
     commands = parser.add_subparsers(dest="command")
@@ -1077,6 +1200,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     autostart = commands.add_parser("autostart", help="Cassi bei der Anmeldung starten")
     autostart.add_argument("action", nargs="?", choices=["on", "off", "status"], default="status")
     commands.add_parser("info", help="Hardware und aufgelöste Konfiguration anzeigen")
+    manage_parser = commands.add_parser(
+        "manage", help="Verwaltung im Browser: Reparieren, Updaten, Deinstallieren, Infos"
+    )
+    manage_parser.add_argument("--no-browser", action="store_true", help="nur die Adresse ausgeben")
+    manage_parser.add_argument("--port", type=int, default=0, help="Port (Standard: ein freier)")
+    install_command = commands.add_parser(
+        "install-command", help="Befehl im PATH einrichten (~/.local/bin, macht das Setup)"
+    )
+    install_command.add_argument("--remove", action="store_true", help="wieder entfernen")
+    update = commands.add_parser("update", help="Neuesten Stand holen und reparieren")
+    update.add_argument("--check", action="store_true", help="nur nach Updates suchen")
+    uninstall = commands.add_parser(
+        "uninstall", help="Autostart, Befehl und auf Wunsch Daten und Modelle entfernen"
+    )
+    uninstall.add_argument("--data", action="store_true", help="auch den Datenordner löschen")
+    uninstall.add_argument("--models", action="store_true", help="auch die Modelle in Ollama")
+    uninstall.add_argument("--yes", action="store_true", help="ohne Rückfrage")
     commands.add_parser("doctor", help="Prüfen, was Cassi braucht, mit Abhilfe")
     history = commands.add_parser("history", help="Die letzten Anfragen und was Cassi tat")
     history.add_argument("-n", type=int, default=20, help="Anzahl (Standard: 20)")
@@ -1225,6 +1365,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     try:
+        if args.command == "manage":
+            from cassi import manage
+
+            return asyncio.run(
+                manage.serve(
+                    app.current(),
+                    settings,
+                    adapters,
+                    args.config,
+                    open_browser=not args.no_browser,
+                    port=args.port,
+                )
+            )
+        if args.command in ("install-command", "update", "uninstall"):
+            return _maintenance(settings, adapters, args)
         if args.command == "autostart":
             return _autostart(settings, args.config, args.action)
         if args.command == "setup":

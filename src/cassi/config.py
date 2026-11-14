@@ -66,6 +66,8 @@ class ContinuousSettings(_Section):
     # bundled detector).
     wake_model: Path | None = None
     wake_pattern: str | None = None
+    # How the wake word is shown in the chat and the tray (an adapter sets its own).
+    wake_phrase: str = "Hey Cassi"
 
     @field_validator("wake_pattern")
     @classmethod
@@ -462,6 +464,14 @@ class UISettings(_Section):
     tray: bool = True
 
 
+class UpdateSettings(_Section):
+    # A running Cassi switches to a newer installed version by itself (after `cassi update`,
+    # a git pull or a new installation) once it has nothing to do, and says so in the chat.
+    # Off while developing, if every commit should not restart it.
+    switch: bool = True
+    check_seconds: float = Field(default=60, ge=5)
+
+
 class PrivacySettings(_Section):
     # No screenshot (nor OCR) while one of these apps – or a window whose title contains one
     # of these words – is visible in the captured part of the screen. Compared without case,
@@ -494,6 +504,7 @@ class Settings(_Section):
     persona: PersonaSettings = PersonaSettings()
     memory: MemorySettings = MemorySettings()
     ui: UISettings = UISettings()
+    updates: UpdateSettings = UpdateSettings()
     tools: ToolsSettings = ToolsSettings()
     privacy: PrivacySettings = PrivacySettings()
     data_dir: Path = Field(default_factory=lambda: default_data_dir())

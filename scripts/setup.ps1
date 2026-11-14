@@ -1,16 +1,20 @@
-# Cassi unter Windows einrichten: Programme (uv, Git LFS, Ollama), Python-Pakete, Modelle.
-# Kann beliebig oft ausgefuehrt werden; was schon da ist, wird uebersprungen.
+# Cassi unter Windows einrichten: Programme (uv, Git LFS, Ollama), Python-Pakete, Modelle, Befehl.
+# Kann beliebig oft ausgefuehrt werden (= Reparieren); was schon da ist, wird uebersprungen.
 #   scripts\setup.cmd                  (Doppelklick oder aus cmd/PowerShell)
 #   powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 [-NoInstall] [-SkipModels]
+#       [-Project DIR -Command NAME]   (ein Paket, das Cassi einbindet, z.B. Flay: ..\flay, flay)
 # Jeder Lauf schreibt ein ausfuehrliches Log nach logs\setup-<Zeitstempel>.log.
 # ASCII only: Windows PowerShell 5.1 reads scripts without BOM as ANSI.
 param(
     [switch]$NoInstall,   # fehlende Programme nicht per winget installieren, nur pruefen
-    [switch]$SkipModels   # 'cassi setup' (Modelle laden) auslassen
+    [switch]$SkipModels,  # 'cassi setup' (Modelle laden) auslassen
+    [string]$Project = "", # the uv project to install (default: Cassi itself)
+    [string]$Command = "cassi"  # its command
 )
 $ErrorActionPreference = "Stop"
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$Project = if ($Project) { (Resolve-Path $Project).Path } else { $Root }
 $LogDir = Join-Path $Root "logs"
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 $LogFile = Join-Path $LogDir ("setup-{0:yyyyMMdd-HHmmss}.log" -f (Get-Date))
@@ -140,7 +144,8 @@ function Write-Diagnostics {
     $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
     if ($os) { Write-Log "Windows: $($os.Caption) $($os.Version), $env:PROCESSOR_ARCHITECTURE" }
     Write-Log "PowerShell: $($PSVersionTable.PSVersion)"
-    Write-Log "Projekt: $Root"
+    Write-Log "Cassi: $Root"
+    if ($Project -ne $Root) { Write-Log "Projekt: $Project ($Command)" }
     if ($os) { Write-Log ("RAM: {0:N1} GB" -f ($os.TotalVisibleMemorySize / 1MB)) }
 
     $drive = Get-PSDrive -Name ((Split-Path -Qualifier $Root).TrimEnd(":")) -ErrorAction SilentlyContinue
@@ -293,7 +298,7 @@ function Start-OllamaServer {
 
 function Install-Python {
     Write-Log "Python-Pakete (uv sync, beim ersten Mal mehrere GB fuer PyTorch)" "STEP"
-    Push-Location $Root
+    Push-Location $Project
     try {
         if ((Invoke-Logged "uv" @("sync")) -ne 0) { throw "uv sync fehlgeschlagen." }
         Invoke-Logged "uv" @("run", "python", "--version") -Quiet | Out-Null
@@ -317,17 +322,29 @@ function Install-Python {
 }
 
 function Install-Models {
-    Write-Log "Modelle laden (cassi setup: Spracherkennung, Stimmen, LLM ueber Ollama)" "STEP"
-    Push-Location $Root
+    Write-Log "Modelle laden ($Command setup: Spracherkennung, Stimmen, LLM ueber Ollama)" "STEP"
+    Push-Location $Project
     try {
-        if ((Invoke-Logged "uv" @("run", "cassi", "-v", "setup")) -ne 0) {
-            throw "cassi setup fehlgeschlagen (Details oben und im Log)."
+        if ((Invoke-Logged "uv" @("run", $Command, "-v", "setup")) -ne 0) {
+            throw "$Command setup fehlgeschlagen (Details oben und im Log)."
         }
-        Invoke-Logged "uv" @("run", "cassi", "info") -Quiet | Out-Null
+        Invoke-Logged "uv" @("run", $Command, "info") -Quiet | Out-Null
     } finally {
         Pop-Location
     }
     Write-Log "Modelle vollstaendig" "OK"
+}
+
+function Install-Launcher {
+    Write-Log "Befehl $Command einrichten" "STEP"
+    Push-Location $Project
+    try {
+        if ((Invoke-Logged "uv" @("run", $Command, "install-command")) -ne 0) {
+            Write-Log "Befehl nicht eingerichtet - starten mit: uv run $Command run" "WARN"
+        }
+    } finally {
+        Pop-Location
+    }
 }
 
 Write-Log "Cassi-Setup gestartet, Log: $LogFile" "STEP"
@@ -339,13 +356,14 @@ try {
     Start-OllamaServer
     Install-Python
     if ($SkipModels) { Write-Log "Modelle uebersprungen (-SkipModels)" "WARN" } else { Install-Models }
+    Install-Launcher
 } catch {
     Write-Log $_.Exception.Message "ERROR"
     Write-Log $_.ScriptStackTrace "DEBUG"
     Write-Host "`nSetup fehlgeschlagen. Vollstaendiges Log: $LogFile" -ForegroundColor Red
     exit 1
 }
-Write-Host "`nFertig. Starten mit:  uv run cassi run" -ForegroundColor Green
+Write-Host "`nFertig. Starten mit:  $Command run   (Verwaltung: $Command manage)" -ForegroundColor Green
 Write-Host "(In einem neuen Terminal, falls uv gerade erst installiert wurde.)"
 Write-Host "Log: $LogFile"
 exit 0

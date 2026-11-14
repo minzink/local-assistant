@@ -212,6 +212,22 @@ def create(base_url: str, variant: Variant, timeout: float = 120.0) -> bool:
     return bool(isinstance(result, dict) and result.get("status") == "success")
 
 
+def delete(base_url: str, name: str, timeout: float = 30.0) -> bool:
+    """Remove a model from the Ollama server (uninstalling); False if that failed."""
+    request = urllib.request.Request(
+        server_root(base_url) + "/api/delete",
+        data=json.dumps({"model": name}).encode(),
+        headers={"Content-Type": "application/json"},
+        method="DELETE",
+    )
+    try:
+        with _open(request, timeout):
+            return True
+    except (OSError, ValueError, urllib.error.URLError) as exc:
+        log.info("%s nicht gelöscht: %s", name, exc)
+        return False
+
+
 def pull(
     base_url: str,
     model: str,

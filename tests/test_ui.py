@@ -105,7 +105,7 @@ async def test_logs_are_streamed_and_replayed(
     import logging
 
     # Without `cassi run` (or an earlier test) setting it, INFO/DEBUG would be dropped.
-    caplog.set_level(logging.DEBUG, logger="flay")
+    caplog.set_level(logging.DEBUG, logger="cassi")
     async with client.ws_connect("/ws", headers=ORIGIN) as ws:
         await ws.receive_json()
         logging.getLogger("cassi.tools.phpstorm").info("PhpStorm: Projekt „flay“ geöffnet")
@@ -211,3 +211,38 @@ def test_without_the_wake_word_model_the_switch_is_hidden() -> None:
     assert assistant.wake_word is None
     assistant.set_wake_word(True)
     assert assistant.wake_word is None
+
+
+def test_notices_reach_pages_that_connect_later() -> None:
+    assistant = Assistant(
+        Settings(), FakeSource(), FakeSTT("x"), FakeLLM("A."), FakeTTS(), FakeOutput()
+    )
+    ui = WebUI(assistant, PORT, ["Neu gestartet mit Flay 0.2.1"])
+
+    assert ui.initial_state()["notices"] == ["Neu gestartet mit Flay 0.2.1"]
+
+
+def test_the_page_names_who_answers() -> None:
+    settings = Settings.model_validate(
+        {"persona": {"name": "Flay"}, "input": {"continuous": {"wake_phrase": "Hey Flay"}}}
+    )
+    assistant = Assistant(
+        settings, FakeSource(), FakeSTT("x"), FakeLLM("A."), FakeTTS(), FakeOutput()
+    )
+
+    state = WebUI(assistant, PORT).initial_state()
+
+    assert (state["name"], state["wake_phrase"]) == ("Flay", "Hey Flay")
+
+
+async def test_the_new_conversation_button_empties_the_context(client: TestClient) -> None:
+    async with client.ws_connect("/ws", headers=ORIGIN) as ws:
+        init = await ws.receive_json()
+        assert init["history"]
+
+        await ws.send_json({"type": "new_session"})
+        cleared = await ws.receive_json()
+
+    assert cleared == {"type": "ContextCleared", "reason": "über die Web-UI"}
+    async with client.ws_connect("/ws", headers=ORIGIN) as ws:
+        assert (await ws.receive_json())["history"] == []

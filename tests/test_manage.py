@@ -1,0 +1,236 @@
+import asyncio
+from collections.abc import AsyncIterator, Mapping
+from pathlib import Path
+
+import pytest
+from aiohttp.test_utils import TestClient, TestServer
+
+from cassi import app as cassi_app
+from cassi.adapters import Adapter
+from cassi.app import App
+from cassi.config import Settings
+from cassi.maintenance import Output
+from cassi.manage import Action, Launcher, ManageServer, Option, Row, Section, Tab, tabs_for
+
+TOKEN = "secret"
+
+
+def greet(out: Output, options: Mapping[str, bool]) -> bool:
+    out("hallo")
+    out("laut" if options.get("loud") else "leise")
+    return True
+
+
+class Extending(Adapter):
+    name = "extending"
+
+    def manage_tabs(self, settings: Settings) -> list[Tab]:
+        return [
+            Tab(
+                "extra",
+                "Extra",
+                lambda: [Section("Info", [Row("Modell", "m1", "ok")], "<b>kein HTML</b>")],
+                [Action("greet", "Grüßen", "Sagt hallo.", greet, options=[Option("loud", "Laut")])],
+            )
+        ]
+
+
+class Broken(Adapter):
+    name = "broken"
+
+    def manage_tabs(self, settings: Settings) -> list[Tab]:
+        return [Tab("bad", "Kaputt", lambda: 1 / 0)]  # type: ignore[arg-type,return-value]
+
+
+@pytest.fixture
+async def client(tmp_path: Path) -> AsyncIterator[TestClient]:
+    program = App("cassi", tmp_path, None)
+    settings = Settings(data_dir=tmp_path / "data")
+    tabs = tabs_for(program, settings, [Extending(), Broken()], None, lambda: None)
+    server = ManageServer(program, tabs, token=TOKEN)
+    async with TestClient(TestServer(server.web)) as test_client:
+        server.port = test_client.port
+        yield test_client
+
+
+def auth(client: TestClient, post: bool = False) -> dict[str, str]:
+    headers = {"X-Cassi-Token": TOKEN}
+    if post:
+        headers["Origin"] = f"http://127.0.0.1:{client.port}"
+    return headers
+
+
+async def test_the_api_needs_the_token(client: TestClient) -> None:
+    assert (await client.get("/api/tabs")).status == 403
+    assert (await client.get("/api/tabs", headers={"X-Cassi-Token": "wrong"})).status == 403
+    assert (await client.get("/")).status == 200  # the page itself holds nothing
+
+
+async def test_actions_only_from_the_pages_own_origin(client: TestClient) -> None:
+    body = {"tab": "extra", "action": "greet"}
+    headers = {"X-Cassi-Token": TOKEN, "Origin": "https://evil.example.org"}
+
+    assert (await client.post("/api/run", json=body, headers=headers)).status == 403
+
+
+async def test_adapter_tabs_come_before_uninstall(client: TestClient) -> None:
+    data = await (await client.get("/api/tabs", headers=auth(client))).json()
+
+    ids = [tab["id"] for tab in data["tabs"]]
+    assert ids[:2] == ["overview", "maintenance"]
+    assert ids[-1] == "uninstall"
+    assert "extra" in ids
+
+
+async def test_an_adapter_tab_is_data_and_its_action_runs(client: TestClient) -> None:
+    tab = await (await client.get("/api/tabs/extra", headers=auth(client))).json()
+    assert tab["sections"][0]["rows"] == [{"label": "Modell", "value": "m1", "level": "ok"}]
+    assert tab["actions"][0]["options"] == [{"id": "loud", "label": "Laut", "default": False}]
+
+    body = {"tab": "extra", "action": "greet", "options": {"loud": True}}
+    response = await client.post("/api/run", json=body, headers=auth(client, post=True))
+    job = (await response.json())["job"]
+    for _ in range(50):
+        state = await (await client.get(f"/api/jobs/{job}", headers=auth(client))).json()
+        if state["done"]:
+            break
+        await asyncio.sleep(0.02)
+
+    assert state == {"lines": ["hallo", "laut"], "done": True, "ok": True}
+
+
+async def test_a_broken_tab_shows_an_error_instead_of_breaking_the_page(
+    client: TestClient,
+) -> None:
+    tab = await (await client.get("/api/tabs/bad", headers=auth(client))).json()
+
+    assert tab["sections"][0]["title"] == "Fehler"
+
+
+async def test_builtin_uninstall_tab_offers_data_and_models(client: TestClient) -> None:
+    tab = await (await client.get("/api/tabs/uninstall", headers=auth(client))).json()
+
+    action = tab["actions"][0]
+    assert action["danger"] and action["confirm"]
+    assert [o["id"] for o in action["options"]] == ["data", "models"]
+    assert not any(o["default"] for o in action["options"])
+
+
+def test_flay_runs_under_its_own_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    from cassi import autostart
+
+    monkeypatch.setattr(cassi_app, "_name", "flay")
+    monkeypatch.setattr(autostart.shutil, "which", lambda name: None)
+
+    assert cassi_app.current().name == "flay"
+    assert autostart.program_command()[-2:] == ["-m", "flay"]
+
+
+class FakeLauncher(Launcher):
+    def __init__(self) -> None:
+        super().__init__(App("flay", None, None), Settings(), None)
+        self.is_running = False
+        self.started = 0
+
+    def status(self) -> tuple[bool | None, str]:
+        return self.is_running, ""
+
+    def start(self) -> str | None:
+        self.started += 1
+        self.is_running = True
+        return None
+
+
+async def test_the_header_starts_the_assistant_once(tmp_path: Path) -> None:
+    launcher = FakeLauncher()
+    server = ManageServer(App("flay", tmp_path, None), [], token=TOKEN, launcher=launcher)
+    async with TestClient(TestServer(server.web)) as client:
+        server.port = client.port
+        status = await (await client.get("/api/status", headers=auth(client))).json()
+        assert status == {
+            "startable": True,
+            "running": False,
+            "chat": "http://127.0.0.1:8765/",
+            "problem": "",
+        }
+
+        assert (await client.post("/api/start", headers={"X-Cassi-Token": TOKEN})).status == 403
+        first = await client.post("/api/start", headers=auth(client, post=True))
+        again = await client.post("/api/start", headers=auth(client, post=True))
+
+        assert (await first.json())["ok"] and (await again.json())["message"] == "läuft schon"
+        assert launcher.started == 1
+
+
+def test_running_means_the_chat_ui_answers(monkeypatch: pytest.MonkeyPatch) -> None:
+    import socket
+
+    with socket.socket() as probe:  # a port nothing listens on
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    settings = Settings.model_validate({"ui": {"port": port}})
+    launcher = Launcher(App("cassi", None, None), settings, None)
+    assert launcher.running() is False
+
+    off = Launcher(
+        App("cassi", None, None), Settings.model_validate({"ui": {"enabled": False}}), None
+    )
+    assert off.running() is None and off.chat_url is None
+
+
+def test_a_broken_program_on_the_chat_port_is_a_problem_not_a_chat() -> None:
+    import http.server
+    import threading
+
+    class Failing(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            self.send_error(500)
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Failing)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        settings = Settings.model_validate({"ui": {"port": server.server_address[1]}})
+        running, problem = Launcher(App("flay", None, None), settings, None).status()
+    finally:
+        server.shutdown()
+
+    assert running is True  # the port is taken: starting again would fail
+    assert "Fehler 500" in problem
+
+
+def test_stop_ends_only_cassi_on_the_chat_port(monkeypatch: pytest.MonkeyPatch) -> None:
+    from cassi import maintenance
+
+    stopped: list[int] = []
+    monkeypatch.setattr(maintenance, "port_owner", lambda port: 4242)
+    monkeypatch.setattr(maintenance, "stop_process", lambda pid: stopped.append(pid) or True)
+    launcher = Launcher(App("flay", None, None), Settings(), None)
+
+    old_flay = "/home/x/.local/share/uv/tools/flay/bin/python /home/x/.local/bin/flay run"
+    monkeypatch.setattr(maintenance, "process_command", lambda pid: old_flay)
+    assert launcher.stop() is None and stopped == [4242]
+
+    monkeypatch.setattr(maintenance, "process_command", lambda pid: "/usr/bin/python3 server.py")
+    problem = launcher.stop()
+    assert problem is not None and "anderen Programm" in problem
+    assert stopped == [4242]  # the other program was left alone
+
+
+async def test_the_header_ends_the_assistant(tmp_path: Path) -> None:
+    class Stoppable(FakeLauncher):
+        def stop(self) -> str | None:
+            self.is_running = False
+            return None
+
+    launcher = Stoppable()
+    launcher.is_running = True
+    server = ManageServer(App("flay", tmp_path, None), [], token=TOKEN, launcher=launcher)
+    async with TestClient(TestServer(server.web)) as client:
+        server.port = client.port
+        assert (await client.post("/api/stop", headers={"X-Cassi-Token": TOKEN})).status == 403
+        response = await client.post("/api/stop", headers=auth(client, post=True))
+
+        assert (await response.json())["ok"] and not launcher.is_running

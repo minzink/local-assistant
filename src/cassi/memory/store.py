@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS facts (
     text TEXT NOT NULL,
     created_at REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 # Keyword index over the memories, kept in sync by triggers. unicode61 with diacritics
@@ -120,14 +124,36 @@ class MemoryStore:
     # Sessions -------------------------------------------------------------------------
 
     def session_at(self, now: float, timeout_seconds: float) -> int:
-        """Session a message at ``now`` belongs to; a long pause starts a new one."""
+        """Session a message at ``now`` belongs to; a long pause starts a new one, and so
+        does ``start_session``."""
         row = self._db.execute(
             "SELECT session, created_at FROM messages ORDER BY id DESC LIMIT 1"
         ).fetchone()
+        forced = int(self.meta("next_session") or 0)
         if row is None:
-            return 1
+            return max(1, forced)
         session, last = int(row[0]), float(row[1])
-        return session if now - last <= timeout_seconds else session + 1
+        current = session if now - last <= timeout_seconds else session + 1
+        return max(current, forced)
+
+    def start_session(self) -> None:
+        """The next message starts a new session: what was said so far leaves the context
+        (it stays stored, for the history and the episode summaries)."""
+        row = self._db.execute("SELECT MAX(session) FROM messages").fetchone()
+        last = int(row[0]) if row and row[0] is not None else 0
+        self.set_meta("next_session", str(last + 1))
+
+    def meta(self, key: str) -> str | None:
+        row = self._db.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        return str(row[0]) if row else None
+
+    def set_meta(self, key: str, value: str) -> None:
+        with self._db:
+            self._db.execute(
+                "INSERT INTO meta (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, value),
+            )
 
     # Messages -------------------------------------------------------------------------
 

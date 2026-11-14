@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verwaltung</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --surface: #ffffff; --text: #1d1d1b; --muted: #74746f;
+    --border: #e2e2dd; --accent: #2f5bea; --ok: #15803d; --warn: #b45309; --fail: #b91c1c;
+    --danger-bg: #fdeceb; --code: #f0f0ec; --on-accent: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141413; --surface: #1e1e1c; --text: #ecece8; --muted: #9a9a94;
+      --border: #2f2f2c; --accent: #7a9bff; --ok: #4ade80; --warn: #fbbf24; --fail: #f87171;
+      --danger-bg: #3a1a18; --code: #191918; --on-accent: #10131f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px; padding: 10px 16px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 17px; margin: 0; font-weight: 650; }
+  header .version { color: var(--muted); font-size: 13px; }
+  .launch { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .launch[hidden] { display: none; }
+  .state { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+  .state .dot { width: 9px; height: 9px; border-radius: 50%; border: 1px solid var(--muted); }
+  .state[data-running="true"] { color: var(--ok); }
+  .state[data-running="true"] .dot { background: var(--ok); border-color: var(--ok); }
+  .state[data-problem="true"] { color: var(--warn); }
+  .state[data-problem="true"] .dot { background: var(--warn); border-color: var(--warn); }
+  #problem { display: none; background: var(--danger-bg); color: var(--warn); padding: 8px 16px; font-size: 14px; }
+  #problem.show { display: block; }
+  button.start {
+    background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600;
+    font-size: 15px; padding: 8px 18px;
+  }
+  button.start.open { background: var(--surface); color: var(--accent); }
+  button.stop { font-size: 15px; padding: 8px 16px; font-weight: 600; }
+  button.stop:not(:disabled) { color: var(--fail); border-color: var(--fail); }
+  #close { margin-left: 4px; }
+  header .launch[hidden] + #close { margin-left: auto; }
+  nav { display: flex; gap: 4px; padding: 0 16px; background: var(--surface); border-bottom: 1px solid var(--border); overflow-x: auto; }
+  nav button {
+    border: 0; background: none; color: var(--muted); font: inherit; padding: 10px 12px;
+    border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap;
+  }
+  nav button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+  main { max-width: 860px; margin: 0 auto; padding: 20px 16px 40px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; }
+  .card h2 { font-size: 15px; margin: 0 0 8px; }
+  .card p { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
+  dl { display: grid; grid-template-columns: minmax(120px, 190px) 1fr; gap: 4px 14px; margin: 0; }
+  dt { color: var(--muted); font-size: 14px; }
+  dd { margin: 0; overflow-wrap: anywhere; }
+  dd[data-level="ok"]::before { content: "✓ "; color: var(--ok); }
+  dd[data-level="warn"]::before { content: "! "; color: var(--warn); font-weight: 700; }
+  dd[data-level="fail"]::before { content: "✗ "; color: var(--fail); }
+  .actions { display: grid; gap: 10px; }
+  .action { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
+  .action .about { flex: 1; min-width: 220px; }
+  .action .about div { color: var(--muted); font-size: 14px; }
+  .action label { display: block; font-size: 14px; margin-top: 4px; }
+  button {
+    font: inherit; font-size: 14px; cursor: pointer; border-radius: 10px; padding: 7px 14px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  }
+  button.primary { width: 210px; text-align: left; flex: none; }
+  button.danger { background: var(--danger-bg); color: var(--fail); border-color: var(--fail); }
+  button:disabled { opacity: .45; cursor: default; }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #output { display: none; }
+  #output.show { display: block; }
+  #output pre {
+    background: var(--code); border-radius: 8px; padding: 10px 12px; margin: 0;
+    max-height: 420px; overflow: auto; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  #output h2 span { font-weight: 400; color: var(--muted); font-size: 13px; margin-left: 6px; }
+  .loading, .closed { color: var(--muted); text-align: center; margin-top: 10vh; }
+  @media (max-width: 560px) { dl { grid-template-columns: 1fr; } dt { margin-top: 6px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Verwaltung</h1>
+  <span class="version" id="version"></span>
+  <div class="launch" id="launch" hidden>
+    <span class="state" id="state"><span class="dot"></span><span id="state-text"></span></span>
+    <button class="start" id="start" type="button">Starten</button>
+    <button class="stop" id="stop" type="button" disabled>■ Beenden</button>
+  </div>
+  <button id="close" type="button">Schließen</button>
+</header>
+<div id="problem" role="alert"></div>
+<nav id="tabs" role="tablist"></nav>
+<main>
+  <section class="card" id="output" aria-live="polite">
+    <h2>Ausgabe <span id="status"></span></h2>
+    <pre id="lines"></pre>
+  </section>
+  <div id="content"><p class="loading">Lade …</p></div>
+</main>
+<script>
+"use strict";
+const params = new URLSearchParams(location.hash.slice(1));
+const token = params.get("token") || "";
+let current = null;
+let running = false;
+let appTitle = "Cassi";
+let assistant = { running: false, chat: null };
+let starting = false;
+let stopping = false;
+
+function api(path, body) {
+  const options = { headers: { "X-Cassi-Token": token } };
+  if (body !== undefined) {
+    options.method = "POST";
+    options.headers["Content-Type"] = "application/json";
+    options.body = JSON.stringify(body);
+  }
+  return fetch(path, options).then(async (response) => {
+    if (!response.ok) throw new Error((await response.text()) || response.statusText);
+    return response.json();
+  });
+}
+
+function el(tag, attributes = {}, text = "") {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
+  if (text) node.textContent = text;
+  return node;
+}
+
+async function init() {
+  if (!token) {
+    document.getElementById("content").replaceChildren(
+      el("p", { class: "closed" }, "Diese Seite über den Befehl „manage“ öffnen (die Adresse enthält einen Schlüssel)."));
+    return;
+  }
+  const info = await api("/api/tabs");
+  document.title = `${info.title} – Verwaltung`;
+  document.getElementById("title").textContent = `${info.title} – Verwaltung`;
+  document.getElementById("version").textContent = `Version ${info.version}`;
+  appTitle = info.title;
+  await refreshStatus();
+  setInterval(refreshStatus, 5000);
+  const nav = document.getElementById("tabs");
+  for (const tab of info.tabs) {
+    const button = el("button", { role: "tab", "aria-selected": "false", "data-tab": tab.id }, tab.title);
+    button.addEventListener("click", () => show(tab.id));
+    nav.append(button);
+  }
+  // "#token=…&tab=maintenance" opens that tab first.
+  const wanted = info.tabs.find((tab) => tab.id === params.get("tab"));
+  show((wanted || info.tabs[0]).id);
+}
+
+async function show(id) {
+  current = id;
+  for (const button of document.querySelectorAll("nav button")) {
+    button.setAttribute("aria-selected", String(button.dataset.tab === id));
+  }
+  const content = document.getElementById("content");
+  content.replaceChildren(el("p", { class: "loading" }, "Lade …"));
+  let tab;
+  try {
+    tab = await api(`/api/tabs/${encodeURIComponent(id)}`);
+  } catch (error) {
+    content.replaceChildren(el("p", { class: "closed" }, `Fehler: ${error.message}`));
+    return;
+  }
+  if (current !== id) return;
+  const parts = [];
+  for (const section of tab.sections) {
+    const card = el("section", { class: "card" });
+    card.append(el("h2", {}, section.title));
+    if (section.rows.length) {
+      const list = el("dl");
+      for (const row of section.rows) {
+        list.append(el("dt", {}, row.label), el("dd", { "data-level": row.level }, row.value));
+      }
+      card.append(list);
+    }
+    if (section.text) card.append(el("p", {}, section.text));
+    parts.push(card);
+  }
+  if (tab.actions.length) {
+    const card = el("section", { class: "card actions" });
+    for (const action of tab.actions) card.append(actionRow(id, action));
+    parts.push(card);
+  }
+  content.replaceChildren(...parts);
+  setRunning(running);
+}
+
+function actionRow(tabId, action) {
+  const row = el("div", { class: "action" });
+  const button = el("button", { type: "button", class: action.danger ? "primary danger" : "primary" }, action.label);
+  const about = el("div", { class: "about" });
+  about.append(el("div", {}, action.description));
+  const boxes = {};
+  for (const option of action.options) {
+    const label = el("label");
+    const box = el("input", { type: "checkbox" });
+    box.checked = option.default;
+    boxes[option.id] = box;
+    label.append(box, document.createTextNode(" " + option.label));
+    about.append(label);
+  }
+  button.addEventListener("click", () => {
+    if (action.confirm && !confirm(action.confirm)) return;
+    const options = Object.fromEntries(Object.entries(boxes).map(([key, box]) => [key, box.checked]));
+    run(tabId, action, options);
+  });
+  row.append(button, about);
+  return row;
+}
+
+// Header: is the assistant running? Start it, or open its chat.
+async function refreshStatus() {
+  let status;
+  try { status = await api("/api/status"); } catch (error) { return; }
+  const launch = document.getElementById("launch");
+  launch.hidden = !status.startable;
+  if (!status.startable) return;
+  assistant = status;
+  const state = document.getElementById("state");
+  const text = document.getElementById("state-text");
+  const button = document.getElementById("start");
+  const broken = Boolean(status.problem);
+  // Ending makes sense whenever something holds the port – also a broken old install.
+  const stop = document.getElementById("stop");
+  stop.disabled = stopping || status.running !== true;
+  if (!stopping) stop.textContent = "■ Beenden";
+  state.dataset.running = String(status.running === true && !broken);
+  state.dataset.problem = String(broken);
+  text.textContent = broken ? "Chat-Port belegt" : status.running === true ? `${appTitle} läuft`
+    : status.running === false ? `${appTitle} läuft nicht` : "";
+  const problem = document.getElementById("problem");
+  problem.textContent = status.problem || "";
+  problem.classList.toggle("show", broken);
+  if (broken) {
+    starting = false;
+    button.disabled = true;
+    button.classList.remove("open");
+    button.textContent = `▶ ${appTitle} starten`;
+    return;
+  }
+  if (starting && status.running !== true) return;  // keep "Startet …"
+  starting = false;
+  button.disabled = false;
+  const open = status.running === true && status.chat;
+  button.classList.toggle("open", Boolean(open));
+  button.textContent = open ? "Chat öffnen" : `▶ ${appTitle} starten`;
+}
+
+document.getElementById("start").addEventListener("click", async () => {
+  const button = document.getElementById("start");
+  if (assistant.running === true && assistant.chat) {
+    window.open(assistant.chat, "_blank", "noopener");
+    return;
+  }
+  button.disabled = true;
+  button.textContent = "Startet …";
+  starting = true;
+  let result;
+  try {
+    result = await api("/api/start", {});
+  } catch (error) {
+    result = { ok: false, message: error.message };
+  }
+  if (!result.ok) {
+    starting = false;
+    button.disabled = false;
+    button.textContent = `▶ ${appTitle} starten`;
+    alert(`${appTitle} ließ sich nicht starten: ${result.message}`);
+    return;
+  }
+  // The models take a while to load; the status poll switches the button to "Chat öffnen".
+  for (let i = 0; i < 60 && starting; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await refreshStatus();
+  }
+  if (starting) { starting = false; await refreshStatus(); }
+});
+
+document.getElementById("stop").addEventListener("click", async () => {
+  if (!confirm(`${appTitle} beenden?`)) return;
+  const stop = document.getElementById("stop");
+  stopping = true;
+  stop.disabled = true;
+  stop.textContent = "Beendet …";
+  let result;
+  try {
+    result = await api("/api/stop", {});
+  } catch (error) {
+    result = { ok: false, message: error.message };
+  }
+  stopping = false;
+  if (!result.ok) alert(`${appTitle} ließ sich nicht beenden: ${result.message}`);
+  await refreshStatus();
+});
+
+function setRunning(value) {
+  running = value;
+  for (const button of document.querySelectorAll(".action button")) button.disabled = value;
+}
+
+async function run(tabId, action, options) {
+  const output = document.getElementById("output");
+  const lines = document.getElementById("lines");
+  const status = document.getElementById("status");
+  output.classList.add("show");
+  lines.textContent = "";
+  status.textContent = `${action.label} läuft …`;
+  setRunning(true);
+  let job;
+  try {
+    job = (await api("/api/run", { tab: tabId, action: action.id, options })).job;
+  } catch (error) {
+    status.textContent = "";
+    lines.textContent = `Fehler: ${error.message}`;
+    setRunning(false);
+    return;
+  }
+  let since = 0;
+  for (;;) {
+    let state;
+    try {
+      state = await api(`/api/jobs/${job}?since=${since}`);
+    } catch (error) {
+      status.textContent = "Verbindung beendet";
+      break;
+    }
+    if (state.lines.length) {
+      lines.textContent += state.lines.join("\n") + "\n";
+      lines.scrollTop = lines.scrollHeight;
+      since += state.lines.length;
+    }
+    if (state.done) {
+      status.textContent = `${action.label}: ${state.ok ? "fertig" : "fehlgeschlagen"}`;
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
+  setRunning(false);
+  if (current) show(current);  // fresh state after the action
+}
+
+document.getElementById("close").addEventListener("click", async () => {
+  try { await api("/api/quit", {}); } catch (error) { /* already gone */ }
+  document.querySelector("nav").replaceChildren();
+  document.getElementById("output").classList.remove("show");
+  document.getElementById("content").replaceChildren(
+    el("p", { class: "closed" }, "Verwaltung geschlossen. Dieses Fenster kann zu."));
+});
+
+init().catch((error) => {
+  document.getElementById("content").replaceChildren(el("p", { class: "closed" }, `Fehler: ${error.message}`));
+});
+</script>
+</body>
+</html>

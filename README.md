@@ -49,34 +49,65 @@ Empfehlungen:
 ## Schnellstart
 
 Getestet mit einem Mac mit M2 Pro (32 GB) und unter Windows mit einer RTX 4070 Ti (12 GB).
-Das Setup-Skript installiert, was fehlt ([uv](https://docs.astral.sh/uv/) samt Python 3.12,
-[Git LFS](https://git-lfs.com) für die mitgelieferte Stimme, [Ollama](https://ollama.com)
-≥ 0.30 als lokalen Modell-Server), startet Ollama und lädt einmalig alle Modelle –
-Spracherkennung, Stimmen und das Sprachmodell (zusammen ~15–20 GB). Danach läuft alles
-offline. Es kann beliebig oft laufen; was schon da ist, wird übersprungen.
+Das Installationsskript installiert, was fehlt ([uv](https://docs.astral.sh/uv/) samt
+Python 3.12, [Git LFS](https://git-lfs.com) für die mitgelieferte Stimme,
+[Ollama](https://ollama.com) ≥ 0.30 als lokalen Modell-Server), startet Ollama, lädt einmalig
+alle Modelle – Spracherkennung, Stimmen und das Sprachmodell (zusammen ~15–20 GB) – und
+richtet den Befehl `cassi` ein. Danach läuft alles offline. Es kann beliebig oft laufen
+(= Reparieren); was schon da ist, wird übersprungen. Zum Schluss öffnet sich die
+[Verwaltung](#verwaltung-reparieren-updaten-deinstallieren).
 
-**Windows** (installiert per `winget`):
-
-```bat
-git clone https://github.com/minzink/local-assistant.git
-cd local-assistant
-scripts\setup.cmd
-uv run cassi run
-```
-
-**macOS** (installiert per [Homebrew](https://brew.sh)):
+**macOS** (installiert per [Homebrew](https://brew.sh)): `install.command` im Finder
+doppelklicken – oder ohne vorherigen Download im Terminal:
 
 ```sh
-git clone https://github.com/minzink/local-assistant.git
-cd local-assistant
-scripts/setup.sh
-uv run cassi run
+curl -fsSL https://raw.githubusercontent.com/minzink/local-assistant/main/install.command | bash
 ```
 
-Optionen: `-NoInstall` / `--no-install` prüft nur und installiert keine Programme,
+**Windows** (installiert per `winget`): `install.cmd` doppelklicken – oder ohne vorherigen
+Download in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/minzink/local-assistant/main/install.ps1 | iex
+```
+
+Ohne Checkout lädt das Skript Cassi nach `~/cassi` (bzw. `$CASSI_HOME`). Danach startet
+Cassi mit `cassi run` (in einem neuen Terminal, falls der Befehl gerade erst eingerichtet
+wurde). Optionen: `-NoInstall` / `--no-install` prüft nur und installiert keine Programme,
 `-SkipModels` / `--skip-models` lässt das Laden der Modelle aus. Jeder Lauf schreibt ein
 ausführliches Log nach `logs/setup-<Zeitstempel>.log` (Systeminfos, Proxy-Einstellungen,
 GPU/Treiber, Ausgabe aller Schritte) – bei Problemen dieses Log mitschicken.
+
+### Verwaltung: Reparieren, Updaten, Deinstallieren
+
+`cassi manage` (oder „Verwaltung öffnen …“ im Menüleisten-/Tray-Symbol) öffnet eine kleine
+Seite im Browser. Oben rechts steht, ob Cassi läuft, daneben **„▶ Cassi starten“** (bzw.
+„Chat öffnen“, wenn es läuft) und **„■ Beenden“**. Beenden trifft, was auf Cassis Chat-Port
+läuft – auch eine alte oder kaputte Installation –, aber nur, wenn es Cassi (oder z.B. Flay)
+ist; ein anderes Programm auf dem Port bleibt unangetastet. Darunter:
+
+| Tab | Inhalt |
+|---|---|
+| Übersicht | Version, Programm- und Datenordner (mit Größe), Befehl, Konfiguration, Autostart, Git-Stand, Ollama und Sprachmodell |
+| Wartung | **Diagnose** (`cassi doctor`), **Reparieren** (das Setup erneut), **Nach Updates suchen**, **Updaten** (neuester Stand, nur ohne eigene Änderungen, danach Reparieren), Autostart an/aus, Daten- und Log-Ordner öffnen |
+| Deinstallieren | entfernt Autostart und Befehl; auf Wunsch auch den Datenordner (Gedächtnis, Aufnahmen) und Cassis Modelle in Ollama. Den Programmordner löschst du danach selbst. |
+
+Adapter wie [Flay](https://github.com/minzink/flay) fügen eigene Tabs hinzu. Unter Windows
+laufen Reparieren und Updaten in einem eigenen Fenster, weil Windows Dateien eines laufenden
+Programms nicht ersetzen kann; die Verwaltung schließt sich dafür. Dasselbe ohne Browser:
+`cassi update [--check]`, `cassi uninstall [--data] [--models]`.
+
+**Neue Version übernimmt von selbst:** Läuft Cassi, während eine neuere Version installiert
+wird (Updaten, `git pull`, neue Installation, die der Befehl `cassi` jetzt startet), merkt es
+das binnen einer Minute. Im Chat steht dann „Neue Version: … Ich starte neu, sobald ich nichts
+zu tun habe“; ist keine Antwort und keine Aufnahme mehr im Gang, startet Cassi die neue Version
+an seiner Stelle (ohne neuen Browser-Tab, der Chat verbindet sich neu und zeigt „Neu gestartet
+mit …“). Timer bleiben erhalten. Wurde die Installation gelöscht und es gibt nichts zu starten,
+beendet sich Cassi und gibt den Port frei. Abschalten: `updates.switch: false` (z.B. beim
+Entwickeln, sonst startet jeder Commit Cassi neu).
+
+Die Seite läuft nur auf 127.0.0.1, und jede Aktion braucht einen Schlüssel, den nur die von
+`cassi manage` geöffnete Adresse enthält – andere Webseiten im Browser können nichts auslösen.
 
 <details>
 <summary>Von Hand einrichten</summary>
@@ -86,6 +117,7 @@ git lfs install && git lfs pull
 ollama serve                         # bzw. Ollama-App starten
 uv sync
 uv run cassi setup    # lädt Spracherkennung, Stimmen und die Ollama-Modelle
+uv run cassi install-command   # Befehl cassi in ~/.local/bin
 ```
 
 `cassi setup` lädt fehlende Ollama-Modelle selbst (`qwen3-vl:8b-instruct`,
@@ -501,7 +533,12 @@ steht.
   z.B. `cheerful: 6`) fließen in den System-Prompt ein, zusammen mit Datum und Uhrzeit.
 - **Gesprächsverlauf:** Die letzten `memory.recent_messages` Nachrichten der Sitzung gehen
   wörtlich ans LLM, ältere werden zusammengefasst. Nach `memory.session_timeout_minutes`
-  Pause beginnt eine neue Sitzung.
+  Pause beginnt eine neue Sitzung – ebenso mit dem Knopf **„Neues Gespräch“** in der Web-UI
+  (bzw. „Neues Gespräch (Kontext leeren)“ im Tray-Menü): Der bisherige Verlauf verlässt den
+  Kontext, bleibt aber gespeichert; Gelerntes (Fakten) bleibt, eine offene Ja/Nein-Rückfrage
+  verfällt. Startet ein anderer Assistent oder ein anderes Modell als zuletzt (z.B. Cassi nach
+  Flay – beide teilen den Datenordner), beginnt automatisch ein neues Gespräch, mit Hinweis im
+  Chat.
 - **Langzeit-Gedächtnis (RAG):** Cassi sammelt im Hintergrund Erinnerungen:
   - *Fakten* über dich, deine Projekte, Entscheidungen und Termine („Merk dir, dass ich am
     Freitag Urlaub habe“, „Im Projekt umx nutzen wir Redis“) – relative Daten werden zu
@@ -616,10 +653,13 @@ Cassi ruft zwei Hooks auf:
 |---|---|---|
 | `configure(settings)` | nach dem Laden der Konfiguration, bei jedem Befehl | Einstellungen ändern (Modell, Persona, …); kein Netzwerk, keine Dateien |
 | `prepare(settings, download)` | vor `run`, `eval`, `bench`, `eval-computer` (`download=False`) und in `cassi setup` (`download=True`) | Modelle bereitstellen; nur in `setup` darf heruntergeladen werden |
+| `manage_tabs(settings)` | beim Öffnen der Verwaltung (`cassi manage`) | eigene Tabs: Infos (`Section`, `Row`) und Aktionen (`Action`, mit Ausgabe auf der Seite) aus `cassi.manage` – als Daten, ohne HTML |
+| `uninstall(settings, models)` | beim Deinstallieren | entfernen, was der Adapter außerhalb seines Ordners angelegt hat (mit `models`: auch seine Modelle) |
 
 In `configure` ändert ein Adapter alles, was auch `cassi.yaml` einstellen kann – etwa
-`llm.model`, `persona` oder ein eigenes Aktivierungswort (`input.continuous.wake_model` und
-`wake_pattern`, wie Flays „Hey Flay“).
+`llm.model`, `persona` (der Name erscheint im Chat, im Tray-Menü und im Prompt) oder ein eigenes
+Aktivierungswort (`input.continuous.wake_model`, `wake_pattern` und `wake_phrase` für die
+Anzeige, wie Flays „Hey Flay“).
 
 Welche installierten Adapter aktiv sind, steuert `adapters` in `cassi.yaml` (fehlt der Eintrag:
 alle; `[]`: keiner). Ein Adapter, der sich nicht laden lässt, bricht den Start mit einer
@@ -642,6 +682,10 @@ src/cassi/
 ├── bench.py    LLM-Latenz-Benchmark
 ├── config.py   Settings (pydantic) + YAML-Loader
 ├── adapters.py Hooks für Pakete, die Cassi personalisieren (z.B. Flay)
+├── app.py      welches Programm läuft (cassi oder z.B. flay) und wo es installiert ist
+├── maintenance.py  Befehl einrichten, Reparieren, Updaten, Deinstallieren
+├── manage.py   Verwaltung im Browser (cassi manage): Tabs, Aktionen, lokaler Server
+├── updates.py  laufendes Cassi wechselt zu einer neueren installierten Version
 └── cli.py      Einstiegspunkt `cassi`
 ```
 
