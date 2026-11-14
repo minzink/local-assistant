@@ -150,7 +150,7 @@ async def _windows(image: Image.Image) -> list[TextBox]:
     image.save(buffer, format="PNG")
     stream = InMemoryRandomAccessStream()
     writer = DataWriter(stream)
-    writer.write_bytes(list(buffer.getvalue()))
+    writer.write_bytes(buffer.getvalue())
     await writer.store_async()
     stream.seek(0)
     decoder = await BitmapDecoder.create_async(stream)
