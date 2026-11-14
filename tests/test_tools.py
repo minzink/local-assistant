@@ -690,6 +690,15 @@ def test_projects_from_claude_locks(tmp_path: Path) -> None:
     assert projects_from_claude_locks(tmp_path) == [Path("/p/flay")]
 
 
+def test_pid_alive_does_not_signal_the_process() -> None:
+    from cassi.tools.phpstorm_mcp import pid_alive
+
+    # On Windows os.kill(pid, 0) sends Ctrl+C: this test would stop the whole test run.
+    assert pid_alive(os.getpid())
+    assert not pid_alive(999_999_999)
+    assert not pid_alive(0)
+
+
 class FakePhpStorm:
     def __init__(self, projects: list[Path], tmux: FakeTmux, starts_session: bool = True) -> None:
         self.projects = projects

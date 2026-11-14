@@ -63,6 +63,42 @@ def parse_open_projects(error_text: str) -> list[Path]:
     ]
 
 
+def pid_alive(pid: int) -> bool:
+    """Whether a process with this id runs.
+
+    Not ``os.kill(pid, 0)`` on Windows: there signal 0 is CTRL_C_EVENT, which interrupts
+    Cassi's own console instead of checking the process.
+    """
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.windll.kernel32
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        kernel32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        try:
+            code = wintypes.DWORD()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return False
+            return code.value == 259  # STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except PermissionError:  # runs, but belongs to another user
+        return True
+    except (OSError, OverflowError):
+        return False
+    return True
+
+
 def projects_from_claude_locks(directory: Path | None = None) -> list[Path]:
     """Workspace folders of open IDE windows, as announced by the Claude Code plugin."""
     directory = directory or Path.home() / ".claude" / "ide"
@@ -70,8 +106,10 @@ def projects_from_claude_locks(directory: Path | None = None) -> list[Path]:
     for lock in directory.glob("*.lock"):
         try:
             data = json.loads(lock.read_text(encoding="utf-8"))
-            os.kill(int(data["pid"]), 0)  # stale lock files belong to closed IDEs
-        except (OSError, ValueError, KeyError, json.JSONDecodeError):
+            pid = int(data["pid"])
+        except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+            continue
+        if not pid_alive(pid):  # stale lock files belong to closed IDEs
             continue
         if "phpstorm" not in str(data.get("ideName", "")).lower():
             continue
