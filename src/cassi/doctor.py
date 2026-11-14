@@ -145,7 +145,7 @@ def _voice(settings: Settings) -> Check:
     backend = resolve_backend(settings.tts.backend, detect_hardware())
     if backend == "qwen3":
         return Check(Level.OK, "Stimme", "Qwen3-TTS")
-    voice_dir = settings.data_dir / "voices"
+    voice_dir = settings.downloads / "voices"
     missing = [
         n for n in set(settings.tts.voices.values()) if not (voice_dir / f"{n}.onnx").exists()
     ]
@@ -170,7 +170,7 @@ def _voice(settings: Settings) -> Check:
 def _vad(settings: Settings) -> Check:
     from cassi.audio.vad import MODEL_FILE
 
-    if (settings.data_dir / "models" / MODEL_FILE).exists():
+    if (settings.downloads / "models" / MODEL_FILE).exists():
         return Check(Level.OK, "Stille-Erkennung", "Silero VAD")
     return Check(Level.FAIL, "Stille-Erkennung", "Modell fehlt", "cassi setup")
 

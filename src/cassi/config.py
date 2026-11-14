@@ -507,29 +507,25 @@ class Settings(_Section):
     updates: UpdateSettings = UpdateSettings()
     tools: ToolsSettings = ToolsSettings()
     privacy: PrivacySettings = PrivacySettings()
+    # Personal data: memory, history, own recordings and own models. Export/import carries it
+    # between computers (`cassi export`); it never belongs in the repository.
     data_dir: Path = Field(default_factory=lambda: default_data_dir())
+    # Downloaded models (Piper voices, speech detection, wake word features). None: in
+    # data_dir. An adapter with its own data_dir (Flay) points here to Cassi's, so nothing
+    # is downloaded twice.
+    downloads_dir: Path | None = None
     # Installed adapters to use (packages that personalize Cassi, e.g. "flay"); None = all
     # installed ones, [] = none. See cassi.adapters.
     adapters: list[str] | None = None
 
+    @property
+    def downloads(self) -> Path:
+        return self.downloads_dir or self.data_dir
 
-def default_data_dir() -> Path:
-    return user_data_path("cassi", appauthor=False)
 
-
-def migrate_legacy_data_dir(data_dir: Path) -> bool:
-    """Move the data folder from before the rename (Flay → Cassi) to ``data_dir``, once.
-
-    Only for the default folder, and only a folder with Cassi's own data (its memory): "flay"
-    is now the name of the adapter that builds on Cassi, whose folder must not be taken over.
-    """
-    legacy = user_data_path("flay", appauthor=False)
-    if data_dir != default_data_dir() or data_dir.exists():
-        return False
-    if not (legacy / "memory.sqlite3").is_file():
-        return False
-    legacy.rename(data_dir)
-    return True
+def default_data_dir(name: str = "cassi") -> Path:
+    """The data folder of Cassi, or of an adapter with its own (``default_data_dir("flay")``)."""
+    return user_data_path(name, appauthor=False)
 
 
 def resolve_config_path(path: Path | None = None) -> Path | None:

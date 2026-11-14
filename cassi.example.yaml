@@ -158,3 +158,8 @@ memory:
     limit: 6                    # höchstens so viele Erinnerungen je Anfrage
     min_similarity: 0.30
     timeout_ms: 300             # länger wartet die Antwort nicht auf die Suche
+
+# Persönliche Daten (Gedächtnis, Verlauf, eigene Modelle) – nie im Repository; mitnehmen oder
+# sichern mit `cassi export` / `cassi import` (oder Tab „Daten“ in `cassi manage`).
+# data_dir: ~/Library/Application Support/cassi   # Windows: %LOCALAPPDATA%\cassi
+# downloads_dir: null   # heruntergeladene Modelle (Stimmen, VAD …); null = im data_dir

@@ -25,7 +25,6 @@ from cassi.adapters import prepare as prepare_adapters
 from cassi.config import (
     Settings,
     load_settings,
-    migrate_legacy_data_dir,
     resolve_config_path,
 )
 from cassi.core.language import Language
@@ -161,12 +160,12 @@ def _train_wake(settings: Settings, repeats: int) -> int:
     from cassi.wake import FEATURE_MODELS
     from cassi.wake_training import build, free_voices
 
-    models = settings.data_dir / "models"
+    models = settings.downloads / "models"
     if not all((models / name).exists() for name in FEATURE_MODELS):
         print("Merkmalsmodelle fehlen – erst 'cassi setup' ausführen.")
         return 1
     repo_voices = Path(__file__).resolve().parents[2] / "voices"
-    voices = free_voices(settings.data_dir / "voices", repo_voices, BUNDLED_DIR)
+    voices = free_voices(settings.downloads / "voices", repo_voices, BUNDLED_DIR)
     # Kristin is checked last (held out): Ramona was trained from her, so holding out
     # Ramona would look better than it is.
     voices.sort(key=lambda path: "kristin" in path.name)
@@ -177,7 +176,7 @@ def _train_wake(settings: Settings, repeats: int) -> int:
     print(f"Trainiere „Hey Cassi“ mit {', '.join(v.stem for v in voices)}", end="")
     print(f" und {len(list(own.glob('*.wav')))} eigenen Aufnahmen …" if own.is_dir() else " …")
     classifier, report = build(voices, models, own, repeats=repeats)
-    target = models / "hey_cassi.npz"
+    target = settings.data_dir / "models" / "hey_cassi.npz"  # own model: personal data
     classifier.save(target)
     print(
         f"Geprüft mit der zurückgehaltenen Stimme {report.voice}: „Hey Cassi“ erkannt "
@@ -579,7 +578,7 @@ def _claude(claude_args: list[str]) -> int:
 def _wake_word(settings: Settings) -> WakeWord:
     from cassi.wake import WakeWord, classifier_path
 
-    models = settings.data_dir / "models"
+    models = settings.downloads / "models"
     continuous = settings.input.continuous
     try:
         return WakeWord(
@@ -610,11 +609,11 @@ async def _setup(settings: Settings, adapters: Sequence[Adapter] = ()) -> int:
     if resolve_backend(settings.tts.backend, hardware) == "qwen3":
         create_tts(settings, hardware).download()
         print("  ✓ Stimme (Qwen3-TTS)")
-    SileroVAD(settings.data_dir / "models").download()
+    SileroVAD(settings.downloads / "models").download()
     print("  ✓ Stille-Erkennung (Silero VAD)")
     from cassi.wake import download_features
 
-    download_features(settings.data_dir / "models")
+    download_features(settings.downloads / "models")
     print("  ✓ Aktivierungswort-Merkmale (openWakeWord, Apache 2.0)")
 
     from cassi.llm import ollama
@@ -679,6 +678,32 @@ async def _setup(settings: Settings, adapters: Sequence[Adapter] = ()) -> int:
                 "(ohne sucht Cassi nur nach Stichwörtern)"
             )
             return 1
+    return 0
+
+
+def _transfer(settings: Settings, args: argparse.Namespace) -> int:
+    from cassi import app, transfer
+    from cassi.maintenance import human_size
+    from cassi.manage import Launcher
+
+    program = app.current()
+    if args.command == "export":
+        target = args.file or transfer.default_target(program)
+        done = transfer.export(program, settings, target, recordings=args.recordings)
+        print(f"{done.files} Dateien ({human_size(done.size)}) exportiert: {target}")
+        return 0
+    if Launcher(program, settings, args.config).running():
+        print(f"{program.title} läuft – erst beenden, dann importieren.")
+        return 1
+    if not args.yes:
+        question = f"Persönliche Daten von {program.title} durch {args.file.name} ersetzen? [j/N] "
+        if input(question).strip().lower() not in ("j", "ja", "y"):
+            return 1
+    try:
+        transfer.import_(program, settings, args.file, print, allow_other=args.any)
+    except transfer.TransferError as exc:
+        print(exc)
+        return 1
     return 0
 
 
@@ -861,7 +886,7 @@ async def _run(settings: Settings, tray: Tray | None = None) -> int:
     llm = create_chat_model(settings.llm)
     continuous = settings.input.mode is InputMode.CONTINUOUS
     # Always loaded: continuous listening (switchable in the UI) finds utterances with it.
-    vad = SileroVAD(settings.data_dir / "models")
+    vad = SileroVAD(settings.downloads / "models")
 
     log.info("Lade Modelle ...")
     await asyncio.gather(
@@ -1217,6 +1242,19 @@ def main(argv: Sequence[str] | None = None, prog: str = "cassi") -> int:
     uninstall.add_argument("--data", action="store_true", help="auch den Datenordner löschen")
     uninstall.add_argument("--models", action="store_true", help="auch die Modelle in Ollama")
     uninstall.add_argument("--yes", action="store_true", help="ohne Rückfrage")
+    export = commands.add_parser(
+        "export", help="Persönliche Daten (Gedächtnis, eigene Modelle) als Zip exportieren"
+    )
+    export.add_argument("file", nargs="?", type=Path, help="Ziel (Standard: Download-Ordner)")
+    export.add_argument("--recordings", action="store_true", help="auch eigene Aufnahmen")
+    import_parser = commands.add_parser(
+        "import", help="Einen Export übernehmen (die bisherigen Daten werden vorher gesichert)"
+    )
+    import_parser.add_argument("file", type=Path, help="Export-Datei (.zip)")
+    import_parser.add_argument("--yes", action="store_true", help="ohne Rückfrage")
+    import_parser.add_argument(
+        "--any", action="store_true", help="auch den Export eines anderen Assistenten"
+    )
     commands.add_parser("doctor", help="Prüfen, was Cassi braucht, mit Abhilfe")
     history = commands.add_parser("history", help="Die letzten Anfragen und was Cassi tat")
     history.add_argument("-n", type=int, default=20, help="Anzahl (Standard: 20)")
@@ -1352,8 +1390,6 @@ def main(argv: Sequence[str] | None = None, prog: str = "cassi") -> int:
     except (OSError, yaml.YAMLError, ValidationError) as exc:
         print(f"Konfiguration ungültig: {exc}")
         return 1
-    if migrate_legacy_data_dir(settings.data_dir):
-        log.info("Datenordner von Flay übernommen: %s", settings.data_dir)
     try:
         adapters = load_adapters(settings.adapters)
         settings = configure_adapters(adapters, settings)
@@ -1378,6 +1414,8 @@ def main(argv: Sequence[str] | None = None, prog: str = "cassi") -> int:
                     port=args.port,
                 )
             )
+        if args.command in ("export", "import"):
+            return _transfer(settings, args)
         if args.command in ("install-command", "update", "uninstall"):
             return _maintenance(settings, adapters, args)
         if args.command == "autostart":

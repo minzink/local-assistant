@@ -284,3 +284,50 @@ def test_a_stale_record_is_removed(tmp_path: Path) -> None:
     assert running_instance(record) is None
     assert not record.exists()
     assert running_instance(tmp_path / "missing.json") is None
+
+
+async def test_an_export_is_imported_through_the_page(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sqlite3
+
+    from cassi import manage, transfer
+
+    monkeypatch.setattr(manage.Launcher, "running", lambda self: False)
+    source = tmp_path / "old"
+    source.mkdir()
+    with sqlite3.connect(source / "memory.sqlite3") as db:
+        db.execute("CREATE TABLE facts (text TEXT)")
+    db.close()
+    program = App("cassi", tmp_path, None)
+    export = tmp_path / "cassi-export.zip"
+    transfer.export(program, Settings(data_dir=source), export)
+
+    settings = Settings(data_dir=tmp_path / "new")
+    server = ManageServer(program, tabs_for(program, settings, [], None, lambda: None), token=TOKEN)
+    async with TestClient(TestServer(server.web)) as client:
+        server.port = client.port
+        tab = await (await client.get("/api/tabs/data", headers=auth(client))).json()
+        importing = next(a for a in tab["actions"] if a["id"] == "import")
+        assert importing["file"] and importing["accept"] == ".zip" and importing["danger"]
+
+        body = {"tab": "data", "action": "import"}
+        refused = await client.post("/api/run", json=body, headers=auth(client, post=True))
+        assert refused.status == 400  # no file chosen
+
+        sent = await client.post(
+            "/api/upload", data=export.read_bytes(), headers=auth(client, post=True)
+        )
+        body["upload"] = (await sent.json())["upload"]
+        job = (
+            await (await client.post("/api/run", json=body, headers=auth(client, post=True))).json()
+        )["job"]
+        for _ in range(100):
+            state = await (await client.get(f"/api/jobs/{job}", headers=auth(client))).json()
+            if state["done"]:
+                break
+            await asyncio.sleep(0.02)
+
+    assert state["ok"], state["lines"]
+    assert (tmp_path / "new" / "memory.sqlite3").exists()
+    assert not server.uploads  # the uploaded file was used up

@@ -206,6 +206,14 @@ function actionRow(tabId, action) {
   const about = el("div", { class: "about" });
   about.append(el("div", {}, action.description));
   const boxes = {};
+  let chooser = null;
+  if (action.file) {
+    const label = el("label");
+    chooser = el("input", { type: "file" });
+    if (action.accept) chooser.accept = action.accept;
+    label.append(document.createTextNode(action.file + ": "), chooser);
+    about.append(label);
+  }
   for (const option of action.options) {
     const label = el("label");
     const box = el("input", { type: "checkbox" });
@@ -215,9 +223,11 @@ function actionRow(tabId, action) {
     about.append(label);
   }
   button.addEventListener("click", () => {
+    const file = chooser?.files?.[0];
+    if (chooser && !file) { alert(`Erst ${action.file} auswählen.`); return; }
     if (action.confirm && !confirm(action.confirm)) return;
     const options = Object.fromEntries(Object.entries(boxes).map(([key, box]) => [key, box.checked]));
-    run(tabId, action, options);
+    run(tabId, action, options, file);
   });
   row.append(button, about);
   return row;
@@ -313,7 +323,18 @@ function setRunning(value) {
   for (const button of document.querySelectorAll(".action button")) button.disabled = value;
 }
 
-async function run(tabId, action, options) {
+// A chosen file goes to the server first, as is (no form encoding), then the action runs.
+async function upload(file) {
+  const response = await fetch("/api/upload", {
+    method: "POST",
+    headers: { "X-Cassi-Token": token, "Content-Type": "application/octet-stream" },
+    body: file,
+  });
+  if (!response.ok) throw new Error((await response.text()) || response.statusText);
+  return (await response.json()).upload;
+}
+
+async function run(tabId, action, options, file) {
   const output = document.getElementById("output");
   const lines = document.getElementById("lines");
   const status = document.getElementById("status");
@@ -323,7 +344,13 @@ async function run(tabId, action, options) {
   setRunning(true);
   let job;
   try {
-    job = (await api("/api/run", { tab: tabId, action: action.id, options })).job;
+    let uploaded;
+    if (file) {
+      status.textContent = `${file.name} wird übertragen …`;
+      uploaded = await upload(file);
+      status.textContent = `${action.label} läuft …`;
+    }
+    job = (await api("/api/run", { tab: tabId, action: action.id, options, upload: uploaded })).job;
   } catch (error) {
     status.textContent = "";
     lines.textContent = `Fehler: ${error.message}`;

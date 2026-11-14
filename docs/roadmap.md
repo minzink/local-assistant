@@ -911,5 +911,9 @@ LLM-Server, semantische Suche im Gedächtnis, Windows-Tests.
   zuletzt beginnt automatisch ein neues Gespräch (Anlass: Cassi hielt sich nach Flay für Flay,
   weil beide den Datenordner teilen und die Sitzung zeitlich weiterlief)
 - [x] Verwaltung nur einmal je Programm: ein weiterer Aufruf öffnet die laufende
+- [x] Persönliche Daten nur im Datenordner; Export/Import (`cassi export`/`import`, Tab „Daten“:
+  Zip mit Manifest, Gedächtnis per SQLite-Backup, Aufnahmen auf Wunsch, Sicherung vor dem
+  Import, nur Exporte desselben Assistenten); `.gitignore` sperrt Datenbanken, eigene Modelle
+  und Exporte; Downloads in `downloads_dir` (Adapter teilen sie)
 - [ ] Installer auf einem frischen Windows-Rechner ausprobieren (bisher nur macOS)
 - [ ] Programmordner beim Deinstallieren mit entfernen (nach dem Beenden, per Hilfsskript)

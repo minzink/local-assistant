@@ -29,6 +29,15 @@ data/
 # …except Cassi's own data files (sentence lists, the trained wake word)
 !src/cassi/data/
 
+# Personal data lives in the data folder only, never here; `cassi export` carries it.
+*.sqlite3
+*.sqlite
+*.db
+*-export-*.zip
+*.npz
+!src/cassi/data/hey_cassi.npz
+Modelfile
+
 # OS
 .DS_Store
 Thumbs.db

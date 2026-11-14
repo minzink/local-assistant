@@ -91,34 +91,7 @@ def test_continuous_mode_is_allowed(tmp_path: Path) -> None:
     assert load_settings(config).input.mode == "continuous"
 
 
-def _data_dirs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple[Path, Path]:
-    from cassi import config
-
-    monkeypatch.setattr(config, "user_data_path", lambda name, appauthor=False: tmp_path / name)
-    return tmp_path / "flay", tmp_path / "cassi"
-
-
-def test_the_data_folder_from_before_the_rename_is_moved_once(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    from cassi.config import default_data_dir, migrate_legacy_data_dir
-
-    legacy, folder = _data_dirs(monkeypatch, tmp_path)
-    legacy.mkdir()
-    (legacy / "memory.sqlite3").write_bytes(b"x")
-    assert default_data_dir() == folder
-    assert migrate_legacy_data_dir(folder)
-    assert (folder / "memory.sqlite3").read_bytes() == b"x" and not legacy.exists()
-    assert not migrate_legacy_data_dir(folder)
-
-
-def test_a_foreign_flay_folder_is_left_alone(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    from cassi.config import migrate_legacy_data_dir
-
-    legacy, folder = _data_dirs(monkeypatch, tmp_path)
-    legacy.mkdir()  # the adapter's own folder: no memory of Cassi's in it
-    assert not migrate_legacy_data_dir(folder)
-    assert not migrate_legacy_data_dir(tmp_path / "elsewhere")
-    assert legacy.exists() and not folder.exists()
+def test_downloads_are_in_the_data_folder_unless_shared(tmp_path: Path) -> None:
+    assert Settings(data_dir=tmp_path).downloads == tmp_path
+    shared = Settings(data_dir=tmp_path / "flay", downloads_dir=tmp_path / "cassi")
+    assert shared.downloads == tmp_path / "cassi"

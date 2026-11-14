@@ -19,8 +19,10 @@ import contextlib
 import logging
 import re
 import secrets
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import webbrowser
 from collections.abc import Callable, Mapping, Sequence
@@ -77,12 +79,16 @@ class Action:
     description: str
     # Runs in a worker thread; each call of the output function adds a line to the page.
     # True: it worked.
-    run: Callable[[Output, Mapping[str, bool]], bool]
+    run: Callable[[Output, Mapping[str, Any]], bool]
     # Asked before running (e.g. "Wirklich deinstallieren?").
     confirm: str = ""
     # Shown in red: removes something.
     danger: bool = False
     options: Sequence[Option] = ()
+    # Asks for a file first (its label, e.g. "Export-Datei (.zip)"); ``run`` gets its local
+    # path as ``options["file"]``. ``accept`` limits the choice, e.g. ".zip".
+    file: str = ""
+    accept: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,7 +184,7 @@ def builtin_tabs(
             Section("Sprachmodell", model_rows),
         ]
 
-    def repair(out: Output, _: Mapping[str, bool]) -> bool:
+    def repair(out: Output, _: Mapping[str, Any]) -> bool:
         command = maintenance.setup_command(app)
         if command is None:
             out("✗ Kein Quellordner mit scripts/setup gefunden – Cassi neu installieren")
@@ -196,7 +202,7 @@ def builtin_tabs(
         out("✓ Repariert" if ok else "✗ Reparatur fehlgeschlagen – Details oben und im Log")
         return ok
 
-    def update(out: Output, options_: Mapping[str, bool]) -> bool:
+    def update(out: Output, options_: Mapping[str, Any]) -> bool:
         if not maintenance.pull(app, out):
             return False
         out("Neuer Stand geladen – jetzt Pakete und Modelle prüfen:")
@@ -206,30 +212,30 @@ def builtin_tabs(
             out("zeigt den neuen Stand nach dem Neuladen der Seite.")
         return ok
 
-    def doctor(out: Output, _: Mapping[str, bool]) -> bool:
+    def doctor(out: Output, _: Mapping[str, Any]) -> bool:
         return maintenance.run_process(app.command(*options, "doctor"), out)
 
-    def check(out: Output, _: Mapping[str, bool]) -> bool:
+    def check(out: Output, _: Mapping[str, Any]) -> bool:
         return maintenance.check_updates(app, out)
 
-    def autostart_on(out: Output, _: Mapping[str, bool]) -> bool:
+    def autostart_on(out: Output, _: Mapping[str, Any]) -> bool:
         return maintenance.run_process(app.command(*options, "autostart", "on"), out)
 
-    def autostart_off(out: Output, _: Mapping[str, bool]) -> bool:
+    def autostart_off(out: Output, _: Mapping[str, Any]) -> bool:
         return maintenance.run_process(app.command(*options, "autostart", "off"), out)
 
-    def open_data(out: Output, _: Mapping[str, bool]) -> bool:
+    def open_data(out: Output, _: Mapping[str, Any]) -> bool:
         ok = maintenance.open_folder(settings.data_dir)
         out(f"Geöffnet: {settings.data_dir}" if ok else "Der Datenordner existiert noch nicht")
         return ok
 
-    def open_logs(out: Output, _: Mapping[str, bool]) -> bool:
+    def open_logs(out: Output, _: Mapping[str, Any]) -> bool:
         folder = (app.source or Path.cwd()) / "logs"
         ok = maintenance.open_folder(folder)
         out(f"Geöffnet: {folder}" if ok else f"Noch keine Logs in {folder}")
         return ok
 
-    def remove(out: Output, chosen: Mapping[str, bool]) -> bool:
+    def remove(out: Output, chosen: Mapping[str, Any]) -> bool:
         return maintenance.uninstall(
             app,
             settings,
@@ -258,6 +264,71 @@ def builtin_tabs(
                 "andere Programme können sie nutzen. Läuft der Assistent, vorher beenden.",
             )
         ]
+
+    def data_info() -> list[Section]:
+        from cassi import transfer
+
+        folder = settings.data_dir
+        personal = transfer.contents(folder)
+        everything = transfer.contents(folder, recordings=True)
+        size = maintenance.human_size
+        rows = [
+            Row("Datenordner", str(folder)),
+            Row(
+                "Im Export",
+                f"{personal.files} Dateien, {size(personal.size)} – Gedächtnis, Verlauf, "
+                "Abläufe, Einstellungen, eigene Modelle und Stimme",
+            ),
+            Row(
+                "Aufnahmen (auf Wunsch)",
+                f"{everything.files - personal.files} Dateien, "
+                f"{size(everything.size - personal.size)}",
+            ),
+        ]
+        if settings.downloads != folder:
+            rows.append(Row("Downloads (geteilt, nicht im Export)", str(settings.downloads)))
+        backups = sorted((folder / "backups").glob("*.zip"))
+        if backups:
+            rows.append(Row("Letzte Sicherung", backups[-1].name))
+        return [
+            Section(
+                "Persönliche Daten",
+                rows,
+                "Gedächtnis und eigene Modelle liegen nur hier, nie im Repository. Mit dem "
+                "Export nimmst du sie auf einen anderen Rechner mit oder sicherst sie; "
+                "heruntergeladene Modelle lädt dort das Setup.",
+            )
+        ]
+
+    def export_data(out: Output, chosen: Mapping[str, Any]) -> bool:
+        from cassi import transfer
+
+        target = transfer.default_target(app)
+        done = transfer.export(app, settings, target, recordings=bool(chosen.get("recordings")))
+        out(f"✓ {done.files} Dateien ({maintenance.human_size(done.size)}) exportiert:")
+        out(f"  {target}")
+        maintenance.open_folder(target.parent)
+        return True
+
+    def import_data(out: Output, chosen: Mapping[str, Any]) -> bool:
+        from cassi import transfer
+
+        if Launcher(app, settings, config).running():
+            out(f"✗ {app.title} läuft – erst oben mit „Beenden“ schließen, dann importieren.")
+            return False
+        try:
+            transfer.import_(app, settings, Path(str(chosen["file"])), out)
+        except transfer.TransferError as exc:
+            out(f"✗ {exc}")
+            return False
+        out(f"Fertig. Beim nächsten Start nutzt {app.title} die importierten Daten.")
+        return True
+
+    def open_backups(out: Output, _: Mapping[str, Any]) -> bool:
+        folder = settings.data_dir / "backups"
+        ok = maintenance.open_folder(folder)
+        out(f"Geöffnet: {folder}" if ok else "Noch keine Sicherungen")
+        return ok
 
     title = app.title
     return [
@@ -297,6 +368,33 @@ def builtin_tabs(
                 Action("autostart-off", "Autostart aus", "Entfernt den Autostart.", autostart_off),
                 Action("data", "Datenordner öffnen", "Gedächtnis, Aufnahmen, Stimmen.", open_data),
                 Action("logs", "Setup-Logs öffnen", "Protokolle der Installation.", open_logs),
+            ],
+        ),
+        Tab(
+            "data",
+            "Daten",
+            data_info,
+            [
+                Action(
+                    "export",
+                    "Exportieren",
+                    "Speichert die persönlichen Daten als Zip-Datei im Download-Ordner.",
+                    export_data,
+                    options=(Option("recordings", "Aufnahmen einschließen (größer)"),),
+                ),
+                Action(
+                    "import",
+                    "Importieren",
+                    "Übernimmt einen Export (z.B. vom anderen Rechner). Die bisherigen Daten "
+                    "werden vorher gesichert.",
+                    import_data,
+                    confirm="Die persönlichen Daten durch den Export ersetzen? "
+                    "Die bisherigen werden vorher gesichert.",
+                    danger=True,
+                    file="Export-Datei (.zip)",
+                    accept=".zip",
+                ),
+                Action("backups", "Sicherungen öffnen", "Stände vor einem Import.", open_backups),
             ],
         ),
         Tab(
@@ -438,6 +536,9 @@ class ManageServer:
         self.token = token or secrets.token_urlsafe(24)
         self.port = port
         self.jobs: dict[str, Job] = {}
+        # Files chosen on the page (an export to import), by id until an action takes them.
+        self.uploads: dict[str, Path] = {}
+        self._upload_dir = Path(tempfile.mkdtemp(prefix="cassi-manage-"))
         self.stopped = asyncio.Event()
         self._runner: web.AppRunner | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -446,6 +547,7 @@ class ManageServer:
         self.web.router.add_get("/api/tabs", self._tab_list)
         self.web.router.add_get("/api/tabs/{tab}", self._tab)
         self.web.router.add_post("/api/run", self._run)
+        self.web.router.add_post("/api/upload", self._upload)
         self.web.router.add_get("/api/jobs/{job}", self._job)
         self.web.router.add_post("/api/quit", self._quit)
         self.web.router.add_get("/api/status", self._status)
@@ -483,6 +585,7 @@ class ManageServer:
     async def stop(self) -> None:
         if self._runner is not None:
             await self._runner.cleanup()
+        shutil.rmtree(self._upload_dir, ignore_errors=True)
 
     def quit_soon(self) -> None:
         """Stop after the page fetched the last lines (from any thread)."""
@@ -524,6 +627,8 @@ class ManageServer:
                         "options": [
                             {"id": o.id, "label": o.label, "default": o.default} for o in a.options
                         ],
+                        "file": a.file,
+                        "accept": a.accept,
                     }
                     for a in tab.actions
                 ],
@@ -539,7 +644,12 @@ class ManageServer:
         if any(not job.done for job in self.jobs.values()):
             raise web.HTTPConflict(text="Es läuft schon eine Aktion.")
         raw = body.get("options") if isinstance(body.get("options"), dict) else {}
-        chosen = {o.id: bool(raw.get(o.id, o.default)) for o in action.options}
+        chosen: dict[str, Any] = {o.id: bool(raw.get(o.id, o.default)) for o in action.options}
+        uploaded = self.uploads.pop(str(body.get("upload")), None) if action.file else None
+        if action.file:
+            if uploaded is None:
+                raise web.HTTPBadRequest(text="Erst eine Datei auswählen.")
+            chosen["file"] = str(uploaded)
         job_id = secrets.token_hex(6)
         job = self.jobs[job_id] = Job()
 
@@ -552,9 +662,21 @@ class ManageServer:
                 job.ok = False
             finally:
                 job.done = True
+                if uploaded is not None:
+                    uploaded.unlink(missing_ok=True)
 
         threading.Thread(target=work, name=f"manage-{action.id}", daemon=True).start()
         return web.json_response({"job": job_id})
+
+    async def _upload(self, request: web.Request) -> web.Response:
+        """A file chosen on the page, streamed to disk (exports with recordings are large)."""
+        upload_id = secrets.token_hex(8)
+        path = self._upload_dir / upload_id
+        with path.open("wb") as file:
+            async for chunk in request.content.iter_chunked(1 << 20):
+                file.write(chunk)
+        self.uploads[upload_id] = path
+        return web.json_response({"upload": upload_id})
 
     async def _job(self, request: web.Request) -> web.Response:
         job = self.jobs.get(request.match_info["job"])

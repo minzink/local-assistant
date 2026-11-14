@@ -23,4 +23,4 @@ def create_tts(
     if resolve_backend(backend or tts.backend, hardware) == "qwen3":
         engine: Engine = "mlx" if hardware.accelerator is Accelerator.APPLE_SILICON else "torch"
         return Qwen3TTS(tts.voice, settings.data_dir, engine)
-    return PiperTTS(tts.voices, settings.data_dir / "voices", tts.voice.pitch, tts.voice.speed)
+    return PiperTTS(tts.voices, settings.downloads / "voices", tts.voice.pitch, tts.voice.speed)

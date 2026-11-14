@@ -90,6 +90,7 @@ ist; ein anderes Programm auf dem Port bleibt unangetastet. Darunter:
 |---|---|
 | Übersicht | Version, Programm- und Datenordner (mit Größe), Befehl, Konfiguration, Autostart, Git-Stand, Ollama und Sprachmodell |
 | Wartung | **Diagnose** (`cassi doctor`), **Reparieren** (das Setup erneut), **Nach Updates suchen**, **Updaten** (neuester Stand, nur ohne eigene Änderungen, danach Reparieren), Autostart an/aus, Daten- und Log-Ordner öffnen |
+| Daten | **Exportieren** (Zip in den Download-Ordner, auf Wunsch mit Aufnahmen), **Importieren** (Export-Datei auswählen; die bisherigen Daten werden vorher gesichert), Sicherungen öffnen |
 | Deinstallieren | entfernt Autostart und Befehl; auf Wunsch auch den Datenordner (Gedächtnis, Aufnahmen) und Cassis Modelle in Ollama. Den Programmordner löschst du danach selbst. |
 
 Es läuft immer nur eine Verwaltung je Programm: Ein weiterer Aufruf (Terminal, Tray-Menü,
@@ -532,6 +533,18 @@ steht.
 
 ## Persönlichkeit und Gedächtnis
 
+**Persönliche Daten liegen nur im Datenordner, nie im Repository** (macOS
+`~/Library/Application Support/cassi`, Windows `%LOCALAPPDATA%\cassi`): Gedächtnis, Verlauf,
+gelernte Abläufe und Lösungen, Einstellungen, Timer, selbst trainierte Modelle (z.B.
+`models/hey_cassi.npz` aus `cassi train-wake`) und die eigene Stimme. Mitgelieferte Standards
+(Aktivierungswort, Stimme Ramona) bleiben im Repository und gelten, solange es kein eigenes gibt.
+Mitnehmen oder sichern: `cassi export [Datei] [--recordings]` und `cassi import Datei`, oder der
+Tab „Daten“ der Verwaltung. Ein Export ist eine Zip-Datei; er enthält keine Downloads (die lädt
+`cassi setup` neu), Aufnahmen nur mit `--recordings`. Ein Import nimmt nur Exporte desselben
+Assistenten an (Flays Gedächtnis ist nicht Cassis), sichert vorher die bisherigen Daten nach
+`backups/` und geht nur, wenn der Assistent nicht läuft. Heruntergeladene Modelle liegen in
+`downloads_dir` (Standard: der Datenordner); ein Adapter mit eigenem Datenordner teilt sie.
+
 - **Persona:** `persona.system_prompt` und `persona.mood` (frei benannte Stimmungen von 0–10,
   z.B. `cheerful: 6`) fließen in den System-Prompt ein, zusammen mit Datum und Uhrzeit.
 - **Gesprächsverlauf:** Die letzten `memory.recent_messages` Nachrichten der Sitzung gehen
@@ -834,6 +847,7 @@ openWakeWord (CC BY-NC-SA, nicht kommerziell).
 
 Bis November 2026 hieß Cassi „Flay“ (Paket, Befehl, `flay.yaml`, `$FLAY_CONFIG`). Der Name
 Flay gehört jetzt dem Adapter, der auf Cassi aufsetzt. Der alte Datenordner (`…/flay` mit
-Gedächtnis, Aufnahmen und Stimmen) wird beim ersten Start einmal nach `…/cassi` verschoben;
-eine alte `flay.yaml` muss von Hand in `cassi.yaml` umbenannt werden.
+Gedächtnis, Aufnahmen und Stimmen) ist seit der Trennung Flays eigener Datenordner; Cassis
+Daten liegen in `…/cassi` (damals einmal dorthin verschoben). Eine alte `flay.yaml` muss von
+Hand in `cassi.yaml` umbenannt werden.
 
