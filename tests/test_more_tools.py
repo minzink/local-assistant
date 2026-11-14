@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -166,11 +167,15 @@ async def test_find_file_opens_the_newest(tmp_path: Path) -> None:
 # Commands --------------------------------------------------------------------------------
 
 
+SLOW_FAILING = "import time; time.sleep(0.3); print('3 failed'); raise SystemExit(1)"
+
+
 async def test_run_command_quick_and_in_the_background() -> None:
     recorder = Recorder()
     commands = {
         "hallo": Command("hallo", "echo hallo"),
-        "langsam": Command("langsam", "sleep 0.3; echo 3 failed; exit 1"),
+        # Python instead of shell built-ins: the same on cmd.exe and sh.
+        "langsam": Command("langsam", f'"{sys.executable}" -c "{SLOW_FAILING}"'),
     }
     tool = RunCommandTool(commands, recorder, wait_seconds=0.1)
 
@@ -270,7 +275,8 @@ async def test_ide_opens_a_file_in_the_front_project() -> None:
     assert result.ok
     assert phpstorm.calls[-1] == (
         "open_file_in_editor",
-        {"filePath": "src/UserController.php", "projectPath": "/p/blog"},
+        # The operating system's path, as PhpStorm expects it (\\p\\blog on Windows).
+        {"filePath": "src/UserController.php", "projectPath": str(Path("/p/blog"))},
     )
 
 

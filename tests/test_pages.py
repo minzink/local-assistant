@@ -328,5 +328,5 @@ def test_windows_has_every_browser_function() -> None:
     for module in ("web.py", "forms.py"):
         path = Path(browser_text.__file__).with_name(module)
         if path.exists():
-            used |= set(re.findall(r"browser_text\.(\w+)\(", path.read_text()))
+            used |= set(re.findall(r"browser_text\.(\w+)\(", path.read_text(encoding="utf-8")))
     assert used <= set(browser_text.PLATFORM_FUNCTIONS), used - set(browser_text.PLATFORM_FUNCTIONS)

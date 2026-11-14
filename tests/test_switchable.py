@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 
 from cassi.audio.base import AudioBuffer
 from cassi.input.switchable import SwitchableSource
@@ -65,6 +65,17 @@ async def test_starts_in_continuous_mode_when_configured() -> None:
     next_item.cancel()
 
 
+async def until(condition: Callable[[], bool], seconds: float = 2.0) -> bool:
+    """Waits for a state instead of a fixed time: Windows timers tick only every ~15 ms."""
+    loop = asyncio.get_running_loop()
+    end = loop.time() + seconds
+    while not condition():
+        if loop.time() > end:
+            return False
+        await asyncio.sleep(0.005)
+    return True
+
+
 async def test_restart_builds_the_continuous_source_anew_after_the_old_one_closed() -> None:
     built: list[QueueSource] = []
 
@@ -77,15 +88,15 @@ async def test_restart_builds_the_continuous_source_anew_after_the_old_one_close
     source = SwitchableSource(None, make, start_continuous=True)
     iterator = source.utterances().__aiter__()
     next_item = asyncio.ensure_future(iterator.__anext__())
-    await asyncio.sleep(0.01)
+    assert await until(lambda: len(built) == 1 and built[0].running)
 
     source.restart_continuous()
-    await asyncio.sleep(0.01)
-    assert len(built) == 2 and not built[0].running and built[1].running
+    assert await until(lambda: len(built) == 2 and not built[0].running and built[1].running)
     built[1].queue.put_nowait(buffer(7))
     assert (await asyncio.wait_for(next_item, 1)).pcm[0] == 7
 
     source.set_continuous(False)
     source.restart_continuous()  # off: nothing to restart
-    await asyncio.sleep(0.01)
-    assert len(built) == 2 and not built[1].running
+    assert await until(lambda: not built[1].running)
+    await asyncio.sleep(0.05)
+    assert len(built) == 2

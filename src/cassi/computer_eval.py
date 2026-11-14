@@ -125,6 +125,8 @@ async def run(settings: Settings, path: Path, print_line: Any = print) -> int:
     print_line(f"\nRichtig: {ok}/{len(results)}, zusammen {total:.0f} s")
     out = settings.data_dir / "eval" / f"{datetime.now():%Y%m%d-%H%M%S}-computer.json"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps([asdict(r) for r in results], ensure_ascii=False, indent=1))
+    out.write_text(
+        json.dumps([asdict(r) for r in results], ensure_ascii=False, indent=1), encoding="utf-8"
+    )
     print_line(f"Ergebnisse: {out}")
     return 0 if ok == len(results) else 1

@@ -92,8 +92,12 @@ def _explain(exc: OSError) -> str:
     return f"{type(exc).__name__}: {exc}"
 
 
-def probe(host: str, port: int, timeout: float = 2.0) -> list[str]:
+def probe(host: str, port: int, timeout: float | None = None) -> list[str]:
     """Try each address ``host`` resolves to, like the OpenAI client does; one line each."""
+    if timeout is None:
+        # Windows retries a refused connection for ~2 s before reporting it; a shorter wait
+        # would blame a firewall for a server that is simply not running.
+        timeout = 4.0 if sys.platform == "win32" else 2.0
     try:
         infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except OSError as exc:
