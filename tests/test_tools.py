@@ -103,7 +103,7 @@ async def test_open_project_runs_launcher(tmp_path: Path) -> None:
     result = await tool.run({"name": "Stadt Wolkenthal"})
 
     assert result.ok
-    assert log.read_text().strip() == str(project)
+    assert log.read_text(encoding="utf-8").strip() == str(project)
 
 
 async def test_open_project_reports_ambiguity_and_unknown(config_dir: Path) -> None:

@@ -23,7 +23,7 @@ def test_export_writes_chat_rows_with_tools_and_a_held_out_part(tmp_path: Path) 
     rows = [
         json.loads(line)
         for name in ("train.jsonl", "valid.jsonl")
-        for line in (tmp_path / name).read_text().splitlines()
+        for line in (tmp_path / name).read_text(encoding="utf-8").splitlines()
     ]
     assert train + valid == len(rows) == 2 + 6  # examples + plain questions
     assert valid >= 1
@@ -47,7 +47,7 @@ def test_rejected_actions_teach_asking_back_unless_learned_later(tmp_path: Path)
     rows = [
         json.loads(line)
         for name in ("train.jsonl", "valid.jsonl")
-        for line in (tmp_path / name).read_text().splitlines()
+        for line in (tmp_path / name).read_text(encoding="utf-8").splitlines()
     ]
     answers = {
         r["messages"][1]["content"].split("\n")[0]: r["messages"][2]["content"] for r in rows
