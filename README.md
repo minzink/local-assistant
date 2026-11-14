@@ -201,6 +201,57 @@ Flay kann auf deinem Rechner handeln – nur über die Werkzeuge in `tools.enabl
 | `find_file` | „Öffne die letzte PDF aus Downloads“, „Wo liegt die Rechnung von Oktober?“ | Sucht nach Namen in Downloads, Schreibtisch und Dokumente (`tools.files.roots`), neueste zuerst, und öffnet mit der passenden App |
 | `timer` | „Erinnere mich in 20 Minuten an den Tee“, „Stell einen Timer auf 5 Minuten“, „Welche Erinnerungen habe ich?“ | Stellt, listet und löscht Timer; sie überstehen einen Neustart |
 | `system_control` | „Mach lauter“, „Lautstärke auf 30“, „Ton aus“, „Nächstes Lied“, „Sperr den Bildschirm“ | Lautstärke, Musik und Bildschirmsperre |
+| `operate_computer` | „Stell in den Systemeinstellungen den Dunkelmodus an“, „Mach in Slack einen Kanal namens test auf“, „Sag mir Bescheid, wenn der Download fertig ist“ | Findet den Weg durch eine App selbst: schaut auf das vordere Fenster, klickt, tippt, drückt Tasten, scrollt, ordnet Fenster, wartet, beobachtet – siehe unten |
+| `calendar` | „Was steht heute an?“, „Hab ich morgen Termine?“, „Wann ist mein nächster Termin?“ | Liest deine Termine (macOS: alle Kalender der Kalender-App; Windows: klassisches Outlook) – nur lesend |
+| `adjust_settings` | „Sprich langsamer“, „Andere Stimme“, „Antworte kürzer“, „Schau nicht mehr auf meinen Bildschirm“ | Ändert, wie Flay spricht und ob es auf den Bildschirm schauen darf; bleibt nach einem Neustart |
+| `answer_claude` | „Ja“, „Ja, immer“, „Nein“ – nachdem Flay gesagt hat „Claude in flay fragt: …“ | Beantwortet Claudes Freigabe-Frage im Terminal |
+
+**Den Rechner frei bedienen:** Statt für jede Aufgabe ein eigenes Werkzeug zu haben, findet
+Flay den Weg selbst (`operate_computer`). In jeder Runde sieht das Modell das vordere Fenster
+– seine beschrifteten Bedienelemente (Bedienungshilfen bzw. UI Automation) und den Text darauf
+(Texterkennung) – und was es bisher getan hat, und wählt den nächsten Zug: klicken, tippen,
+Tasten drücken, scrollen, Apps öffnen/wechseln/verschieben, warten, genauer hinschauen (Bild),
+etwas beobachten oder fertig/nachfragen/aufgeben. Gemessen (M2 Pro): ~4 s je Zug, „Schieb
+Firefox auf den zweiten Monitor“ in 2 Zügen. Höchstens `tools.computer.max_steps` Züge (12),
+dann sagt Flay, wie weit es kam. Vor Klicks auf „Löschen“, „Senden“ u. ä. und vor Enter fragt
+es (Enter bei einer Suche nicht); Passwörter und Zahlungsdaten tippt es nie. Was funktioniert
+hat, merkt es sich (`<data_dir>/solutions.json`) und zeigt es dem Modell bei ähnlichen Aufgaben
+– beim zweiten Mal kennt es den Weg; ähnliche Ziele findet es über ihre Bedeutung
+(Embedding-Modell des Gedächtnisses), nicht nur über gleiche Wörter. Nach jedem Zug wartet
+Flay, bis der Bildschirm ruhig ist (ein Menü fertig aufgeklappt), statt eine feste Zeit.
+Schlägt das Modell zweimal denselben Zug vor, hört Flay auf, statt zu kreisen. Mit `flay
+eval-computer` läuft ein Testsatz mit echten Klicks (`eval/computer.yaml`: TextEdit,
+Systemeinstellungen – währenddessen Maus und Tastatur nicht anfassen); gemessen 5 von 6
+richtig, ~7–11 s je einfacher Aufgabe. „Sag mir Bescheid, wenn … erscheint/fertig ist“ beobachtet
+den Bildschirm im Hintergrund (alle 3 s Texterkennung, höchstens 30 min) und meldet sich.
+
+**Eindeutige Bitten ohne Modell:** Ist neben dem Werkzeug auch alles Übrige eindeutig – ein
+genau genanntes Projekt, App und Verb („Schieb Firefox auf den linken Monitor“), ein
+Tastenkürzel, „Mach lauter“, „Erinnere mich in 20 Minuten an den Tee“, „Sprich langsamer“, „Hab
+ich morgen Termine?“, Git-Status –, füllt Flay die Argumente selbst aus (`flay.direct`). Die
+Aktion läuft dann nach Millisekunden statt nach ~1 s. Passt ein Name auf zwei Projekte, ist
+etwas zu formulieren (ein Auftrag an Claude, ein Fakt) oder steckt mehr in der Bitte, fragt
+Flay wie bisher das Modell.
+
+**Ungewöhnlich formuliert:** Die üblichen Formulierungen erkennen feste Muster ohne Zeitverlust.
+Fragen, die nach dem Rechner klingen, aber keinem Muster entsprechen („Wirf Slack auf den
+zweiten Bildschirm“, „Hab ich morgen Termine?“), ordnet das Modell zuerst ein (~0,4 s, nur für
+solche Anfragen, und es läuft, während Flay PhpStorm und Claude abfragt;
+`llm.classify_requests`). Lange, ausschweifende Bitten (über 25 Wörter) verkürzt das Modell
+zuerst auf ihren Kern und ordnet dann diesen ein. Verstümmelte Verben erkennt Flay am Klang: „Slie K X
+E V O“ klingt wie „Schließe kx-ewo“, „Mach mal Moewe auf“ öffnet das Projekt Moewe.
+
+**Diktieren:** „Schreib: Hallo Komma wie geht's Fragezeichen“ tippt „Hallo, wie geht's?“
+(Komma, Punkt, Fragezeichen, Ausrufezeichen, Doppelpunkt, neue Zeile, neuer Absatz);
+„Streich das letzte Wort“ löscht es wieder.
+
+**Zwischenablage:** „Übersetz, was ich kopiert habe“, „Fass die Zwischenablage zusammen“ –
+der Text der Zwischenablage geht mit der Anfrage ans Modell (nur dann, nie gespeichert).
+
+**Routinen:** „Merk dir als Feierabend: starte die Tests, dann zeig den Git-Status, dann schließ
+Slack“ – später reicht „Feierabend“ (oder „Mach Feierabend“). Flay arbeitet die Schritte als
+Plan ab, mit derselben Rückfrage bei weitreichenden Schritten. „Vergiss die Routine
+Feierabend“ löscht sie (`<data_dir>/routines.json`).
 
 **Markierter Text:** „Übersetz das Markierte“, „Erklär mir den markierten Code“ – Flay
 kopiert die Markierung der vorderen App (die Zwischenablage bleibt, wie sie war) und gibt sie
@@ -251,6 +302,11 @@ nach („Soll ich wirklich auf Löschen klicken?“); ein Rechtsklick öffnet nu
 Windows sucht Flay beschriftete Elemente über UI Automation, das Gegenstück zu den
 Bedienungshilfen (noch nicht auf einem echten Windows-Rechner ausprobiert; scheitert es, ortet
 wie bisher das Bildmodell).
+
+Findet sich eine Beschriftung nicht über die Bedienungshilfen (z.B. in PhpStorms
+Symbolleisten), liest Flay den Text auf dem Bildschirm mit der Texterkennung des Systems
+(macOS: Vision, Windows: Windows.Media.Ocr; ~0,3 s, `tools.pointer.ocr`) und klickt auf das
+gefundene Wort – erst danach fragt es das Bildmodell.
 
 Für Symbole ohne Beschriftung nummeriert Flay die anklickbaren Elemente im Screenshot (blaue
 Rahmen mit Nummer) und lässt das Modell eine Nummer wählen statt einen Punkt zu schätzen;
@@ -368,6 +424,20 @@ Ohne tmux (Windows) oder ohne passendes Projekt legt Flay den Auftrag in die Zwi
 und holt PhpStorm nach vorn; du fügst ihn mit `Cmd/Ctrl+V` in Claude ein. Erzwingen lässt sich
 ein Weg mit `tools.claude.transport: tmux | clipboard`.
 
+**Aufträge, mit denen Claude allein arbeiten kann:** Claude hört das Gespräch nicht. Flay
+schreibt den Auftrag deshalb so, dass er für sich steht: was zu tun ist und warum, wo im Code
+(Datei, Klasse – soweit aus der Bitte, dem Gespräch davor oder PhpStorms Fenstertitel
+bekannt), was schon bekannt ist (Fehlermeldungen, was du gesehen hast) und woran man erkennt,
+dass es fertig ist. „Mach das wie eben besprochen“ kommt als echte Aufgabe an. Flay erfindet
+keine Anforderungen dazu; diktierst du den Wortlaut, bleibt er wörtlich. Entwickeln, Testen,
+Committen – alles, was Code betrifft, macht Claude; Flay formuliert nur den Auftrag.
+
+**Freigaben per Sprache:** Wartet Claude (mit `flay claude` gestartet) auf eine Freigabe, liest
+Flay die Frage vor: „Claude in flay fragt: Do you want to make this edit to app.py? Sag ja,
+immer oder nein.“ „Ja“ / „Erlaub das“ wählt die erste Option, „Ja, immer“ die Option „nicht
+mehr fragen“, „Nein“ lehnt ab. Flay drückt nur, wenn die Frage noch auf Claudes Bildschirm
+steht.
+
 - PhpStorm fragt beim Öffnen eines Projekts standardmäßig, in welchem Fenster. Damit Projekte
   immer in einem neuen Fenster aufgehen: *Settings → Appearance & Behavior → System Settings →
   Project → Open project in: New window* (Flay weist beim Start darauf hin).
@@ -446,8 +516,10 @@ Sprechen nach dem ersten Satzstück und erkennt beim dauerhaften Zuhören schon 
 Pause. Gemessen auf einem M2 Pro mit Parakeet: ~0,85 s vom Loslassen der Taste bzw. ~1,2 s vom
 Sprechende (davon 0,6 s Warten auf das Satzende) bis zum ersten Ton. Mit Whisper
 (`stt.backend: auto`, etwas genauer) sind es ~1,4 bzw. ~1,55 s.
-Dauert die Antwort länger als 0,4 s nach dem Sprechende, sagt Flay vorab kurz „Mhm.“ bzw.
-bei Aktionen „Moment.“ (vorab erzeugt, kostet keine Zeit; `tts.filler`, abschaltbar).
+Statt eines vorgefertigten „Hm“ spricht Flay den ersten Satz der Antwort, sobald das Modell
+ihn geschrieben hat (im Median ~0,9 s nach dem Sprechende), während der Rest noch entsteht. Nur wenn nach 1,2 s noch nichts gesprochen ist –
+bei Aktionen, die das Modell erst ausfüllen muss –, sagt Flay „Moment.“ (`tts.filler`,
+abschaltbar; Füllwörter für Antworten lassen sich mit `tts.filler.phrases` wieder einschalten).
 
 **Stimme:** Flay spricht Deutsch und Englisch mit derselben Stimme. Qwen3-TTS (0.6B, Apache
 2.0) ahmt dafür eine kurze Aufnahme nach (`tts.voice.name`):
@@ -529,7 +601,10 @@ uv run ruff check . && uv run ruff format .
 uv run mypy
 ```
 
-CI prüft dasselbe auf macOS und Windows.
+CI prüft dasselbe auf macOS und Windows. Code-Aufteilung: `flay.intents` enthält alle festen
+Erkennungsmuster (Testtabelle `tests/test_patterns.py`), `flay.planning` Pläne und Routinen,
+`flay.assistant` den Ablauf einer Runde. Für Windows gibt es eine Prüfliste:
+`docs/windows-test.md`.
 
 ### Sprachmodelle vergleichen (`flay eval`)
 
@@ -546,6 +621,21 @@ uv run flay eval --base-url http://127.0.0.1:8080/v1 --model qwen3.5-9b \
   --extra-body '{"chat_template_kwargs": {"enable_thinking": false}}'
 uv run flay eval --only 6,10,11 --repeat 5         # einzelne Fälle genauer
 ```
+
+### Wohin die Zeit geht (`flay stats --perf`)
+
+Zu jeder Anfrage schreibt Flay ein Profil ins Log („Profil: …“) und in den Verlauf: die
+Phasen (Spracherkennung, Rechnerzustand, Einordnung, Weiterleitung, Werkzeuge, Antwort, Warten
+auf die Sprachausgabe), die Zeitpunkte ab Ende der Aufnahme (erster Satz, erster Ton, fertig)
+und jeden Aufruf des Modells mit Zweck, Token, Zeit bis zum ersten Token und Lesetempo.
+`flay stats --perf` fasst die letzten Tage zusammen (Median und p90), `flay eval` am Ende
+seines Laufs. Ein Lesetempo von einigen Tausend Token/s heißt: der Anfang des Prompts kam aus
+dem Cache des Servers; einige Hundert: er wurde neu gelesen.
+
+Dafür sorgt Flay selbst: Ollama hält für qwen3-vl nur einen Prompt-Cache. Die Werkzeugliste
+bleibt deshalb in jeder Runde gleich, Werkzeuge, nach denen das Modell antwortet, werden mit
+dem Gesprächsprompt weitergeleitet (`llm.shared_prefix_routing`), und nach einer Runde legt
+Flay den Gesprächsanfang im Leerlauf wieder in den Cache (`llm.rewarm`) – beim Start vorab.
 
 ### Spracherkenner vergleichen (`flay eval-stt`)
 
@@ -577,6 +667,19 @@ uv run flay eval-stt --set mine --backends canary --download   # fehlendes Model
 - **Geprüft:** Ein kompletter Durchlauf (Spracherkennung, LLM mit Gedächtnis-Werkzeugen,
   Screenshot mit Bildanalyse, Sprachausgabe, Web-UI) läuft in einer macOS-Sandbox, die jede
   Verbindung außer zu localhost blockiert.
+- **Private Fenster:** Solange ein Passwortmanager (1Password, Bitwarden, KeePass,
+  Schlüsselbund …) oder ein Fenster mit Titeln wie „Online-Banking“, „PayPal“ oder „Privates
+  Fenster“ im aufgenommenen Bereich sichtbar ist, macht Flay keine Bildschirmaufnahme und keine
+  Texterkennung und sagt das (`privacy.private_apps`, `privacy.private_titles`). „Schau nicht
+  mehr auf meinen Bildschirm“ (oder der Schalter im Menüleisten-Symbol) pausiert alle
+  Aufnahmen.
+- **Verlauf:** Flay schreibt jede Anfrage mit Werkzeugen, Dauer und Fehlern nach
+  `<data_dir>/history.jsonl` (nur lokal, `privacy.history_days`, Standard 30 Tage, 0 = aus);
+  diktierter Text und Formularwerte stehen dort nur als Länge.
+  `flay history` zeigt die letzten, `flay stats` wertet aus (Werkzeuge, Fehler, Dauer),
+  `flay history --eval` macht aus fehlgeschlagenen Anfragen Testfälle für `eval/cases.yaml`.
+  Scheitert dieselbe Bitte zweimal hintereinander, schlägt Flay vor, es anders zu sagen (das
+  merkt es sich dann); beim Start nennt das Log die Zahl der Fehlschläge der letzten Woche.
 - **Grenzen:** Was du in Claude abschickst, geht – wie jede Claude-Nutzung – an Anthropic;
   Flay tippt nur ein, abschicken tust du. Ollama selbst ist ein eigenes Programm (die
   Ollama-App sucht z.B. nach Updates).

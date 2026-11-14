@@ -2,10 +2,11 @@ from typing import Any
 
 import pytest
 
-from flay.assistant import Assistant, tool_intent
+from flay.assistant import Assistant
 from flay.config import Settings
 from flay.core.language import Language
 from flay.core.messages import ToolCall
+from flay.intents import tool_intent
 from flay.llm.base import ToolSpec
 from flay.tools import pointer
 from flay.tools.base import ToolRegistry, ToolResult, speech

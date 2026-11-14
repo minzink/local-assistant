@@ -90,7 +90,8 @@ async def test_run_case_goes_through_the_assistant_with_simulated_tools() -> Non
     result = await run_case(Settings(), OpeningLLM(), case, state)
 
     assert result.ok, result.problem
-    assert result.tools == [{"tool": "open_project", "name": "Moewe"}]
+    # Named exactly: filled in without the model (flay.direct), as the project is spelled.
+    assert result.tools == [{"tool": "open_project", "name": "moewe"}]
     assert result.reply == "Erledigt."
     assert result.first_tool is not None
 

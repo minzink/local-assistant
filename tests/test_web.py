@@ -5,9 +5,10 @@ from typing import Any
 import pytest
 from PIL import Image
 
-from flay.assistant import Assistant, web_intent
+from flay.assistant import Assistant
 from flay.config import Settings
 from flay.core.messages import ImagePart, Message, Modality, Role, ToolCall
+from flay.intents import web_intent
 from flay.llm.base import LLMEvent, ModelCapabilities, TextDelta, ToolSpec
 from flay.tools import web
 from flay.tools.base import ToolRegistry, ToolResult, speech
@@ -88,7 +89,7 @@ def test_web_intent(text: str, expected: str | None) -> None:
     ],
 )
 def test_handing_over_to_claude(text: str, expected: bool) -> None:
-    from flay.assistant import claude_intent, to_claude
+    from flay.intents import claude_intent, to_claude
 
     assert to_claude(text) is expected
     # Elsewhere "schick" stays with the model, which knows what "das Gleiche" was.

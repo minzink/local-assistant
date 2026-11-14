@@ -28,19 +28,34 @@ FAR_REACHING = frozenset(
 MAX_STEPS = 5
 
 
-def split_steps(text: str) -> list[str]:
-    """The steps of a request, in order; one item if it has no ordering words."""
+# "und" between two actions: only used when the parts ask for different tools (see
+# ``plan_intents``), so "Leg Firefox und Slack nebeneinander" stays one request.
+_AND = re.compile(r"\s*,?\s*\b(?:und|and)\b\s*", re.IGNORECASE)
+
+
+def split_steps(text: str, at_and: bool = False) -> list[str]:
+    """The steps of a request, in order; one item if it has no ordering words.
+
+    ``at_and``: also split at "und" ("Schau dir den Bildschirm an und kopier den Text an
+    Claude").
+    """
     parts = [p.strip(" ,.;") for p in _THEN.split(_FIRST.sub("", text.strip()))]
+    if at_and:
+        parts = [piece.strip(" ,.;") for part in parts for piece in _AND.split(part)]
     return [p for p in parts if len(p.split()) >= 2]
 
 
 def plan_intents(
-    steps: Sequence[str], intent: Callable[[str], str | None]
+    steps: Sequence[str], intent: Callable[[str], str | None], distinct: bool = False
 ) -> list[str | None] | None:
-    """The tool of each step if this is a plan: at least two steps, two of them actions."""
+    """The tool of each step if this is a plan: at least two steps, two of them actions
+    (``distinct``: actions of two different tools, and every step an action)."""
     if not 2 <= len(steps) <= MAX_STEPS:
         return None
     intents = [intent(step) for step in steps]
+    if distinct:
+        tools = [i for i in intents if i is not None]
+        return intents if len(tools) == len(intents) and len(set(tools)) >= 2 else None
     return intents if sum(i is not None for i in intents) >= 2 else None
 
 

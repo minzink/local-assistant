@@ -114,6 +114,26 @@ class PiperTTS:
                 voice = replace(voice, config=config)
             self._voices[language] = voice
 
+    def set_speed(self, speed: float) -> None:
+        """Speak faster (>1) or slower (<1) from the next sentence on."""
+        self._config = SynthesisConfig(length_scale=1 / speed)
+
+    def voices(self) -> list[str]:
+        """Voices installed in the voice folder (and Flay's own)."""
+        found = {p.name.removesuffix(".onnx") for p in self._voice_dir.glob("*.onnx")}
+        if self._repo_voices is not None:
+            found |= {
+                p.name.removesuffix(".onnx")
+                for p in self._repo_voices.glob("*.onnx")
+                if p.stat().st_size >= MIN_MODEL_BYTES
+            }
+        return sorted(found)
+
+    def set_voice(self, name: str) -> None:
+        """One voice for all languages, loaded in the background (~0.3 s)."""
+        self._voice_names = dict.fromkeys(self._voice_names, name)
+        self._executor.submit(self.load)
+
     @property
     def sample_rate(self) -> int:
         """Output rate: the highest of the voices; lower ones are resampled to it."""

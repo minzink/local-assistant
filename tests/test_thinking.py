@@ -2,9 +2,10 @@ from collections.abc import AsyncIterator, Sequence
 
 import pytest
 
-from flay.assistant import Assistant, wants_thinking
+from flay.assistant import Assistant
 from flay.config import Settings
 from flay.core.messages import Message
+from flay.intents import wants_thinking
 from flay.llm.base import LLMEvent, ModelCapabilities, TextDelta, ToolSpec
 from flay.llm.openai_compatible import ThinkFilter
 from tests.test_assistant import FakeOutput, FakeSource, FakeSTT, FakeTTS

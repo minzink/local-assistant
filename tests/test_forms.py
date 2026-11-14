@@ -122,7 +122,7 @@ async def test_through_the_assistant_with_yes(browser: dict[str, Any]) -> None:
     ],
 )
 def test_fill_intent(text: str, expected: str | None) -> None:
-    from flay.assistant import tool_intent, web_intent
+    from flay.intents import tool_intent, web_intent
 
     assert tool_intent(text) == expected
     assert web_intent(text) is None

@@ -1,0 +1,45 @@
+# Testsatz für `flay eval-computer`: operate_computer mit echten Klicks, nur harmlose Ziele.
+# Die Fälle laufen der Reihe nach und bauen aufeinander auf. Am Ende räumt `cleanup` auf.
+#
+# check.front_app:     diese App ist danach vorn
+# check.title:         der Titel des vorderen Fensters enthält eines dieser Wörter
+# check.text:          eines dieser Wörter steht auf dem Bildschirm (Texterkennung)
+# check.no_window:     von dieser App ist kein Fenster mehr offen
+
+darwin:
+  setup:
+    - osascript -e 'tell application "TextEdit" to quit saving no'
+    - osascript -e 'tell application "System Settings" to quit'
+  cases:
+    - goal: "Öffne TextEdit"
+      check: {front_app: TextEdit}
+    - goal: "Erstelle in TextEdit ein neues leeres Dokument"
+      check: {front_app: TextEdit, title: [Ohne Titel, Untitled]}
+    - goal: "Schreib in das TextEdit-Dokument: Hallo von Flay"
+      check: {text: [Hallo von Flay]}
+    - goal: "Öffne die Systemeinstellungen"
+      check: {front_app: [System Settings, Systemeinstellungen]}
+    - goal: "Öffne in den Systemeinstellungen den Bereich Ton"
+      check: {text: [Ausgabelautstärke, Output volume, Ausgabe und Eingabe, Output & Input]}
+    - goal: "Schließe die Systemeinstellungen"
+      check: {no_window: [System Settings, Systemeinstellungen]}
+  cleanup:
+    - osascript -e 'tell application "TextEdit" to quit saving no'
+    - osascript -e 'tell application "System Settings" to quit'
+
+win32:
+  setup:
+    - taskkill /IM notepad.exe /F
+  cases:
+    - goal: "Öffne den Editor"
+      check: {front_app: Editor}
+    - goal: "Schreib in den Editor: Hallo von Flay"
+      check: {text: [Hallo von Flay]}
+    - goal: "Öffne die Einstellungen"
+      check: {front_app: Einstellungen}
+    - goal: "Öffne in den Einstellungen den Bereich Sound"
+      check: {title: [Sound, Einstellungen]}
+    - goal: "Schließe die Einstellungen"
+      check: {no_window: Einstellungen}
+  cleanup:
+    - taskkill /IM notepad.exe /F

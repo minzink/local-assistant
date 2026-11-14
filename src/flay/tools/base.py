@@ -8,6 +8,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from flay import perf
 from flay.core.language import Language
 from flay.core.messages import ImagePart, ToolCall
 from flay.llm.base import ToolSpec
@@ -72,8 +73,15 @@ class ToolRegistry:
             return ToolResult(f"Unknown tool '{call.name}'.", ok=False)
         log.debug("Werkzeug %s(%s)", call.name, call.arguments)
         try:
-            result = await tool.run(call.arguments)
+            with perf.span(f"tool:{call.name}"):
+                result = await tool.run(call.arguments)
         except Exception as exc:
+            if callable(refusal := getattr(exc, "tool_result", None)):
+                # Deliberately not done (a private window is visible): said as such.
+                result = refusal()
+                assert isinstance(result, ToolResult)
+                log.info("%s: %s", call.name, result.action or result.text)
+                return result
             log.warning("%s fehlgeschlagen: %s", call.name, exc)
             return ToolResult(
                 f"The tool failed: {exc}",

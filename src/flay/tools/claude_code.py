@@ -659,3 +659,129 @@ class ClaudeStatusTool:
             f"Claude Code screen (project '{session.project}'):\n{screen}",
             action=f"Claude ({session.name}): Terminal gelesen",
         )
+
+
+# Answering Claude's permission questions by voice -----------------------------------------
+
+# "❯ 1. Yes", "  2. Yes, and don't ask again this session", "  3. No, and tell Claude …".
+_OPTION = re.compile(r"^\s*(?:❯\s*)?(\d)\.\s+(.+?)\s*$", re.MULTILINE)
+_ALWAYS = re.compile(r"don't ask again|do not ask again|always|allow all|this session", re.I)
+_QUESTION_LINE = re.compile(
+    r"do you want|would you like|allow|proceed|make this edit|möchtest du", re.IGNORECASE
+)
+
+
+@dataclass(frozen=True, slots=True)
+class ClaudeQuestion:
+    project: str
+    session: str
+    question: str
+    options: tuple[tuple[str, str], ...]  # (key, text)
+
+    def key_for(self, answer: str) -> str | None:
+        """The option key for yes / always / no."""
+        for key, text in self.options:
+            lowered = text.lower()
+            if answer == "always" and lowered.startswith("yes") and _ALWAYS.search(text):
+                return key
+            if answer == "yes" and lowered.startswith("yes") and not _ALWAYS.search(text):
+                return key
+            if answer == "no" and lowered.startswith("no"):
+                return key
+        if answer == "yes" and self.options:
+            return self.options[0][0]
+        return None
+
+
+def read_question(screen: str, project: str, session: str) -> ClaudeQuestion | None:
+    """The permission question at the bottom of Claude's screen, with its options."""
+    # Claude draws a box around the question: "│ ❯ 1. Yes      │".
+    tail = [line.strip(" │╭╮╰╯─") for line in screen.rstrip().splitlines()[-25:]]
+    text = "\n".join(tail)
+    options = tuple((m.group(1), m.group(2).strip()) for m in _OPTION.finditer(text))
+    if not options:
+        return None
+    first = next(i for i, line in enumerate(tail) if _OPTION.match(line))
+    above = [line for line in tail[:first] if line]
+    asked = [line for line in above if _QUESTION_LINE.search(line)]
+    question = (asked[-1] if asked else (above[-1] if above else "")).strip()
+    return ClaudeQuestion(project, session, question, options)
+
+
+class AnswerClaudeTool:
+    """Answers the permission question Claude is waiting with (yes, yes always, no)."""
+
+    def __init__(self, tmux: Tmux | None = None) -> None:
+        self._tmux = tmux or Tmux()
+        # Questions announced by the watcher, newest last; cleared once answered.
+        self.waiting: dict[str, ClaudeQuestion] = {}
+
+    def asked(self, question: ClaudeQuestion | None, project: str) -> None:
+        """Called by the watcher: Claude in ``project`` asks (or stopped asking)."""
+        self.waiting.pop(project, None)
+        if question is not None:
+            self.waiting[project] = question
+
+    @property
+    def spec(self) -> ToolSpec:
+        return ToolSpec(
+            name="answer_claude",
+            description=(
+                "Answer the permission question Claude Code is waiting with: 'yes' (this "
+                "once), 'always' (yes and don't ask again) or 'no'."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "answer": {"type": "string", "enum": ["yes", "always", "no"]},
+                    "project": _PROJECT_PARAMETER,
+                },
+                "required": ["answer"],
+            },
+        )
+
+    async def run(self, arguments: dict[str, Any]) -> ToolResult:
+        answer = str(arguments.get("answer") or "yes")
+        project = str(arguments.get("project") or "")
+        questions = list(self.waiting.values())
+        if project:
+            questions = [q for q in questions if _normalize(project) in _normalize(q.project)]
+        if not questions:
+            return ToolResult(
+                "Claude is not waiting for an answer.",
+                ok=False,
+                say=speech(
+                    "Claude wartet gerade auf nichts.", "Claude isn't waiting for anything."
+                ),
+            )
+        question = questions[-1]
+        # Claude may have moved on meanwhile: answer only the question still on the screen.
+        current = read_question(
+            await self._tmux.screen(question.session), question.project, question.session
+        )
+        if current is None:
+            self.waiting.pop(question.project, None)
+            return ToolResult(
+                "Claude no longer shows the question.",
+                ok=False,
+                say=speech(
+                    "Die Frage ist bei Claude schon weg.", "Claude no longer shows the question."
+                ),
+            )
+        key = current.key_for(answer)
+        if key is None:
+            return ToolResult(
+                f"No option for '{answer}' in: {current.options}",
+                ok=False,
+                say=speech("Diese Antwort bietet Claude nicht an.", "Claude doesn't offer that."),
+            )
+        await self._tmux.press(current.session, key)
+        self.waiting.pop(question.project, None)
+        chosen = dict(current.options)[key]
+        de = {"yes": "freigegeben", "always": "dauerhaft freigegeben", "no": "abgelehnt"}[answer]
+        en = {"yes": "approved", "always": "approved for good", "no": "declined"}[answer]
+        return ToolResult(
+            f"Answered Claude ({question.project}): {chosen}",
+            action=f"Claude ({question.session}): „{chosen}“ gewählt",
+            say=speech(f"Ich habe es {de}.", f"I {en} it."),
+        )

@@ -745,8 +745,116 @@ Prototyp ohne Modell (M2 Pro, Firefox als Standardbrowser):
   daher nur über erkannte Anfragen (spart ~1000 Token je Anfrage)
 - [ ] Windows: alles oben auf dem RTX-Rechner ausprobieren (UI Automation, Fenster nach vorn
   holen, Start-Menü-Verknüpfungen, Lautstärke per Medientasten), `flay eval` dort laufen lassen
-- [ ] Nummerierte Kandidaten: PhpStorms eigene Symbolleisten fehlen in den Bedienungshilfen –
-  dort bleibt nur das Schätzen eines Punkts
+- [x] Nummerierte Kandidaten: PhpStorms eigene Symbolleisten fehlen in den Bedienungshilfen –
+  beschriftete Stellen findet dort jetzt die Texterkennung (Phase 15); nur reine Symbole
+  bleiben beim Schätzen eines Punkts
+
+## Phase 15 – Treffsicherheit, freie Bedienung, Alltag, Datenschutz
+
+Leitlinie: keine eigene Implementierung je Aufgabe. Flay bekommt Grundzüge (schauen, klicken,
+tippen, Tasten, scrollen, Fenster, warten, beobachten) und findet den Weg selbst; Entwicklung
+läuft immer über Claude, Flay formuliert nur den Auftrag.
+
+- [x] Die 8 alten Fehlfälle: Verben am Klang (Kölner Phonetik: „Slie“ ≈ „schließe“, „She K
+  Command“), „mach … auf/zu“ mit Projektnamen, „sag mir, was du siehst“ liest die Seite,
+  Screenshot als eigener Planschritt, „Schau dir den Screen an und kopier den Text in Claude“
+  als Plan an „und“ (nur bei zwei verschiedenen Werkzeugen); was ein Screenshot zeigt, geht
+  wörtlich an den nächsten Schritt
+- [x] Einordnung durch das Modell (`llm.classify_requests`): nur für Anfragen, die nach dem
+  Rechner klingen; gemessen 10/10 mit dem 8B (~0,45 s), der 4B irrte bei „Wie spät ist es in
+  Tokio?“
+- [x] Texterkennung (Vision / Windows.Media.Ocr) vor dem Bildmodell beim Klicken: ~0,2–0,3 s
+  für den ganzen Bildschirm (einmalig ~1 s Modell laden, wird beim Start vorgewärmt)
+- [x] `operate_computer`: Schleife aus Beobachten (Bedienelemente + Text des vorderen
+  Fensters) und einem Zug; gelernte Wege für ähnliche Ziele; Beobachten im Hintergrund
+  („Sag Bescheid, wenn …“); Rückfrage vor riskanten Klicks und Enter; keine Passwörter
+- [x] Diktieren mit Satzzeichen, „Streich das letzte Wort“, Zwischenablage als Zusammenhang,
+  Routinen per Sprache
+- [x] Claude: Aufträge, die für sich stehen (Ziel, Ort, Bekanntes, Fertig-Kriterium, Gespräch
+  davor, PhpStorms Fenstertitel); Freigabe-Fragen vorlesen und mit ja / immer / nein beantworten
+- [x] Kalender (EventKit, Outlook), Einstellungen per Sprache (Tempo, Stimme, Antwortlänge,
+  Bildschirm-Pause; bleiben nach Neustart)
+- [x] Datenschutz: keine Aufnahme bei sichtbaren privaten Fenstern; Verlauf mit
+  `flay history` / `flay stats` / `--eval`; Menüleiste zeigt die letzte Erkennung und Antwort
+- [x] `flay eval` (M2 Pro, qwen3-vl:8b-instruct, je 2 Läufe, 104 Fälle): 99 % (172/174
+  Aktionen, 34/34 Gespräche, Median 1,66 s) statt 91,1 %; die 8 alten Fehlfälle und alle 14
+  neuen richtig. Der einzige Fehler („Mach bitte auch Moewe auf“) ist danach behoben
+- [ ] Windows: Texterkennung, Outlook-Kalender, UI-Automation-Beobachtung ausprobieren
+- [ ] `operate_computer`: ~4 s je Zug (Beobachten ~1,5 s, Modell ~2,5 s) – kleinere Beobachtung
+  oder das 4B-Modell für einfache Züge prüfen
+
+## Phase 16 – Zuverlässigkeit und Wartbarkeit
+
+- [x] `flay eval-computer`: Rechnerbedienung mit echten Klicks (TextEdit, Systemeinstellungen).
+  Gefundene und behobene Fehler: Text sechsmal getippt (gleicher Zug wird nicht wiederholt,
+  Schreibaufgabe endet nach dem Tippen), private Fenster hinter anderen sperrten die
+  Texterkennung (jetzt zählt nur Sichtbares), „Systemeinstellungen“ unbekannt (deutsche
+  App-Namen), Klickziele als Beschreibung („Sound (button) in …“), Enter nur bei Aufgaben, die
+  etwas senden, nachfragen. Stand: 5/6; offen „Bereich Ton“ (englisches System: „Sound“ weit
+  unten in der Seitenleiste)
+- [x] Nach Klicks und Zügen warten, bis der Bildschirm ruhig ist (statt fest 0,6 s)
+- [x] Gelernte Wege nach Bedeutung (Embeddings: Umformulierungen 0,70–0,78, Fremdes ≤ 0,49)
+- [x] Beobachten parallel (Bedienelemente und Texterkennung), gleichbleibender System-Prompt
+  für den Prompt-Cache; 4B für Züge gemessen (2,7 s statt ~4 s, aber 2/5 statt 1/5 falsch) –
+  einstellbar, nicht Standard
+- [x] Einordnung parallel zum Lesen des Rechnerzustands; lange Bitten auf ihren Kern verkürzt
+- [x] Sprachausgabe: kurze feste Sätze einmal erzeugt und aus dem Speicher gespielt
+- [x] ~~`flay doctor` misst, ob Ollama Anfragen gleichzeitig annimmt~~ – wieder entfernt
+  (Phase 17: qwen3-vl kann in Ollama keine parallelen Anfragen)
+- [x] Muster in `flay.intents` gebündelt, eine Testtabelle (`tests/test_patterns.py`); Pläne und
+  Routinen in `flay.planning`; `assistant.py` von ~2600 auf ~1900 Zeilen
+- [x] pyobjc und winrt mit Obergrenzen (winrt stand unbemerkt auf 4!10.0, der Code ist für 3.x)
+- [x] Verlauf: Hinweis nach zweimal derselben gescheiterten Bitte, Fehlschläge beim Start
+- [x] Windows-Checkliste: `docs/windows-test.md`
+- [x] `flay eval` danach: 100 % (174/174 Aktionen, 34/34 Gespräche), Median 1,8 s (vorher 1,66 s)
+
+## Phase 17 – Geschwindigkeit messen und verbessern
+
+- [x] Messprofil je Anfrage (`flay.perf`): Phasen (Spracherkennung, Zustand, Einordnung,
+  Weiterleitung, Werkzeuge, Antwort, Warten auf Sprachausgabe), Zeitpunkte (erster Satz,
+  erster Ton) und jeder Modellaufruf mit Zweck, Token, erstem Token und Lesetempo. Im Log
+  („Profil: …“), im Verlauf, in `flay stats --perf` und am Ende von `flay eval`
+- [x] Gefunden: Ollama hält für qwen3-vl nur **einen** Prompt-Cache (parallele Anfragen
+  unterstützt die Architektur nicht, `-np 1`). Jeder andere Prompt (Weiterleitung, Einordnung,
+  Gedächtnispflege) verdrängt den ~2000 Token langen Gesprächsanfang; nicht im Cache liest ihn
+  das Modell mit ~400 Token/s (~5 s) statt ~0,3–0,7 s. Getestet: `OLLAMA_NUM_PARALLEL=2` –
+  keine Wirkung
+- [x] Werkzeugliste in jeder Runde gleich (abgehakte Werkzeuge werden verworfen statt aus der
+  Liste genommen – die Liste steht am Anfang des Prompts)
+- [x] Weiterleitung mit dem Gesprächsprompt für Werkzeuge, nach denen das Modell antwortet
+  (`llm.shared_prefix_routing`); für Aktionen mit festem Satz bleibt der kurze eigene Prompt
+  (der lange wäre ~0,5 s langsamer)
+- [x] Nach einer Runde den Gesprächsanfang im Leerlauf neu in den Cache legen
+  (`llm.rewarm`), abgebrochen, sobald eine neue Anfrage kommt; beim Start vorab
+- [x] Gemessen (M2 Pro, `flay eval`, je 1 Lauf, gleiche Codebasis): Median unverändert
+  (1,61 → 1,62 s), p90 bis fertig 3,95 → 3,66 s, p90 erstes Token 3,48 → 2,13 s; gegenüber
+  vorher (p90 5,96 s, erstes Token 6,22 s) vor allem durch die gleichbleibende Werkzeugliste.
+  Gespräch über mehrere Runden: Plauderei nach einer Aktion erstes Token 0,33 s statt
+  0,72–1,0 s
+- [x] Sprachkette gemessen: Parakeet 0,10 s für 4 s Sprache (beim Start vorgewärmt),
+  Qwen3-TTS erster Ton ~0,2 s, Piper ~0,1 s, feste Sätze aus dem Speicher sofort
+- [x] Abschluss `flay eval` (2 Läufe): 100 % (174/174, 34/34), Median 1,63 s, p90 3,57 s
+  (vor dieser Phase 1,55 s / 5,96 s), erstes Token p90 2,12 s (vorher 6,22 s)
+- [x] Weiterleitung selbst: ~1 s, davon ~0,75 s für die ~27 Token des Werkzeugaufrufs
+  (~31 Token/s) – eindeutige Fälle jetzt ohne Modell (Phase 18)
+
+## Phase 18 – Eindeutiges ohne Modell, eigener erster Satz statt „Hm“
+
+- [x] `flay.direct`: Argumente ohne Modell, wenn nichts zu deuten ist – Projekt genau genannt
+  (passt ein Name grob auf ein zweites, entscheidet wie bisher das Modell), App + Verb +
+  Monitor, Tastenkürzel und „Schreib: …“, Lautstärke/Musik/Sperren, Timer „in N Minuten“,
+  Flays Einstellungen, Kalender heute/morgen/Woche, Claude-Status, Git-Status und Fehlerliste,
+  Ablauf fertig/Liste. Tabelle in `tests/test_patterns.py`
+- [x] Kein vorgefertigtes „Mhm“ mehr bei Antworten: Der erste Satz des Modells wird gesprochen,
+  sobald er fertig ist (~0,9 s nach Sprechende); „Moment.“ nur noch, wenn nach 1,2 s nichts
+  gesprochen ist. Eine Anweisung für einen besonders kurzen ersten Satz brachte nichts (erster
+  Satz 0,90–0,95 s mit und ohne) und ließ das Modell öfter Aktionen behaupten – verworfen
+- [x] Gemessen (`flay eval`, 2 Läufe, 208 Anfragen, 100 % richtig): 60 Anfragen ganz ohne
+  Modell; bei Aktionen startet das Werkzeug im Median nach 0,01 s statt 1,03 s; Median bis
+  fertig über alles 1,38 s statt 1,63 s; erster Satz einer Antwort unverändert ~0,9 s
+- [x] Behauptet das Modell nach einer Erzählung oder Wie-Frage eine Aktion („Ich habe Moewe
+  geöffnet“), führt Flay sie nicht aus, sondern lässt neu antworten (vorher konnte die
+  Behauptungsprüfung sie ausführen)
 
 ## Verworfen (bei Bedarf wieder aufnehmen)
 

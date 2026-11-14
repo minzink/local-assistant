@@ -101,6 +101,13 @@ class Notice:
     text: str
 
 
+@dataclass(frozen=True, slots=True)
+class TurnProfiled:
+    """Where the time of the last request went (flay.perf.Profile.to_dict())."""
+
+    profile: dict[str, Any]
+
+
 Event = (
     StateChanged
     | UserMessage
@@ -113,6 +120,7 @@ Event = (
     | ToolUsed
     | Notice
     | LogEntry
+    | TurnProfiled
 )
 
 

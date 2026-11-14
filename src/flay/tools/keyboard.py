@@ -39,7 +39,7 @@ SHORTCUTS: dict[str, tuple[str, bool]] = {
     "zoom_out": ("-", False),
 }
 # Keys pressed alone.
-SINGLE_KEYS = ("escape", "tab", "page_down", "page_up")
+SINGLE_KEYS = ("escape", "tab", "page_down", "page_up", "delete_word")
 SPOKEN = {
     "save": ("gespeichert", "saved"),
     "undo": ("rückgängig gemacht", "undone"),
@@ -56,6 +56,7 @@ SPOKEN = {
     "new_window": ("ein neues Fenster geöffnet", "opened a new window"),
     "zoom_in": ("vergrößert", "zoomed in"),
     "zoom_out": ("verkleinert", "zoomed out"),
+    "delete_word": ("das letzte Wort gelöscht", "deleted the last word"),
 }
 # How long the app gets to put the selection on the clipboard / to read the pasted text.
 COPY_WAIT = 0.3
@@ -73,6 +74,13 @@ def press_shortcut(name: str) -> None:
     from pynput.keyboard import Controller, Key
 
     keyboard = Controller()
+    if name == "delete_word":
+        # "Streich das letzte Wort": Option+Backspace on macOS, Ctrl+Backspace elsewhere.
+        modifier = Key.alt if sys.platform == "darwin" else Key.ctrl
+        with keyboard.pressed(modifier):
+            keyboard.press(Key.backspace)
+            keyboard.release(Key.backspace)
+        return
     if name in SINGLE_KEYS:
         key = getattr(Key, "esc" if name == "escape" else name)
         keyboard.press(key)
@@ -80,6 +88,58 @@ def press_shortcut(name: str) -> None:
         return
     key, shift = SHORTCUTS[name]
     modifiers = [_modifier(), *([Key.shift] if shift else [])]
+    for modifier in modifiers:
+        keyboard.press(modifier)
+    try:
+        keyboard.press(key)
+        keyboard.release(key)
+    finally:
+        for modifier in reversed(modifiers):
+            keyboard.release(modifier)
+
+
+# Names in key combinations ("cmd+shift+n", "enter", "down") → pynput key names.
+_KEY_NAMES = {
+    "enter": "enter", "return": "enter", "esc": "esc", "escape": "esc", "tab": "tab",
+    "space": "space", "backspace": "backspace", "delete": "delete", "up": "up",
+    "down": "down", "left": "left", "right": "right", "home": "home", "end": "end",
+    "page_up": "page_up", "pageup": "page_up", "page_down": "page_down",
+    "pagedown": "page_down", **{f"f{n}": f"f{n}" for n in range(1, 13)},
+}  # fmt: skip
+_MODIFIERS = {"shift": "shift", "alt": "alt", "option": "alt", "ctrl": "ctrl", "control": "ctrl"}
+
+
+def parse_keys(combo: str) -> tuple[list[str], str] | None:
+    """ "cmd+shift+n" → (["cmd", "shift"], "n"); None if a part is unknown. "cmd" and "mod"
+    are Cmd on macOS and Ctrl elsewhere."""
+    parts = [p.strip().lower() for p in combo.replace(" ", "").split("+") if p.strip()]
+    if not parts:
+        return None
+    *mods, key = parts
+    modifiers = []
+    for mod in mods:
+        if mod in ("cmd", "command", "mod", "meta", "win"):
+            modifiers.append("cmd" if sys.platform == "darwin" else "ctrl")
+        elif mod in _MODIFIERS:
+            modifiers.append(_MODIFIERS[mod])
+        else:
+            return None
+    if key not in _KEY_NAMES and len(key) != 1:
+        return None
+    return modifiers, key
+
+
+def press_keys(combo: str) -> None:
+    """Press a key combination like "cmd+shift+n", "enter" or "down"."""
+    from pynput.keyboard import Controller, Key, KeyCode
+
+    parsed = parse_keys(combo)
+    if parsed is None:
+        raise ValueError(f"unknown keys: {combo}")
+    mods, name = parsed
+    keyboard = Controller()
+    key = getattr(Key, _KEY_NAMES[name]) if name in _KEY_NAMES else KeyCode.from_char(name)
+    modifiers = [getattr(Key, m) for m in mods]
     for modifier in modifiers:
         keyboard.press(modifier)
     try:
@@ -137,6 +197,51 @@ def describe_selection(text: str) -> str:
     return f"(Text the user has selected in the front app:\n«{shown}{more}»)"
 
 
+def clipboard_text() -> str:
+    """What is on the clipboard right now (text only)."""
+    read, _ = _clipboard()
+    try:
+        return read() or ""
+    except Exception as exc:  # no clipboard access (e.g. no display)
+        log.info("Zwischenablage nicht lesbar: %s", exc)
+        return ""
+
+
+def describe_clipboard(text: str) -> str:
+    """The clipboard for the model, shortened if long."""
+    if not text.strip():
+        return "(The clipboard holds no text.)"
+    shown = text[:MAX_SELECTION_CHARS]
+    more = (
+        f" … ({len(text) - MAX_SELECTION_CHARS} more characters)" if len(text) > len(shown) else ""
+    )
+    return f"(Text on the user's clipboard:\n«{shown}{more}»)"
+
+
+# Dictated punctuation: "Hallo Komma wie geht's Fragezeichen" → "Hallo, wie geht's?".
+_PUNCTUATION = [
+    (r"\s*\b(?:neuer absatz|new paragraph)\b\s*", "\n\n"),
+    (r"\s*\b(?:neue zeile|new line)\b\s*", "\n"),
+    (r"\s*\b(?:komma|comma)\b", ","),
+    (r"\s*\b(?:fragezeichen|question mark)\b", "?"),
+    (r"\s*\b(?:ausrufezeichen|exclamation mark)\b", "!"),
+    (r"\s*\b(?:doppelpunkt|colon)\b", ":"),
+    (r"\s*\b(?:semikolon|semicolon)\b", ";"),
+    (r"\s*\b(?:punkt|full stop|period)\b(?=\s*(?:$|\n|(?-i:[A-ZÄÖÜ])))", "."),
+]
+
+
+def dictated(text: str) -> str:
+    """Spoken punctuation and line breaks written as such."""
+    import re
+
+    for pattern, replacement in _PUNCTUATION:
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+    # "Hallo, wie" – one space after a mark, none before.
+    text = re.sub(r"([,;:!?.])(?=[^\s\d,;:!?.])", r"\1 ", text)
+    return re.sub(r"[ \t]+\n", "\n", text).strip()
+
+
 class KeyboardTool:
     def __init__(
         self,
@@ -186,6 +291,7 @@ class KeyboardTool:
                 ),
             )
         if text:
+            text = dictated(text)
             await asyncio.to_thread(self._paste, text)
             short = text if len(text) <= 40 else text[:37] + "…"
             return ToolResult(

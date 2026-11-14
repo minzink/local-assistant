@@ -15,6 +15,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
 from flay.core.language import Language
 from flay.tools.base import speech, spoken
@@ -90,6 +91,8 @@ class ClaudeWatcher:
         # A session has to work this long before its end is worth a word.
         self._working_since: dict[str, float] = {}
         self.min_work_seconds = 20.0
+        # Told about each permission question (and its end, with None): answer_claude.
+        self.on_question: Callable[[Any, str], None] | None = None
 
     async def run(self) -> None:
         sessions = getattr(self._tmux, "sessions", None)
@@ -99,12 +102,21 @@ class ClaudeWatcher:
         while True:
             try:
                 for session in await sessions():
-                    self.update(session.project, claude_state(await screen(session.name)))
+                    shown = await screen(session.name)
+                    self.update(session.project, claude_state(shown), screen=shown,
+                                session=session.name)  # fmt: skip
             except Exception as exc:  # a session ending mid-read
                 log.debug("Claude-Wächter: %s", exc)
             await asyncio.sleep(self._interval)
 
-    def update(self, project: str, state: ClaudeState, now: float | None = None) -> None:
+    def update(
+        self,
+        project: str,
+        state: ClaudeState,
+        now: float | None = None,
+        screen: str = "",
+        session: str = "",
+    ) -> None:
         now = time.monotonic() if now is None else now
         before = self._states.get(project)
         self._states[project] = state
@@ -113,11 +125,24 @@ class ClaudeWatcher:
         if before is None or before == state:
             return
         where = spoken(project)
+        if before is ClaudeState.ASKING and self.on_question is not None:
+            self.on_question(None, project)
         if state is ClaudeState.ASKING:
-            self._announcements.say(
-                f"Claude in {where} wartet auf deine Freigabe.",
-                f"Claude in {where} is waiting for your approval.",
-            )
+            from flay.tools.claude_code import read_question
+
+            question = read_question(screen, project, session) if screen else None
+            if self.on_question is not None:
+                self.on_question(question, project)
+            if question is not None and question.question:
+                self._announcements.say(
+                    f"Claude in {where} fragt: {question.question} Sag ja, immer oder nein.",
+                    f"Claude in {where} asks: {question.question} Say yes, always or no.",
+                )
+            else:
+                self._announcements.say(
+                    f"Claude in {where} wartet auf deine Freigabe.",
+                    f"Claude in {where} is waiting for your approval.",
+                )
         elif state is ClaudeState.IDLE and before is ClaudeState.WORKING:
             worked = now - self._working_since.get(project, now)
             if worked >= self.min_work_seconds:

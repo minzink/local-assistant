@@ -31,6 +31,7 @@ from flay.core.messages import ImagePart, Message, Role, TextPart, ToolCall
 from flay.llm.base import ChatModel, TextDelta, ToolSpec
 from flay.tools.base import ToolResult, speech
 from flay.tools.screen import (
+    PrivateScreenError,
     ScreenPermissionError,
     Shot,
     Window,
@@ -41,6 +42,7 @@ from flay.tools.screen import (
     is_own,
     list_windows,
     monitor_bounds,
+    private_refusal,
 )
 
 log = logging.getLogger(__name__)
@@ -526,14 +528,48 @@ def watch_click(point: Point) -> Callable[[], float | None]:
         return lambda: None
 
     def after() -> float | None:
-        time.sleep(REACT_SECONDS)
-        try:
-            now = _snapshot(point)
-        except Exception:
+        if before is None:
             return None
-        return changed_share(before, now) if before is not None and now is not None else None
+        return settle(before, lambda: _snapshot(point))
 
     return after
+
+
+# How often and how long to look until the screen has settled after a click.
+SETTLE_EVERY = 0.12
+SETTLE_SECONDS = 1.5
+
+
+def settle(
+    before: Any, snapshot: Callable[[], Any], clock: Callable[[], float] = time.monotonic
+) -> float | None:
+    """Wait until the screen stops changing; the share changed against ``before``.
+
+    A menu that opens is drawn over a few frames: the next move must see it complete.
+    Nothing changed after REACT_SECONDS: the click had no visible effect (returns ~0).
+    Changing for longer than SETTLE_SECONDS (a video, an animation): returns anyway.
+    """
+    start = clock()
+    previous = before
+    changed = 0.0
+    while True:
+        time.sleep(SETTLE_EVERY)
+        try:
+            now = snapshot()
+        except Exception:
+            return None
+        if now is None:
+            return None
+        changed = changed_share(before, now)
+        elapsed = clock() - start
+        still = changed_share(previous, now) < MIN_CHANGED_SHARE
+        if changed >= MIN_CHANGED_SHARE and still:
+            return changed  # changed, and done changing
+        if changed < MIN_CHANGED_SHARE and elapsed >= REACT_SECONDS:
+            return changed  # nothing happened
+        if elapsed >= SETTLE_SECONDS:
+            return changed
+        previous = now
 
 
 def scroll(region: Frame, direction: str, pages: float) -> None:
@@ -605,7 +641,10 @@ class ClickTool:
         elements: Callable[[str | None], Iterable[list[Element]]] = element_groups,
         verify: Callable[[Point], Callable[[], float | None]] | None = None,
         candidates: Callable[[str | None, Frame], list[Element]] | None = None,
+        read_text: Callable[[Frame], Sequence[Any]] | None = None,
     ) -> None:
+        # The system's text recognition (flay.tools.ocr.read_screen), if available.
+        self._read_text = read_text
         self._verify = verify
         self._candidates = candidates
         self._locator = locator
@@ -662,6 +701,8 @@ class ClickTool:
         window, windows = await asyncio.to_thread(_window_or_none, arguments.get("window"))
         try:
             found = await self._find(text, description, button, window)
+        except PrivateScreenError as exc:
+            return private_refusal(exc)
         except ScreenPermissionError:
             return SCREEN_PERMISSION
         if isinstance(found, ToolResult):
@@ -740,6 +781,12 @@ class ClickTool:
                 "Bedienungshilfen: „%s“ → %s „%s“", text or description, element.role, element.label
             )
             return element.centre, element.label, "Bedienungshilfen"
+        if text and not candidates and self._read_text is not None:
+            # Not in the accessibility tree (PhpStorm's toolbars, some web content): the
+            # text on the screen itself, found by OCR.
+            read = await self._find_text(text, window)
+            if read is not None:
+                return read
         if self._locator is None:
             return self._not_found(text or description)
         shot = await asyncio.to_thread(self._capture, window)
@@ -766,6 +813,27 @@ class ClickTool:
             under = await asyncio.to_thread(element_at, point)
         label = under.label if under is not None and text and label_score(text, under.label) else ""
         return point, label, "Bild, nachgeschärft" if self._refine else "Bild"
+
+    async def _find_text(self, text: str, window: Window | None) -> tuple[Point, str, str] | None:
+        from flay.tools.ocr import find_text
+
+        assert self._read_text is not None
+        region = window.bounds if window else monitor_bounds(self._monitor)
+        try:
+            boxes = await asyncio.to_thread(self._read_text, region)
+        except ScreenPermissionError:
+            raise
+        except Exception as exc:  # OCR unavailable: the vision model takes over
+            log.info("Texterkennung fehlgeschlagen: %s", exc)
+            return None
+        found = find_text(text, boxes)
+        if len(found) != 1:
+            if found:
+                log.info("Texterkennung: „%s“ steht %d-mal auf dem Bildschirm", text, len(found))
+            return None
+        box = found[0]
+        log.info("Texterkennung: „%s“ → „%s“ bei %s", text, box.text, box.frame)
+        return box.centre, box.text, "Texterkennung"
 
     async def _pick_marked(self, shot: Shot, target: str, window: Window | None) -> Element | None:
         if self._locator is None or self._candidates is None:
@@ -860,6 +928,8 @@ class ScrollTool:
         await asyncio.sleep(0.4)  # smooth scrolling ends
         try:
             shot = await asyncio.to_thread(self._capture, window)
+        except PrivateScreenError as exc:
+            return private_refusal(exc)
         except ScreenPermissionError:
             return SCREEN_PERMISSION
         return ToolResult(

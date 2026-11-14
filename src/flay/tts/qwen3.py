@@ -43,6 +43,8 @@ _DONE = object()
 class _Model(Protocol):
     def chunks(self, text: str, language: Language) -> Generator[np.ndarray]: ...
 
+    def use(self, references: dict[Language, Reference]) -> None: ...
+
 
 class Qwen3TTS:
     def __init__(self, voice: VoiceSettings, data_dir: Path, engine: Engine) -> None:
@@ -88,6 +90,28 @@ class Qwen3TTS:
             shaped[path] = Reference(samples, SAMPLE_RATE, reference.text)
         return {language: shaped[path] for language, path in paths.items()}
 
+    def set_speed(self, speed: float) -> None:
+        """A faster or slower reference recording: the clone speaks at its pace."""
+        self._voice = self._voice.model_copy(update={"speed": speed})
+        self._executor.submit(self._reload)
+
+    def set_voice(self, name: str) -> None:
+        self._voice = self._voice.model_copy(update={"name": name})
+        self._executor.submit(self._reload)
+
+    def voices(self) -> list[str]:
+        from flay.tts.voice import BUNDLED, OWN, own_recording
+
+        own = any(own_recording(self._data_dir, language).exists() for language in Language)
+        return [*BUNDLED, *([OWN] if own else [])]
+
+    def _reload(self) -> None:
+        if self._model is not None:
+            try:
+                self._model.use(self._references())
+            except Exception as exc:
+                log.warning("Stimme nicht gewechselt: %s", exc)
+
     @property
     def sample_rate(self) -> int:
         return SAMPLE_RATE
@@ -122,10 +146,14 @@ def _cached(repo: str) -> str:
 
 class _MlxModel:
     def __init__(self, path: str, references: dict[Language, Reference]) -> None:
-        import mlx.core as mx
         from mlx_audio.tts.utils import load_model
 
         self._model = load_model(path)
+        self.use(references)
+
+    def use(self, references: dict[Language, Reference]) -> None:
+        import mlx.core as mx
+
         # The same array each time lets mlx-audio reuse the encoded reference.
         self._references = {
             language: (mx.array(reference.samples), reference.text)
@@ -159,6 +187,9 @@ class _TorchModel:
             device_map="cuda:0" if cuda else "cpu",
             dtype=torch.bfloat16 if cuda else torch.float32,
         )
+        self.use(references)
+
+    def use(self, references: dict[Language, Reference]) -> None:
         self._prompts = {
             language: self._model.create_voice_clone_prompt(
                 ref_audio=(reference.samples, reference.sample_rate), ref_text=reference.text

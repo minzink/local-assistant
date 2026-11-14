@@ -344,7 +344,7 @@ async def test_open_firefox_goes_to_the_app_tool_without_a_screenshot() -> None:
 
     await assistant.handle_text("Schieb Firefox auf den linken Monitor")
 
-    assert llm.offered[0] == ["control_window"]
+    assert llm.offered == []  # app, verb and monitor are clear: no model (flay.direct)
     assert screen.calls == []  # "Monitor" is no reason to look at the screen here
     assert any(call[0] == "frame" for call in desktop.calls)
     assert tts.spoken[-1][0] == "Firefox ist jetzt auf Monitor 2."

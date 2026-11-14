@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import json
+import time
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from typing import Any, cast
@@ -15,6 +16,7 @@ from typing import Any, cast
 from openai import AsyncOpenAI, DefaultAsyncHttpxClient
 from openai.types.chat import ChatCompletionMessageParam
 
+from flay import perf
 from flay.core.messages import AudioPart, ImagePart, Message, Role, TextPart, ToolCall
 from flay.llm import budget
 from flay.llm.base import LLMEvent, ModelCapabilities, TextDelta, ThinkingOptions, ToolSpec
@@ -144,29 +146,46 @@ class OpenAICompatibleChat:
         api_tools = [to_api_tool(t) for t in tools]
         extra: dict[str, Any] = {"tools": api_tools} if tools else {}
         await synthesis.wait()  # see flay.llm.gate
-        await self._client.chat.completions.create(
-            model=self._model,
-            messages=self._messages(messages, api_tools, 1),
-            max_tokens=1,
-            extra_body=self._extra_body,
-            **extra,
-        )
+        with perf.request("warm"):
+            await self._client.chat.completions.create(
+                model=self._model,
+                messages=self._messages(messages, api_tools, 1),
+                max_tokens=1,
+                extra_body=self._extra_body,
+                **extra,
+            )
 
     async def complete_json(
         self, messages: Sequence[Message], schema: dict[str, Any], name: str = "answer"
     ) -> dict[str, Any]:
+        start = time.perf_counter()
         await synthesis.wait()  # see flay.llm.gate
-        response = await self._client.chat.completions.create(
-            model=self._model,
-            messages=self._messages(messages, max_tokens=self._max_tokens),
-            # Deterministic: the same request should always be routed the same way.
-            temperature=0,
-            max_tokens=self._max_tokens,
-            response_format={
-                "type": "json_schema",
-                "json_schema": {"name": name, "schema": schema, "strict": True},
-            },
-            extra_body=self._extra_body,
+        _waited(start)
+        sent = time.perf_counter()
+        with perf.request(perf.purpose()):
+            response = await self._client.chat.completions.create(
+                model=self._model,
+                messages=self._messages(messages, max_tokens=self._max_tokens),
+                # Deterministic: the same request should always be routed the same way.
+                temperature=0,
+                max_tokens=self._max_tokens,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {"name": name, "schema": schema, "strict": True},
+                },
+                extra_body=self._extra_body,
+            )
+        usage = response.usage
+        perf.llm_call(
+            perf.LLMCall(
+                perf.purpose(),
+                self._model,
+                time.perf_counter() - sent,
+                None,
+                usage.prompt_tokens if usage else None,
+                usage.completion_tokens if usage else None,
+                _images(messages),
+            )
         )
         content = response.choices[0].message.content or "{}"
         result = json.loads(content)
@@ -185,45 +204,71 @@ class OpenAICompatibleChat:
             model = self._thinking.model or model
             max_tokens = self._thinking.max_tokens
             body = (body or {}) | self._thinking.extra_body
+        start = time.perf_counter()
         await synthesis.wait()  # see flay.llm.gate
-        response = await self._client.chat.completions.create(
-            model=model,
-            messages=self._messages(messages, api_tools, max_tokens),
-            temperature=self._temperature,
-            max_tokens=max_tokens,
-            stream=True,
-            extra_body=body,
-            **extra,
-        )
-        # Tool calls arrive in fragments (name, then argument pieces) keyed by index.
-        pending: dict[int, _PendingCall] = {}
-        # Leaving the context closes the HTTP stream, which stops generation on the
-        # server when the consuming task is cancelled.
-        # Servers send thinking in a field of its own; some leave it in the text as
-        # <think>…</think>. Either way it must never be spoken.
-        hidden = ThinkFilter()
-        async with response:
-            async for chunk in response:
-                if not chunk.choices:
-                    continue
-                delta = chunk.choices[0].delta
-                if delta.content and (text := hidden.feed(delta.content)):
-                    yield TextDelta(text)
-                for fragment in delta.tool_calls or ():
-                    call = pending.setdefault(fragment.index, _PendingCall())
-                    call.id = fragment.id or call.id
-                    if fragment.function is not None:
-                        call.name += fragment.function.name or ""
-                        call.arguments += fragment.function.arguments or ""
-        if rest := hidden.flush():
-            yield TextDelta(rest)
-        for index, call in sorted(pending.items()):
-            if call.name:
-                yield ToolCall(
-                    id=call.id or f"call_{index}",
-                    name=call.name,
-                    arguments=parse_arguments(call.arguments),
-                )
+        _waited(start)
+        sent = time.perf_counter()
+        # Counted as running while it streams (flay.perf: the cache guard waits).
+        with perf.request(perf.purpose()):
+            response = await self._client.chat.completions.create(
+                model=model,
+                messages=self._messages(messages, api_tools, max_tokens),
+                temperature=self._temperature,
+                max_tokens=max_tokens,
+                stream=True,
+                # The last chunk then carries the token counts (for flay.perf).
+                stream_options={"include_usage": True},
+                extra_body=body,
+                **extra,
+            )
+            measured = perf.LLMCall(perf.purpose(), model, 0.0, images=_images(messages))
+            perf.llm_call(measured)
+            # Tool calls arrive in fragments (name, then argument pieces) keyed by index.
+            pending: dict[int, _PendingCall] = {}
+            # Leaving the context closes the HTTP stream, which stops generation on the
+            # server when the consuming task is cancelled.
+            # Servers send thinking in a field of its own; some leave it in the text as
+            # <think>…</think>. Either way it must never be spoken.
+            hidden = ThinkFilter()
+            async with response:
+                async for chunk in response:
+                    if chunk.usage is not None:
+                        measured.prompt_tokens = chunk.usage.prompt_tokens
+                        measured.output_tokens = chunk.usage.completion_tokens
+                    measured.seconds = time.perf_counter() - sent
+                    if not chunk.choices:
+                        continue
+                    if measured.first_token is None:
+                        measured.first_token = measured.seconds
+                    delta = chunk.choices[0].delta
+                    if delta.content and (text := hidden.feed(delta.content)):
+                        yield TextDelta(text)
+                    for fragment in delta.tool_calls or ():
+                        call = pending.setdefault(fragment.index, _PendingCall())
+                        call.id = fragment.id or call.id
+                        if fragment.function is not None:
+                            call.name += fragment.function.name or ""
+                            call.arguments += fragment.function.arguments or ""
+            if rest := hidden.flush():
+                yield TextDelta(rest)
+            for index, call in sorted(pending.items()):
+                if call.name:
+                    yield ToolCall(
+                        id=call.id or f"call_{index}",
+                        name=call.name,
+                        arguments=parse_arguments(call.arguments),
+                    )
+
+
+def _waited(start: float) -> None:
+    """Time spent waiting for queued speech (flay.llm.gate) before the request went out."""
+    waited = time.perf_counter() - start
+    if waited > 0.01 and (profile := perf.current()) is not None:
+        profile.add("wait_for_speech", waited)
+
+
+def _images(messages: Sequence[Message]) -> int:
+    return sum(isinstance(part, ImagePart) for m in messages for part in m.parts)
 
 
 class ThinkFilter:

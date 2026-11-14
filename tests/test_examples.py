@@ -173,7 +173,8 @@ async def test_examples_reach_the_weighing_step(memory: PersistentMemory) -> Non
     llm = RoutingLLM()
     flay = assistant(memory, llm, SayingCloseTool())
 
-    await flay.handle_text("Schließe das Projekt KX Command.")
+    # Roughly named: the model fills in the call (an exact name would need none).
+    await flay.handle_text("Schließe das Projekt KX Komand.")
 
     router_prompt = llm.prompts[0][0][0].text
     assert '"Mach KX Command zu." → close_project' in router_prompt
@@ -181,7 +182,7 @@ async def test_examples_reach_the_weighing_step(memory: PersistentMemory) -> Non
 
 
 def test_correction_wording() -> None:
-    from flay.assistant import _CORRECTION
+    from flay.intents import _CORRECTION
 
     assert _CORRECTION.search("Nein, das meinte ich nicht.")
     assert _CORRECTION.search("Falsch!")
@@ -204,7 +205,7 @@ async def test_an_action_done_earlier_can_be_asked_for_again() -> None:
 
 
 def test_stories_and_how_tos_get_no_command_examples() -> None:
-    from flay.assistant import wants_examples
+    from flay.intents import wants_examples
 
     assert wants_examples("She K Command.")
     assert wants_examples("Mach mal Moewe auf.")
@@ -225,6 +226,6 @@ async def test_a_story_does_not_act(memory: PersistentMemory) -> None:
 
     await flay.handle_text("Ich hab KX Command vorhin geschlossen, war eh fertig.")
 
+    # The tools stay offered (constant prompt start), but the call is dropped.
     assert tool.calls == []
-    assert llm.prompts and all(not tools for _, tools in llm.prompts)
     await memory.close()

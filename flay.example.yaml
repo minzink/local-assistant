@@ -38,6 +38,9 @@ llm:
   context_tokens: 8192                  # längere Anfragen kürzt Flay vorher (älteste Nachrichten zuerst); 0 = nie
   keep_warm_minutes: 4                  # Modell warm halten (Ollama entlädt nach 5 min); 0 = aus
   structured_routing: false             # Aktionen per Formular (JSON-Schema) – mit qwen3-vl nicht besser
+  classify_requests: true               # ungewöhnlich formulierte Rechner-Bitten vom Modell einordnen (~0,4 s)
+  shared_prefix_routing: true           # Weiterleitung mit dem Gesprächsprompt (Antwort danach aus dem Cache)
+  rewarm: true                          # Gesprächsanfang nach jeder Runde im Leerlauf wieder in den Cache
   thinking:                             # Denken nur auf Wunsch („denk mal nach“), vorher „Moment …“
     enabled: false
     model: null                         # z.B. qwen3-vl:8b-thinking (Apache 2.0): 100 % statt 75 %
@@ -58,8 +61,9 @@ tts:
     en: flay-ramona-medium     # fehlt sie, spricht Kristin (gemeinfrei)
   filler:              # kurzes „Mhm.“, solange die Antwort noch vorbereitet wird
     enabled: true
-    delay_ms: 400      # nur wenn die Antwort so lange nach Sprechende noch nicht läuft
-    # phrases:         { de: ["Mhm.", "Okay.", "Hm."], en: [...] }
+    delay_ms: 1200     # nur wenn so lange nach Sprechende noch nichts gesprochen wird
+    # Antworten beginnen mit einem kurzen ersten Satz des Modells statt mit „Hm“.
+    # phrases:         { de: ["Mhm.", "Okay."], en: [...] }   # trotzdem Füllwörter bei Antworten
     # action_phrases:  { de: ["Moment.", "Einen Moment."], en: [...] }   # bei Aktionen
 
 persona:
@@ -73,7 +77,7 @@ tools:
   enabled: [open_project, close_project, send_to_claude, claude_status, look_at_screen,
             click_on_screen, scroll_screen, open_url, read_webpage, remember, forget, ssh_connect,
             control_window, use_keyboard, phpstorm, run_command, find_file, timer,
-            system_control]
+            system_control, operate_computer, calendar, adjust_settings, answer_claude]
   phpstorm:
     launcher: null       # null = Toolbox-Skript bzw. `phpstorm` im PATH
     config_dir: null     # null = neueste PhpStorm-Version (für "zuletzt geöffnete Projekte")
@@ -90,6 +94,13 @@ tools:
     model: auto          # Bildmodell zum Orten; auto = 4B-Variante aus flay setup, sonst llm.model; null = llm.model
     refine: true         # zweiter, genauerer Blick, wenn die Bedienungshilfen nichts bestätigen
     verify: true         # nach dem Klick Bildschirm vergleichen; ohne Änderung sagt Flay das
+    ocr: true            # Beschriftungen ohne Bedienungshilfen per Texterkennung finden (~0,3 s)
+  computer:              # operate_computer: Flay findet den Weg durch eine App selbst
+    max_steps: 12        # so viele Züge (klicken, tippen …) je Aufgabe, dann hört Flay auf
+    learn: true          # funktionierende Wege merken (<data_dir>/solutions.json)
+    model: null          # null = llm.model; auto = 4B-Variante (~1/3 schneller, wählt öfter falsch)
+  calendar:
+    hidden: []           # Kalender, die Flay auslässt, z.B. ["Feiertage", "Geburtstage"]
   web:                   # read_webpage
     max_pages: 3         # höchstens so viele Bildschirme lesen (je ~8 s auf einem M2 Pro)
     max_steps: 4         # so oft darf Flay auf der Seite scrollen/klicken, bis es das Gesuchte hat
@@ -108,6 +119,16 @@ tools:
   notifications:         # von sich aus Bescheid sagen
     claude: true         # Claude (flay claude) fertig oder wartet auf Freigabe
     claude_min_work_seconds: 20
+
+privacy:
+  # Keine Bildschirmaufnahme und keine Texterkennung, solange eine dieser Apps oder ein Fenster
+  # mit einem dieser Titelwörter im aufgenommenen Bereich sichtbar ist (Teile zählen).
+  private_apps: [1Password, Bitwarden, KeePass, Dashlane, LastPass, Enpass, Keychain Access,
+                 Schlüsselbundverwaltung, Passwords, Passwörter]
+  private_titles: [Online-Banking, Onlinebanking, Banking, Sparkasse, Volksbank, PayPal,
+                   Kontoauszug, Privates Surfen, Private Browsing, Privates Fenster, InPrivate,
+                   Inkognito, Incognito]
+  history_days: 30     # Verlauf für `flay history` / `flay stats` (nur lokal); 0 = keiner
 
 ui:
   enabled: true        # lokale Web-UI: Chatverlauf, Texteingabe, Mikrofon/Sprache stumm

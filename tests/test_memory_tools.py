@@ -105,7 +105,7 @@ def test_factory_adds_memory_tools_only_with_persistent_memory(
     ],
 )
 def test_tool_intent(text: str, expected: str | None) -> None:
-    from flay.assistant import tool_intent
+    from flay.intents import tool_intent
 
     assert tool_intent(text) == expected
 

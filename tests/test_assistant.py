@@ -751,7 +751,8 @@ async def test_interrupting_while_the_filler_hands_over_cancels_the_turn() -> No
             await asyncio.sleep(1)  # the filler is still playing
             return True
 
-    voice = FillerVoice(LoudTTS(), FillerSettings(delay_ms=0))
+    phrases = {Language.DE: ["Mhm."], Language.EN: ["Mhm."]}
+    voice = FillerVoice(LoudTTS(), FillerSettings(delay_ms=0, phrases=phrases))
     filler = TurnFiller(voice, SlowOutput(), Language.DE, clock.monotonic)
     await asyncio.sleep(0.05)  # the filler started playing
 

@@ -139,6 +139,16 @@ class LLMSettings(_Section):
     # qwen3-vl:8b-instruct it was no better and 0.7 s slower than a plain tool call, so off;
     # worth re-checking with `flay eval` for other models.
     structured_routing: bool = False
+    # Requests no fixed pattern recognizes, but that could be about the computer ("Wirf
+    # Spotify auf den zweiten Bildschirm"), are classified by the model first (~0.4 s,
+    # only for such requests). Off: only the patterns route computer actions.
+    classify_requests: bool = True
+    # Route recognized actions with the conversation's own prompt plus one line, so the
+    # server's cached prompt start stays valid for the answer after it (see flay eval).
+    shared_prefix_routing: bool = True
+    # After a turn whose routing (or the memory's upkeep) pushed the conversation out of the
+    # server's prompt cache, send its start again while idle: the next answer starts fast.
+    rewarm: bool = True
     thinking: ThinkingSettings = ThinkingSettings()
 
     @field_validator("input_modalities")
@@ -154,17 +164,21 @@ class LLMSettings(_Section):
 
 
 class FillerSettings(_Section):
-    """A short "Mhm." while the answer is still being prepared, so the user knows at once
-    that Flay heard them. Only for spoken input."""
+    """A short phrase while an action is still being prepared, so the user knows Flay heard
+    them. Only for spoken input.
+
+    Answers need none: their first sentence is spoken as soon as the model has written it
+    (~0.9 s after the user stopped, M2 Pro) – a real reply instead of a canned "Hm". An
+    instruction to keep that sentence extra short brought no measurable gain and made the
+    model claim actions more often, so there is none. Phrases for answers can still be set
+    (``phrases``)."""
 
     enabled: bool = True
-    # Played only if the answer has not started this long after the user stopped speaking.
-    delay_ms: int = Field(default=400, ge=0, le=5000)
+    # Played only if nothing is spoken this long after the user stopped speaking. Most
+    # actions are done before (clear ones without the model: flay.direct).
+    delay_ms: int = Field(default=1200, ge=0, le=5000)
     phrases: dict[Language, list[str]] = Field(
-        default_factory=lambda: {
-            Language.DE: ["Mhm.", "Okay.", "Hm."],
-            Language.EN: ["Mhm.", "Okay.", "Hm."],
-        }
+        default_factory=lambda: {language: list[str]() for language in Language}
     )
     # When the request asks for an action (open a project, tell Claude, ...).
     action_phrases: dict[Language, list[str]] = Field(
@@ -293,6 +307,10 @@ ToolName = Literal[
     "find_file",
     "timer",
     "system_control",
+    "operate_computer",
+    "calendar",
+    "adjust_settings",
+    "answer_claude",
 ]
 
 
@@ -336,6 +354,9 @@ class PointerToolSettings(_Section):
     # After a click, compare the screen before and after (~0.6 s): if nothing changed, Flay
     # says so instead of reporting success. Needs the screen recording permission.
     verify: bool = True
+    # Find labels the accessibility interfaces miss (PhpStorm's toolbars …) with the
+    # system's text recognition (~0.3 s) before asking the vision model (~8 s).
+    ocr: bool = True
 
 
 class WebToolSettings(_Section):
@@ -382,6 +403,22 @@ class NotificationSettings(_Section):
     claude_min_work_seconds: float = Field(default=20, ge=0)
 
 
+class ComputerSettings(_Section):
+    # operate_computer: steps (look, click, type …) Flay may take for one task before it
+    # stops and says how far it got.
+    max_steps: int = Field(default=12, ge=1, le=40)
+    # Model that picks the moves; null = llm.model. The 4B variant ("auto": if `flay setup`
+    # made it) is ~1/3 faster per move but picked 2 of 5 first moves wrong (8B: 1 of 5).
+    model: str | None = None
+    # Solutions that worked are kept and shown to the model for similar tasks.
+    learn: bool = True
+
+
+class CalendarSettings(_Section):
+    # Calendars to leave out (by name), e.g. ["Feiertage", "Geburtstage"].
+    hidden: list[str] = Field(default_factory=list)
+
+
 class ToolsSettings(_Section):
     enabled: list[ToolName] = Field(default_factory=lambda: list(get_args(ToolName)))
     phpstorm: PhpStormToolSettings = PhpStormToolSettings()
@@ -395,6 +432,8 @@ class ToolsSettings(_Section):
     commands: dict[str, CommandSettings] = Field(default_factory=dict)
     files: FileSearchSettings = FileSearchSettings()
     notifications: NotificationSettings = NotificationSettings()
+    computer: ComputerSettings = ComputerSettings()
+    calendar: CalendarSettings = CalendarSettings()
 
 
 class UISettings(_Section):
@@ -404,6 +443,28 @@ class UISettings(_Section):
     open_browser: bool = True
     # Menu bar (macOS) / tray (Windows) icon with state, mute switches and quit.
     tray: bool = True
+
+
+class PrivacySettings(_Section):
+    # No screenshot (nor OCR) while one of these apps – or a window whose title contains one
+    # of these words – is visible in the captured part of the screen. Compared without case,
+    # parts of names count ("keepass" covers "KeePassXC").
+    private_apps: list[str] = Field(
+        default_factory=lambda: [
+            "1Password", "Bitwarden", "KeePass", "Dashlane", "LastPass", "Enpass",
+            "Keychain Access", "Schlüsselbundverwaltung", "Passwords", "Passwörter",
+        ]
+    )  # fmt: skip
+    private_titles: list[str] = Field(
+        default_factory=lambda: [
+            "Online-Banking", "Onlinebanking", "Banking", "Sparkasse", "Volksbank", "PayPal",
+            "Kontoauszug", "Privates Surfen", "Private Browsing", "Privates Fenster",
+            "InPrivate", "Inkognito", "Incognito",
+        ]
+    )  # fmt: skip
+    # Keep a log of requests (text, recognized action, tools, duration, errors) for
+    # `flay history` and `flay stats`, on this computer only. Days to keep it; 0 = no log.
+    history_days: int = Field(default=30, ge=0)
 
 
 class Settings(_Section):
@@ -417,6 +478,7 @@ class Settings(_Section):
     memory: MemorySettings = MemorySettings()
     ui: UISettings = UISettings()
     tools: ToolsSettings = ToolsSettings()
+    privacy: PrivacySettings = PrivacySettings()
     data_dir: Path = Field(default_factory=lambda: user_data_path("flay", appauthor=False))
 
 

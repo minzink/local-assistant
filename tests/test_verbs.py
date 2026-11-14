@@ -148,26 +148,26 @@ async def test_a_request_not_understood_is_learned_with_the_retry(
     tool = SayingCloseTool()
     flay = assistant(memory, SelectiveLLM("Schließe"), tool)  # type: ignore[arg-type]
 
-    await flay.handle_text("Sli flay")  # not understood: Flay asks back
+    await flay.handle_text("Pli flay")  # not understood: Flay asks back
     await flay.handle_text("Schließe flay")  # said again, clearly: done
     await flay.handle_text("Danke.")
 
     assert tool.calls == [{"name": "flay"}]
     learned = sorted(f.text for f in memory._store.facts(kind="example"))
-    assert learned == ["Schließe flay", "Sli flay"]
-    assert memory.verb("sli") == "close_project"
+    assert learned == ["Pli flay", "Schließe flay"]
+    assert memory.verb("pli") == "close_project"
     await memory.close()
 
 
 async def test_a_contradicted_retry_teaches_nothing(memory: PersistentMemory) -> None:
     flay = assistant(memory, SelectiveLLM("Schließe"), SayingCloseTool())  # type: ignore[arg-type]
 
-    await flay.handle_text("Sli flay")
+    await flay.handle_text("Pli flay")
     await flay.handle_text("Schließe flay")
     await flay.handle_text("Nein, falsch.")
 
     assert memory._store.facts(kind="example") == []
-    assert memory.verb("sli") is None
+    assert memory.verb("pli") is None
     await memory.close()
 
 

@@ -5,8 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from flay.assistant import Assistant, file_intent
+from flay.assistant import Assistant
 from flay.config import Settings
+from flay.intents import file_intent
 from flay.tools.base import ToolRegistry, ToolResult, speech
 from flay.tools.files import ReadFileTool, find_file, read_text, readable
 from flay.tools.phpstorm import Project

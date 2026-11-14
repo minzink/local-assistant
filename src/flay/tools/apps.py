@@ -54,15 +54,44 @@ def _norm(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", text.casefold())
 
 
+# German names of system apps whose files carry the English name (macOS) or an exe name
+# (Windows): "Systemeinstellungen" is /System/Applications/System Settings.app.
+ALIASES = {
+    "systemeinstellungen": ("System Settings", "Einstellungen", "Settings"),
+    "einstellungen": ("System Settings", "Einstellungen", "Settings"),
+    "rechner": ("Calculator", "Rechner"),
+    "notizen": ("Notes",),
+    "erinnerungen": ("Reminders",),
+    "kalender": ("Calendar", "Kalender"),
+    "vorschau": ("Preview",),
+    "fotos": ("Photos", "Fotos"),
+    "musik": ("Music",),
+    "karten": ("Maps", "Karten"),
+    "nachrichten": ("Messages",),
+    "kontakte": ("Contacts",),
+    "aktivitätsanzeige": ("Activity Monitor",),
+    "taskmanager": ("Task Manager", "Task-Manager"),
+    "schlüsselbundverwaltung": ("Keychain Access",),
+    "texteditor": ("TextEdit", "Editor", "Notepad"),
+    "editor": ("TextEdit", "Editor", "Notepad"),
+    "explorer": ("Explorer", "Datei-Explorer", "File Explorer", "Finder"),
+    "dateiexplorer": ("Datei-Explorer", "File Explorer", "Explorer"),
+}
+
+
 def match_app(wanted: str, apps: list[App]) -> App | None:
     """The app ``wanted`` names: exact, as a word of the name ("Code" → "Visual Studio
-    Code") or close enough ("Fire Fox" → "Firefox")."""
+    Code"), by its German name ("Systemeinstellungen" → "System Settings") or close enough
+    ("Fire Fox" → "Firefox")."""
     target = _norm(wanted)
     if not target:
         return None
     by_name = {_norm(app.name): app for app in apps}
     if target in by_name:
         return by_name[target]
+    for alias in ALIASES.get(wanted.strip().casefold().replace("-", ""), ()):
+        if (found := by_name.get(_norm(alias))) is not None:
+            return found
     words = [app for app in apps if target in {_norm(w) for w in app.name.split()}]
     if len(words) == 1:
         return words[0]
@@ -85,11 +114,15 @@ def named_app(text: str, apps: list[App]) -> App | None:
 
 def windows_of(app: App, windows: list[Window]) -> list[Window]:
     """The app's visible windows, frontmost first (Flay's own UI left out)."""
-    name = app.name.casefold()
+    # Windows carry the localized name: "System Settings" shows as "Systemeinstellungen".
+    names = {app.name.casefold()} | {
+        german for german, english in ALIASES.items() if app.name in english
+    }
     return [
         w
         for w in windows
-        if not is_own(w) and (name in w.app.casefold() or _norm(app.name) in _norm(w.title))
+        if not is_own(w)
+        and (any(name in w.app.casefold() for name in names) or _norm(app.name) in _norm(w.title))
     ]
 
 
@@ -162,10 +195,17 @@ def _mac_quit(app: App) -> bool:
     from AppKit import NSRunningApplication
 
     pid = _mac_running().get(app.name)
-    if pid is None:
-        return False
-    running = NSRunningApplication.runningApplicationWithProcessIdentifier_(pid)
-    return bool(running is not None and running.terminate())
+    running = NSRunningApplication.runningApplicationWithProcessIdentifier_(pid) if pid else None
+    if running is not None and running.terminate():
+        return True
+    # Not found under its name, or ignoring terminate (System Settings with a pane open):
+    # ask by AppleScript – only if it runs, a "tell" would start it otherwise.
+    script = (
+        f'if application "{app.name}" is running then\n'
+        f'tell application "{app.name}" to quit\nreturn "quit"\nend if'
+    )
+    done = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=10)
+    return done.returncode == 0 and done.stdout.strip() == "quit"
 
 
 def _mac_window(app: App) -> Any:

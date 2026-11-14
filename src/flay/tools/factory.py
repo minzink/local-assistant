@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from flay.config import Settings
+from flay.core.language import Language
 from flay.core.messages import Modality
 from flay.memory.base import FactMemory
 
 if TYPE_CHECKING:
     from flay.notifications import Announcements, Timers
     from flay.tools.phpstorm_mcp import PhpStormMcp
+    from flay.tools.preferences import Preferences
     from flay.tools.state import ComputerState
 from flay.tools.base import Tool, ToolRegistry
 
@@ -40,6 +43,7 @@ def create_tools(
     facts: FactMemory | None = None,
     announcements: Announcements | None = None,
     timers: Timers | None = None,
+    preferences: Preferences | None = None,
 ) -> ToolRegistry:
     """Registry of the tools enabled in the config; nothing else is callable.
 
@@ -88,6 +92,12 @@ def create_tools(
             from flay.tools.phpstorm import CloseProjectTool
 
             tools.append(CloseProjectTool(phpstorm()))
+        elif name == "answer_claude":
+            if "send_to_claude" not in config.enabled:
+                continue
+            from flay.tools.claude_code import AnswerClaudeTool
+
+            tools.append(AnswerClaudeTool())
         elif name == "claude_status":
             from flay.tools.claude_code import ClaudeStatusTool
 
@@ -175,6 +185,47 @@ def create_tools(
             from flay.tools.system import SystemTool
 
             tools.append(SystemTool())
+        elif name == "operate_computer":
+            if Modality.IMAGE not in settings.llm.input_modalities:
+                log.warning("operate_computer braucht ein Modell mit Bildeingabe – deaktiviert.")
+                continue
+            from flay.llm.factory import create_chat_model
+            from flay.tools.computer import OperateComputerTool, Solutions, screen_snapshot
+
+            say = (
+                (lambda words: announcements.say(words[Language.DE], words[Language.EN]))
+                if announcements is not None
+                else None
+            )
+            mover = settings.llm
+            if config.computer.model:
+                from flay.llm.ollama import POINTER, resolve
+
+                model = resolve(
+                    config.computer.model, POINTER, settings.llm.model, settings.llm.base_url
+                )
+                mover = mover.model_copy(update={"model": model})
+            computer = OperateComputerTool(
+                create_chat_model(mover),
+                lambda: registry,
+                read_text=_ocr(),
+                max_steps=config.computer.max_steps,
+                solutions=Solutions(
+                    settings.data_dir / "solutions.json" if config.computer.learn else None,
+                    _embedder(settings),
+                ),
+                announce=say,
+                snapshot=screen_snapshot,
+            )
+            tools.append(computer)
+        elif name == "calendar":
+            from flay.tools.appointments import CalendarTool
+
+            tools.append(CalendarTool(hidden=config.calendar.hidden))
+        elif name == "adjust_settings":
+            from flay.tools.preferences import AdjustSettingsTool, Preferences
+
+            tools.append(AdjustSettingsTool(preferences or Preferences.load(settings.data_dir)))
         elif name in ("remember", "forget"):
             if facts is None:
                 log.debug(
@@ -184,7 +235,8 @@ def create_tools(
             from flay.tools.memory import ForgetTool, RememberTool
 
             tools.append(RememberTool(facts) if name == "remember" else ForgetTool(facts))
-    return ToolRegistry(tools)
+    registry = ToolRegistry(tools)
+    return registry
 
 
 def _screen_tool(name: str, settings: Settings) -> Tool:
@@ -218,6 +270,7 @@ def _screen_tool(name: str, settings: Settings) -> Tool:
             config.pointer.refine,
             verify=watch_click if config.pointer.verify else None,
             candidates=icon_candidates,
+            read_text=_ocr() if config.pointer.ocr else None,
         )
     if name == "scroll_screen":
         from flay.tools.pointer import ScrollTool
@@ -233,3 +286,20 @@ def _screen_tool(name: str, settings: Settings) -> Tool:
         max_chars=config.web.max_chars,
         close_tabs=config.web.close_tabs,
     )
+
+
+def _ocr() -> Callable[[tuple[float, float, float, float]], list[Any]] | None:
+    """The system's text recognition, if this computer has it."""
+    from flay.tools import ocr
+
+    return ocr.read_screen if ocr.available() else None
+
+
+def _embedder(settings: Settings) -> Any:
+    from flay.memory.embeddings import create_embedder
+
+    try:
+        return create_embedder(settings)
+    except Exception as exc:
+        log.debug("Kein Embedding-Modell für Lösungswege: %s", exc)
+        return None

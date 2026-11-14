@@ -18,11 +18,13 @@ from typing import TYPE_CHECKING, Any
 from PIL import Image, ImageDraw
 
 from flay.core.events import (
+    AssistantMessage,
     AssistantState,
     ListeningChanged,
     MuteChanged,
     RecordingChanged,
     StateChanged,
+    UserMessage,
     WakeWordChanged,
 )
 
@@ -56,6 +58,20 @@ def icon_image(state: AssistantState, microphone_muted: bool, size: int = 64) ->
     return image
 
 
+MENU_CHARS = 60
+
+
+def _short(text: str) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= MENU_CHARS else text[: MENU_CHARS - 1] + "…"
+
+
+def _screen_paused() -> bool:
+    from flay.tools.screen import PRIVACY
+
+    return PRIVACY.paused
+
+
 def _on_main_thread(function: Callable[[], None]) -> None:
     if sys.platform == "darwin":
         from PyObjCTools import AppHelper
@@ -79,6 +95,9 @@ class Tray:
         self._continuous: bool | None = None
         self._wake_word: bool | None = None
         self._recording: str | None = None
+        # The last exchange, shortened: what Flay understood and what it answered.
+        self._heard = ""
+        self._answered = ""
         item = pystray.MenuItem
         self._icon = pystray.Icon(
             "flay",
@@ -86,6 +105,18 @@ class Tray:
             "Flay",
             menu=pystray.Menu(
                 item(lambda _: f"Flay – {STATE_LABELS[self._state]}", None, enabled=False),
+                item(
+                    lambda _: f"Verstanden: {self._heard}",
+                    None,
+                    enabled=False,
+                    visible=lambda _: bool(self._heard),
+                ),
+                item(
+                    lambda _: f"Geantwortet: {self._answered}",
+                    None,
+                    enabled=False,
+                    visible=lambda _: bool(self._answered),
+                ),
                 item(
                     lambda _: f"Ablauf „{self._recording}“ beenden und speichern",
                     self._stop_recording,
@@ -113,6 +144,11 @@ class Tray:
                     "Sprachausgabe stumm",
                     self._toggle_speaker,
                     checked=lambda _: self._speaker_muted,
+                ),
+                item(
+                    "Bildschirm nicht ansehen",
+                    self._toggle_screen,
+                    checked=lambda _: _screen_paused(),
                 ),
                 item("Web-UI öffnen", self._open_ui, visible=ui_url is not None),
                 pystray.Menu.SEPARATOR,
@@ -172,6 +208,10 @@ class Tray:
                     self._wake_word = event.enabled
                 elif isinstance(event, RecordingChanged):
                     self._recording = event.workflow
+                elif isinstance(event, UserMessage):
+                    self._heard, self._answered = _short(event.text), ""
+                elif isinstance(event, AssistantMessage):
+                    self._answered = _short(event.text)
                 else:
                     continue
                 self._refresh()
@@ -216,6 +256,14 @@ class Tray:
             self._call(
                 functools.partial(self._assistant.set_muted, speaker=not self._speaker_muted)
             )
+
+    def _toggle_screen(self) -> None:
+        from flay.tools.screen import PRIVACY
+
+        # Read by every screenshot at the moment it is taken; nothing else to tell.
+        PRIVACY.paused = not PRIVACY.paused
+        log.info("Bildschirm %s", "pausiert" if PRIVACY.paused else "wieder freigegeben")
+        self._refresh()
 
     def _open_ui(self) -> None:
         if self._ui_url:

@@ -3,7 +3,7 @@ from typing import Any
 
 import pytest
 
-from flay.assistant import tool_intent
+from flay.intents import tool_intent
 from flay.tools import workflows
 from flay.tools.pointer import Element
 from flay.tools.screen import Window

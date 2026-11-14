@@ -22,11 +22,13 @@ from flay.tools.base import ToolResult, speech
 from flay.tools.pages import Link, Page, describe, fetch_page
 from flay.tools.pointer import PERMISSION, SCREEN_PERMISSION, accessibility_allowed, scroll
 from flay.tools.screen import (
+    PrivateScreenError,
     ScreenPermissionError,
     Window,
     capture_window,
     find_window,
     list_windows,
+    private_refusal,
 )
 
 log = logging.getLogger(__name__)
@@ -419,6 +421,8 @@ class ReadWebpageTool:
                 if same_screen(shot.png, shots[-1].png):
                     break  # the end of the page
                 shots.append(shot)
+        except PrivateScreenError as exc:
+            return private_refusal(exc)
         except ScreenPermissionError:
             return SCREEN_PERMISSION
         seconds = time.monotonic() - start

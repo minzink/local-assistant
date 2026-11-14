@@ -5,8 +5,9 @@ from typing import Any
 
 import pytest
 
-from flay.assistant import Assistant, tool_intent
+from flay.assistant import Assistant
 from flay.config import Settings
+from flay.intents import tool_intent
 from flay.tools.base import ToolRegistry
 from flay.tools.ssh import SshConnectTool, SshHost, read_ssh_hosts, terminal_command
 from tests.test_assistant import FakeOutput, FakeSource, FakeSTT, FakeTTS

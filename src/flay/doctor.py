@@ -218,6 +218,49 @@ def _permissions() -> list[Check]:
     return checks
 
 
+def _ocr() -> Check:
+    from flay.tools import ocr
+
+    if ocr.available():
+        return Check(Level.OK, "Texterkennung", "verfügbar (Klicken auf Beschriftungen)")
+    return Check(
+        Level.WARN,
+        "Texterkennung",
+        "nicht verfügbar – Klicks ohne Bedienungshilfen gehen über das Bildmodell (~8 s)",
+        "Windows: Spracherkennung für Deutsch/Englisch unter Einstellungen → Zeit und "
+        "Sprache → Sprache installieren"
+        if sys.platform == "win32"
+        else "",
+    )
+
+
+def _calendar() -> Check:
+    if sys.platform == "darwin":
+        import EventKit
+
+        status = EventKit.EKEventStore.authorizationStatusForEntityType_(EventKit.EKEntityTypeEvent)
+        if status in (1, 2):
+            return Check(
+                Level.WARN,
+                "Kalender",
+                "Zugriff verweigert",
+                "Systemeinstellungen → Datenschutz & Sicherheit → Kalender",
+            )
+        if status == 0:
+            return Check(Level.OK, "Kalender", "fragt beim ersten „Was steht heute an?“")
+        return Check(Level.OK, "Kalender", "Zugriff erlaubt")
+    if sys.platform == "win32":
+        return Check(Level.OK, "Kalender", "über Outlook (klassisch), falls installiert")
+    return Check(Level.WARN, "Kalender", "auf diesem System nicht unterstützt")
+
+
+def _privacy(settings: Settings) -> Check:
+    days = settings.privacy.history_days
+    listed = len(settings.privacy.private_apps) + len(settings.privacy.private_titles)
+    history = f"Verlauf {days} Tage (flay history)" if days else "kein Verlauf"
+    return Check(Level.OK, "Datenschutz", f"{listed} private Apps/Titel, {history}")
+
+
 def _phpstorm(settings: Settings) -> Check:
     if not settings.tools.phpstorm.use_mcp:
         return Check(Level.OK, "PhpStorm", "MCP abgeschaltet (tools.phpstorm.use_mcp)")
@@ -254,6 +297,9 @@ def run(settings: Settings, print_line: Callable[[str], None] = print) -> int:
         lambda: _vad(settings),
         lambda: _microphone(settings),
         _permissions,
+        _ocr,
+        _calendar,
+        lambda: _privacy(settings),
         lambda: _phpstorm(settings),
         _claude,
     ]

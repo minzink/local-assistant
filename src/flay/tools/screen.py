@@ -69,6 +69,128 @@ def ensure_permission() -> None:
         )
 
 
+# Privacy ----------------------------------------------------------------------------------
+#
+# While a password manager, online banking or a private browser window is visible, no
+# picture of that part of the screen is taken – not for the model, not for OCR. The user can
+# also pause all pictures (tray menu, "Schau nicht auf den Bildschirm").
+
+
+@dataclass(slots=True)
+class Privacy:
+    # App names (or parts of them) and window title words; compared without case.
+    apps: tuple[str, ...] = ()
+    titles: tuple[str, ...] = ()
+    paused: bool = False
+
+
+PRIVACY = Privacy()
+
+
+class PrivateScreenError(ScreenPermissionError):
+    """A picture was refused because something private is visible (or pictures are paused)."""
+
+    def __init__(self, what: str | None) -> None:
+        self.what = what
+        super().__init__(
+            f"no screenshot: '{what}' is visible and private"
+            if what
+            else "no screenshot: the user paused screenshots"
+        )
+
+    def tool_result(self) -> ToolResult:
+        """Picked up by the tool registry wherever the picture was refused."""
+        return private_refusal(self)
+
+
+def set_privacy(apps: list[str], titles: list[str]) -> None:
+    PRIVACY.apps = tuple(a.casefold() for a in apps if a.strip())
+    PRIVACY.titles = tuple(t.casefold() for t in titles if t.strip())
+
+
+def is_private(window: Window) -> bool:
+    app, title = window.app.casefold(), window.title.casefold()
+    return any(a in app for a in PRIVACY.apps) or any(t in title for t in PRIVACY.titles)
+
+
+def _overlaps(a: tuple[float, ...], b: tuple[float, ...]) -> bool:
+    return a[0] < b[0] + b[2] and b[0] < a[0] + a[2] and a[1] < b[1] + b[3] and b[1] < a[1] + a[3]
+
+
+def private_window(
+    region: tuple[float, float, float, float], windows: list[Window] | None = None
+) -> Window | None:
+    """A private window showing (even partly) in ``region``; one covered completely by
+    other windows does not count (a password manager left open behind the editor)."""
+    if not PRIVACY.apps and not PRIVACY.titles:
+        return None
+    try:
+        listed = list_windows() if windows is None else windows
+    except Exception:
+        return None
+    for index, window in enumerate(listed):  # frontmost first
+        if is_private(window) and _shows(window.bounds, region, listed[:index]):
+            return window
+    return None
+
+
+# Points sampled across the part of a private window inside the captured region.
+_SAMPLES = 12
+
+
+def _shows(bounds: tuple[float, ...], region: tuple[float, ...], above: list[Window]) -> bool:
+    """Whether some of ``bounds`` inside ``region`` is not covered by the windows above."""
+    if not _overlaps(bounds, region):
+        return False
+    left, top = max(bounds[0], region[0]), max(bounds[1], region[1])
+    right = min(bounds[0] + bounds[2], region[0] + region[2])
+    bottom = min(bounds[1] + bounds[3], region[1] + region[3])
+    for i in range(_SAMPLES):
+        for j in range(_SAMPLES):
+            x = left + (right - left) * (i + 0.5) / _SAMPLES
+            y = top + (bottom - top) * (j + 0.5) / _SAMPLES
+            if not any(_inside(x, y, w.bounds) for w in above):
+                return True
+    return False
+
+
+def _inside(x: float, y: float, bounds: tuple[float, ...]) -> bool:
+    return bounds[0] <= x < bounds[0] + bounds[2] and bounds[1] <= y < bounds[1] + bounds[3]
+
+
+def ensure_allowed(region: tuple[float, float, float, float]) -> None:
+    """Raise if this part of the screen may not be captured right now."""
+    ensure_permission()
+    if PRIVACY.paused:
+        raise PrivateScreenError(None)
+    window = private_window(region)
+    if window is not None:
+        raise PrivateScreenError(window.app or window.title)
+
+
+def private_refusal(error: PrivateScreenError) -> ToolResult:
+    """What Flay says when a picture was refused for privacy."""
+    if error.what is None:
+        return ToolResult(
+            "Screenshots are paused by the user; nothing was captured.",
+            ok=False,
+            action="Bildschirm: Aufnahmen pausiert",
+            say=speech(
+                "Ich schaue gerade nicht auf den Bildschirm, das hast du pausiert.",
+                "I'm not looking at the screen right now; you paused that.",
+            ),
+        )
+    return ToolResult(
+        f"No screenshot taken: '{error.what}' is visible and on the privacy list.",
+        ok=False,
+        action=f"Bildschirm: keine Aufnahme, {error.what} ist sichtbar",
+        say=speech(
+            f"{error.what} ist gerade sichtbar, da mache ich keine Bildschirmaufnahme.",
+            f"{error.what} is visible right now, so I won't take a screenshot.",
+        ),
+    )
+
+
 def _finish(image: Image.Image, max_size: int) -> bytes:
     low, high = image.convert("L").getextrema()
     if low == high:
@@ -225,6 +347,9 @@ def capture_png(monitor: int, max_size: int) -> bytes:
 def capture_monitor(monitor: int, max_size: int) -> Shot:
     ensure_permission()
     image, region = _grab(monitor)
+    if PRIVACY.paused or PRIVACY.apps or PRIVACY.titles:
+        # Checked against the monitor actually grabbed; the picture is dropped if refused.
+        ensure_allowed((region["left"], region["top"], region["width"], region["height"]))
     png = _finish(image, max_size)  # raises first if the picture is blank
     return Shot(png, (region["left"], region["top"], region["width"], region["height"]))
 
@@ -321,7 +446,7 @@ def find_window(query: str | None, windows: list[Window]) -> Window | None:
 
 def capture_region(region: tuple[float, float, float, float], max_size: int) -> Shot:
     """Any part of the screen, in screen points (e.g. a closer look around a point)."""
-    ensure_permission()
+    ensure_allowed(region)
     left, top, width, height = (round(v) for v in region)
     image, _ = _grab({"left": left, "top": top, "width": width, "height": height})
     return Shot(_finish(image, max_size), (left, top, width, height))
@@ -338,7 +463,7 @@ def capture_window(window: Window, max_size: int) -> Shot:
     still works (per-window and region capture use APIs Apple retired for
     ScreenCaptureKit), and it behaves the same on Windows.
     """
-    ensure_permission()
+    ensure_allowed(window.bounds)
     x, y, width, height = window.bounds
     with _mss() as screen:
         monitors = screen.monitors[1:]
@@ -499,6 +624,8 @@ class LookAtScreenTool:
     async def run(self, arguments: dict[str, Any]) -> ToolResult:
         try:
             return await self._look(arguments)
+        except PrivateScreenError as exc:
+            return private_refusal(exc)
         except ScreenPermissionError as exc:
             return ToolResult(
                 str(exc),

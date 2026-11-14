@@ -80,6 +80,11 @@ async def _eval(
     print()
     for key, value in report.summary().items():
         print(f"{key:22} {value}")
+    from flay.history import perf_stats
+
+    print()
+    for line in perf_stats([r.perf for r in report.results if r.perf]):
+        print(line)
     print(f"Ergebnisse: {save(report, settings.data_dir / 'eval')}")
     return 0
 
@@ -747,6 +752,14 @@ async def _run(settings: Settings, tray: Tray | None = None) -> int:
         settings = settings.model_copy(
             update={"llm": settings.llm.model_copy(update={"model": model})}
         )
+    from flay.tools.preferences import Preferences
+    from flay.tools.screen import PRIVACY, set_privacy
+
+    # What the user changed by voice ("Sprich langsamer") holds after a restart.
+    preferences = Preferences.load(settings.data_dir)
+    settings = preferences.applied(settings)
+    set_privacy(settings.privacy.private_apps, settings.privacy.private_titles)
+    PRIVACY.paused = preferences.screen_paused
     hardware = detect_hardware()
     stt = create_stt(settings, hardware)
 
@@ -756,7 +769,10 @@ async def _run(settings: Settings, tray: Tray | None = None) -> int:
     vocabulary = Vocabulary(project_names)
     if settings.stt.vocabulary_prompt and hasattr(stt, "prompt"):
         stt.prompt = vocabulary.prompt
-    tts = create_tts(settings, hardware)
+    from flay.tts.cache import CachedTTS
+
+    # Sentences like "Erledigt." are synthesized once and then played from memory.
+    tts = CachedTTS(create_tts(settings, hardware))
     llm = create_chat_model(settings.llm)
     continuous = settings.input.mode is InputMode.CONTINUOUS
     # Always loaded: continuous listening (switchable in the UI) finds utterances with it.
@@ -855,6 +871,7 @@ async def _run(settings: Settings, tray: Tray | None = None) -> int:
     warm_memory = getattr(memory, "warm_up", None)
     memory_ready = asyncio.create_task(warm_memory()) if callable(warm_memory) else None
     from flay.notifications import Announcements, ClaudeWatcher, Timers
+    from flay.routines import Routines
 
     announcements = Announcements()
     timers = Timers(settings.data_dir / "timers.json")
@@ -863,7 +880,17 @@ async def _run(settings: Settings, tray: Tray | None = None) -> int:
         memory if isinstance(memory, PersistentMemory) else None,
         announcements,
         timers,
+        preferences,
     )
+    adjust = tools.get("adjust_settings")
+    if adjust is not None and hasattr(adjust, "attach"):
+        voices = getattr(tts, "voices", None)
+        adjust.attach(lambda: tts, voices if callable(voices) else lambda: [])
+    if "click_on_screen" in tools or "operate_computer" in tools:
+        # The system's text recognition loads its model on first use (~1 s).
+        background_ocr = asyncio.create_task(asyncio.to_thread(_warm_ocr))
+    else:
+        background_ocr = None
     if tools:
         log.info("Werkzeuge: %s", ", ".join(spec.name for spec in tools.specs))
     if "open_project" in tools:
@@ -899,15 +926,37 @@ async def _run(settings: Settings, tray: Tray | None = None) -> int:
         state=state.describe if (state := create_state(settings)) else None,
         projects=project_names,
         wake_word_available=wake is not None,
+        preferences=preferences,
+        routines=Routines(settings.data_dir / "routines.json"),
     )
     await assistant.prepare_fillers()
+    # The real conversation prompt (system, tools: ~2000 tokens) into the server's cache:
+    # otherwise the first answer reads it all (~5 s on an M2 Pro).
+    background_prompt = asyncio.create_task(assistant.prewarm())
+    background_tts = asyncio.create_task(tts.prepare())
     announcements.connect(assistant.announce)
     background = [asyncio.create_task(timers.run(announcements))]
+    if settings.privacy.history_days:
+        from flay.history import TurnLog, review_hint
+
+        path = settings.data_dir / "history.jsonl"
+        history = TurnLog(path, settings.privacy.history_days)
+        history.on_repeated_failure = lambda text: announcements.say(
+            "Das hat zweimal nicht geklappt. Sag es mit anderen Worten – was du dann meinst, "
+            "merke ich mir für das nächste Mal.",
+            "That failed twice. Say it in other words – I'll remember what you meant.",
+        )
+        background.append(asyncio.create_task(history.run(assistant.events)))
+        if hint := review_hint(path):
+            log.info(hint)
     if settings.tools.notifications.claude and "send_to_claude" in tools:
         from flay.tools.claude_code import Tmux
 
         watcher = ClaudeWatcher(Tmux(), announcements)
         watcher.min_work_seconds = settings.tools.notifications.claude_min_work_seconds
+        answer = tools.get("answer_claude")
+        if answer is not None and hasattr(answer, "asked"):
+            watcher.on_question = answer.asked
         background.append(asyncio.create_task(watcher.run()))
     if tray is not None:
         tray.attach(assistant)
@@ -928,6 +977,10 @@ async def _run(settings: Settings, tray: Tray | None = None) -> int:
     finally:
         for task in background:
             task.cancel()
+        if background_ocr is not None:
+            background_ocr.cancel()
+        background_tts.cancel()
+        background_prompt.cancel()
         if ui is not None:
             await ui.stop()
         speaker.close()
@@ -935,6 +988,59 @@ async def _run(settings: Settings, tray: Tray | None = None) -> int:
             memory_ready.cancel()
         await memory.close()
     return 0
+
+
+def _resolved(settings: Settings) -> Settings:
+    """Settings as `flay run` uses them: the main model variant, privacy lists applied."""
+    from flay.llm import ollama
+    from flay.tools.screen import set_privacy
+
+    model = ollama.main_model(settings.llm.base_url, settings.llm.model)
+    set_privacy(settings.privacy.private_apps, settings.privacy.private_titles)
+    return settings.model_copy(update={"llm": settings.llm.model_copy(update={"model": model})})
+
+
+def _history(settings: Settings, args: argparse.Namespace) -> int:
+    from flay import history
+
+    path = settings.data_dir / "history.jsonl"
+    if not settings.privacy.history_days and not path.is_file():
+        print("Der Verlauf ist aus (privacy.history_days: 0).")
+        return 0
+    if args.command == "stats":
+        turns = list(history.read(path, args.days))
+        lines = (
+            history.perf_stats([t.perf for t in turns if t.perf])
+            if args.perf
+            else history.stats(turns)
+        )
+        for line in lines:
+            print(line)
+        return 0
+    turns = list(history.read(path))
+    if args.failed or args.eval:
+        turns = [t for t in turns if t.failed]
+    turns = turns[-args.n :]
+    if args.eval:
+        print(history.eval_cases(turns))
+        return 0
+    for turn in turns:
+        print(history.format_turn(turn))
+    if not turns:
+        print("Keine Anfragen im Verlauf.")
+    return 0
+
+
+def _warm_ocr() -> None:
+    from PIL import Image
+
+    from flay.tools import ocr
+
+    try:
+        if ocr.available():
+            ocr.read_image(Image.new("RGB", (64, 32), "white"))
+    except Exception as exc:
+        log.debug("Texterkennung nicht vorgewärmt: %s", exc)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -948,6 +1054,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     autostart.add_argument("action", nargs="?", choices=["on", "off", "status"], default="status")
     commands.add_parser("info", help="Hardware und aufgelöste Konfiguration anzeigen")
     commands.add_parser("doctor", help="Prüfen, was Flay braucht, mit Abhilfe")
+    history = commands.add_parser("history", help="Die letzten Anfragen und was Flay tat")
+    history.add_argument("-n", type=int, default=20, help="Anzahl (Standard: 20)")
+    history.add_argument("--failed", action="store_true", help="Nur fehlgeschlagene")
+    history.add_argument(
+        "--eval", action="store_true", help="Fehlgeschlagene als Testfälle für eval/cases.yaml"
+    )
+    computer = commands.add_parser(
+        "eval-computer", help="Rechnerbedienung mit echten Klicks testen (Maus nicht anfassen)"
+    )
+    computer.add_argument("--cases", type=Path, default=Path("eval/computer.yaml"))
+    stats = commands.add_parser("stats", help="Auswertung des Verlaufs")
+    stats.add_argument("--days", type=float, default=7, help="Zeitraum in Tagen (Standard: 7)")
+    stats.add_argument(
+        "--perf", action="store_true", help="Wohin die Zeit geht: Phasen und Modellaufrufe"
+    )
     commands.add_parser("devices", help="Audio-Geräte auflisten")
     memory = commands.add_parser(
         "memory", help="Erinnerungen anzeigen, durchsuchen, vergessen, löschen"
@@ -1077,6 +1198,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             from flay import doctor
 
             return doctor.run(settings)
+        if args.command == "eval-computer":
+            from flay import computer_eval
+
+            return asyncio.run(computer_eval.run(_resolved(settings), args.cases))
+        if args.command in ("history", "stats"):
+            return _history(settings, args)
         if args.command == "info":
             return _info(settings, args.config)
         if args.command == "devices":

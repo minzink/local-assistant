@@ -409,7 +409,8 @@ def test_factory_drops_screen_tool_for_text_only_models() -> None:
     assert names == [
         "open_project", "close_project", "send_to_claude", "claude_status", "open_url",
         "fill_web_form", "read_file", "workflow", "ssh_connect", "control_window",
-        "use_keyboard", "phpstorm", "find_file", "system_control",
+        "use_keyboard", "phpstorm", "find_file", "system_control", "calendar",
+        "adjust_settings", "answer_claude",
     ]  # fmt: skip
 
 
@@ -572,7 +573,7 @@ def test_blank_screenshot_raises_permission_hint(
     ],
 )
 def test_mentions_screen(text: str, expected: bool) -> None:
-    from flay.assistant import mentions_screen
+    from flay.intents import mentions_screen
 
     assert mentions_screen(text) is expected
 
@@ -837,7 +838,7 @@ def test_describe_flattens_exception_groups() -> None:
     ],
 )
 def test_claude_intent(text: str, expected: str | None) -> None:
-    from flay.assistant import claude_intent
+    from flay.intents import claude_intent
 
     assert claude_intent(text) == expected
 
@@ -888,7 +889,8 @@ async def test_claude_request_is_routed_even_if_history_misleads_the_model() -> 
     assert main_messages[-2].tool_calls[0].name == "send_to_claude"
     assert main_messages[-1].role is Role.TOOL
     # Already done: not offered again, so it cannot be typed twice.
-    assert "send_to_claude" not in [t.name for t in main_tools]
+    # Not called again (the tool list itself stays the same, for the prompt cache).
+    assert len(tool.calls) == 1
     assert assistant.history[-1].text == "Der Auftrag steht in Claude."
 
 
@@ -1211,7 +1213,7 @@ async def test_close_project_reports_unknown_and_still_open() -> None:
     ],
 )
 def test_project_intents(text: str, expected: str | None) -> None:
-    from flay.assistant import tool_intent
+    from flay.intents import tool_intent
 
     assert tool_intent(text) == expected
 
@@ -1263,7 +1265,7 @@ async def test_project_follow_up_without_name_is_routed_with_previous_request() 
 
     # The statement in between calls nothing; the follow-up calls the tool again.
     assert len(tool.calls) == 2
-    routed = [m for m, t in llm.prompts if [x.name for x in t] == ["close_project"]]
+    routed = [m for m, t in llm.prompts if "exactly one call" in m[0].text]
     assert "KEWO" in routed[-1][1].text and "nochmal" in routed[-1][1].text
 
 
@@ -1339,7 +1341,7 @@ async def test_close_project_reports_when_phpstorm_closed_another_project() -> N
     ],
 )
 def test_claimed_tool(sentence: str, expected: str | None) -> None:
-    from flay.assistant import claimed_tool
+    from flay.intents import claimed_tool
 
     assert claimed_tool(sentence) == expected
 
@@ -1618,7 +1620,7 @@ async def test_request_taken_back_does_nothing() -> None:
 
 
 def test_how_to_question_is_no_project_action() -> None:
-    from flay.assistant import tool_intent
+    from flay.intents import tool_intent
 
     assert tool_intent("Wie schließe ich in PhpStorm ein Projekt?") is None
     assert tool_intent("Kannst du das Projekt flay schließen?") == "close_project"
@@ -1766,7 +1768,7 @@ def test_describe_windows_per_monitor() -> None:
     ],
 )
 def test_asks_what_is_open(text: str, expected: bool) -> None:
-    from flay.assistant import asks_what_is_open
+    from flay.intents import asks_what_is_open
 
     assert asks_what_is_open(text) is expected
 
@@ -1831,7 +1833,7 @@ def test_area_around_the_pointer_stays_on_its_monitor() -> None:
     ],
 )
 def test_screen_arguments_at_the_pointer(text: str, expected: dict[str, object]) -> None:
-    from flay.assistant import mentions_screen
+    from flay.intents import mentions_screen
     from flay.tools.screen import screen_arguments
 
     assert mentions_screen(text)

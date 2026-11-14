@@ -24,7 +24,7 @@ import yaml
 from flay.assistant import Assistant
 from flay.audio.base import AudioBuffer
 from flay.config import Settings
-from flay.core.events import AssistantDelta, Event, EventBus, ToolUsed
+from flay.core.events import AssistantDelta, Event, EventBus, ToolUsed, TurnProfiled
 from flay.core.language import Language
 from flay.core.messages import Message, Role, ToolCall, ToolOutcome
 from flay.core.text_language import detect_text_language
@@ -63,9 +63,11 @@ TEXT_ARGUMENT = {
     "fill_web_form": "fields",
     "read_file": "name",
     "workflow": "name",
+    "operate_computer": "goal",
+    "calendar": "when",
 }
 # Tools that only read; the model answers from what they return.
-READING_TOOLS = ("claude_status", "look_at_screen", "read_webpage")
+READING_TOOLS = ("claude_status", "look_at_screen", "read_webpage", "calendar")
 
 
 @dataclass
@@ -82,6 +84,8 @@ class CaseResult:
     total: float
     # Flay asked to confirm first ("Meinst du …?").
     confirmed: bool = False
+    # Where the time went (flay.perf), of the request itself (not of a "Ja." after it).
+    perf: dict[str, Any] | None = None
 
 
 @dataclass
@@ -127,6 +131,7 @@ class _TimedEvents(EventBus):
         self.start = time.perf_counter()
         self.first_text: float | None = None
         self.first_tool: float | None = None
+        self.profiles: list[dict[str, Any]] = []
 
     def publish(self, event: Event) -> None:
         now = time.perf_counter() - self.start
@@ -134,6 +139,8 @@ class _TimedEvents(EventBus):
             self.first_text = now
         if isinstance(event, ToolUsed) and self.first_tool is None:
             self.first_tool = now
+        if isinstance(event, TurnProfiled):
+            self.profiles.append(event.profile)
         super().publish(event)
 
 
@@ -288,8 +295,11 @@ _SIMULATED_PAGE = Page(
 def _tool_specs() -> list[ToolSpec]:
     """The specs of all tools, exactly as the model sees them in real use."""
     from flay.notifications import Timers
+    from flay.tools.appointments import CalendarTool
     from flay.tools.apps import ControlWindowTool
+    from flay.tools.base import ToolRegistry
     from flay.tools.claude_code import ClaudeStatusTool, SendToClaudeTool
+    from flay.tools.computer import OperateComputerTool
     from flay.tools.files import ReadFileTool
     from flay.tools.finder import FindFileTool
     from flay.tools.forms import FillWebFormTool
@@ -298,6 +308,7 @@ def _tool_specs() -> list[ToolSpec]:
     from flay.tools.memory import ForgetTool, RememberTool
     from flay.tools.phpstorm import CloseProjectTool, OpenProjectTool
     from flay.tools.pointer import ClickTool, ScrollTool
+    from flay.tools.preferences import AdjustSettingsTool, Preferences
     from flay.tools.screen import LookAtScreenTool
     from flay.tools.system import SystemTool
     from flay.tools.timers import TimerTool
@@ -325,6 +336,9 @@ def _tool_specs() -> list[ToolSpec]:
         FindFileTool().spec,
         TimerTool(Timers(Path("timers.json"))).spec,
         SystemTool().spec,
+        OperateComputerTool(None, ToolRegistry).spec,  # type: ignore[arg-type]
+        CalendarTool().spec,
+        AdjustSettingsTool(Preferences()).spec,
     ]
 
 
@@ -462,7 +476,7 @@ async def run_case(
     events.start = time.perf_counter()
     await assistant.handle_text(text)
     total = time.perf_counter() - events.start
-    confirmed = assistant.pending_confirmation is not None
+    confirmed = assistant.awaiting_answer
     if confirmed:
         # Flay asked "Meinst du …?" – answer yes and judge what it does then.
         await assistant.handle_text("Ja.")
@@ -480,6 +494,7 @@ async def run_case(
         first_tool=events.first_tool,
         total=total,
         confirmed=confirmed,
+        perf=events.profiles[0] if events.profiles else None,
     )
 
 
@@ -523,6 +538,11 @@ async def evaluate(
     examples: Path | None = None,
 ) -> Report:
     state, cases = load_cases(cases_file)
+    # Cases are independent conversations, each with an assistant of its own: refilling the
+    # prompt cache after one would only compete with the next.
+    settings = settings.model_copy(
+        update={"llm": settings.llm.model_copy(update={"rewarm": False})}
+    )
     report = Report(label, settings.llm.model, settings.llm.base_url)
     workdir = Path(tempfile.mkdtemp(prefix="flay-eval-"))
     template = workdir / "examples.sqlite3"

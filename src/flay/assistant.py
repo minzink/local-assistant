@@ -13,11 +13,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from flay import routing
+from flay import perf, routing
 from flay.audio.base import AudioBuffer, AudioOutput
 from flay.audio.vad import VoiceActivityDetector
 from flay.browsing import Finding, browse, browse_text
-from flay.config import Settings
+from flay.classify import classify
+from flay.config import PersonaSettings, Settings
 from flay.core.events import (
     AssistantDelta,
     AssistantMessage,
@@ -29,6 +30,7 @@ from flay.core.events import (
     RecordingChanged,
     StateChanged,
     ToolUsed,
+    TurnProfiled,
     UserMessage,
     WakeWordChanged,
 )
@@ -44,22 +46,73 @@ from flay.core.messages import (
 )
 from flay.core.sentences import SentenceSplitter
 from flay.core.text_language import detect_text_language
+from flay.direct import direct_arguments
 from flay.filler import FillerVoice, TurnFiller
 from flay.input.base import UtteranceSource
-from flay.intents import computer_intent, mentions_selection
+from flay.intents import (
+    _CLAUDE,
+    _CLAUDE_ALWAYS,
+    _CLAUDE_NO,
+    _CLAUDE_YES,
+    _CORRECTION,
+    _HOW_TO,
+    _NO,
+    _PROJECT_ARGUMENTS,
+    _PROJECT_TOOLS,
+    _THIS_PAGE,
+    _WEB_WORDS,
+    _YES,
+    CANCELLED,
+    COMPUTER_TOOLS,
+    CONFIRM_SECONDS,
+    CONFIRMED,
+    FOLLOW_UP_SECONDS,
+    LEARNABLE,
+    LONG_REQUEST_WORDS,
+    READING,
+    READING_OPEN,
+    RETRY_SECONDS,
+    SCREEN_ACTIONS,
+    SCREEN_TOOL,
+    THINKING,
+    _discard,
+    asks_what_is_open,
+    cancelled,
+    claimed_tool,
+    computer_intent,
+    file_intent,
+    fixed_reply,
+    may_be_computer_task,
+    mentions_clipboard,
+    mentions_screen,
+    mentions_selection,
+    narrates,
+    project_follow_up,
+    to_claude,
+    tool_intent,
+    wants_examples,
+    wants_thinking,
+    web_intent,
+)
 from flay.llm.base import ChatModel, StructuredChat, ToolSpec
 from flay.llm.gate import synthesis
 from flay.memory.base import Fact, Memory, ShortTermMemory
-from flay.plans import FAR_REACHING, plan_intents, split_steps
-from flay.plans import describe as describe_plan
+from flay.planning import Planner
 from flay.prompt import LANGUAGE_NAMES, build_messages, format_examples
+from flay.routines import Routines
 from flay.stt.base import SpeechToText, Transcript
 from flay.stt.vocabulary import Vocabulary, is_noise
 from flay.tools.base import ToolRegistry, ToolResult, speech, spoken
-from flay.tools.keyboard import describe_selection, selected_text
+from flay.tools.keyboard import (
+    clipboard_text,
+    describe_clipboard,
+    describe_selection,
+    selected_text,
+)
 from flay.tools.pages import Page
 from flay.tools.phpstorm import Project, match_projects, mention
-from flay.tools.screen import AT_POINTER, Window, screen_arguments
+from flay.tools.preferences import Preferences
+from flay.tools.screen import Window, screen_arguments
 from flay.tools.web import (
     clipboard_url,
     find_url,
@@ -69,11 +122,22 @@ from flay.tools.web import (
     wants_clipboard,
 )
 from flay.tts.base import TextToSpeech
-from flay.verbs import CANONICAL, MAX_WORDS, VERB_TOOLS, candidates
+from flay.verbs import CANONICAL, MAX_WORDS, VERB_TOOLS, candidates, heard_verb
 from flay.wake import FOLLOW_UP_SECONDS as WAKE_FOLLOW_UP_SECONDS
 from flay.wake import strip_wake_word
 
 log = logging.getLogger(__name__)
+
+# Tools whose result the model talks about afterwards: routed with the conversation's own
+# prompt start (Assistant._route_in_conversation), so that answer finds it cached. Measured
+# with `flay eval`: the answer after them came after 0.3 s instead of ~5 s; for actions with
+# a fixed reply the longer routing prompt only cost ~0.5 s.
+ANSWERED_TOOLS = frozenset(
+    {"claude_status", "look_at_screen", "click_on_screen", "scroll_screen", "calendar"}
+)  # fmt: skip
+# How long after a turn, and how often, the prompt cache is checked (see _rewarm_when_idle).
+REWARM_WATCH_SECONDS = 30.0
+REWARM_CHECK_SECONDS = 0.5
 
 MIN_UTTERANCE_SECONDS = 0.3
 # Below this the recording is effectively mute (denied permission, wrong device, muted
@@ -84,450 +148,6 @@ SILENCE_DBFS = -60.0
 STATE_TIMEOUT = 0.3
 # Tool round trips per turn, e.g. read a web page, scroll on, then type into Claude.
 MAX_TOOL_ROUNDS = 5
-SCREEN_TOOL = "look_at_screen"
-_SCREEN_WORDS = re.compile(
-    r"bildschirm|screen|monitor|display|fenster|window|was siehst du|siehst du (das|hier|da|mal)"
-    r"|schau (dir )?(mal )?(das|hier|an)|guck (dir )?(mal )?(das|hier|an)"
-    r"|what do you see|look at (this|that|my)",
-    re.IGNORECASE,
-)
-
-
-# Tools that act on the computer themselves: a word like "Monitor" in their request ("schieb
-# Firefox auf den linken Monitor") is no reason for a screenshot.
-COMPUTER_TOOLS = frozenset(
-    {
-        "control_window",
-        "use_keyboard",
-        "phpstorm",
-        "run_command",
-        "find_file",
-        "timer",
-        "system_control",
-    }
-)
-
-
-async def _discard(work: Coroutine[Any, Any, Any]) -> None:
-    await work
-
-
-def mentions_screen(text: str) -> bool:
-    return _SCREEN_WORDS.search(text) is not None or AT_POINTER.search(text) is not None
-
-
-# "Welche Programme sind offen?" is answered from the window list: no screenshot, which
-# costs the model seconds (~7.5 s on an M2 Pro) and tells it less about names.
-_WHAT_IS_OPEN = re.compile(
-    r"\bwelche\s+(?:programme|apps?|anwendungen|fenster)\b"
-    r"|\bwas\s+(?:ist|habe ich|hab ich|hast du)\s+(?:\w+\s+){0,2}(?:offen|geöffnet|auf)\b"
-    r"|\bwhat(?:'s| is| do i have)\s+(?:\w+\s+){0,2}open\b"
-    r"|\bwhich\s+(?:apps?|programs?|applications|windows)\b",
-    re.IGNORECASE,
-)
-
-
-def asks_what_is_open(text: str) -> bool:
-    return _WHAT_IS_OPEN.search(text) is not None
-
-
-# "Claude" as Whisper tends to write it in German speech. "Cloud" only counts without an
-# article ("die Cloud" is the cloud).
-_CLAUDE = re.compile(
-    r"\b(?:claude?|clau?de|clod+|klod+|klaud|claud|kloud)\b"
-    r"|(?<!\bder )(?<!\bdie )(?<!\bzur )(?<!\beine )(?<!\bthe )(?<!\ba )\bcloud\b",
-    re.IGNORECASE,
-)
-_ORDER_WORDS = re.compile(
-    r"\b(?:sag\w*|schreib\w*|frag\w*|gib|gibst|geben|gebe|gebt|teil\w*|bitt\w*|beauftrag\w*|lass\w*"
-    r"|anweisung|auftrag|tell|ask|give|send|have|let)\b",
-    re.IGNORECASE,
-)
-# Handing something over: only for web pages ("schick Claude die Schritte von …"). In general
-# "Schick das Gleiche an Claude" needs the conversation, which the direct routing lacks.
-_HAND_OVER = re.compile(
-    r"\b(?:schick\w*|übergib|übergeb\w*|weiterleit\w*|leite\w*\b.*\bweiter|"
-    r"forward|pass)\b",
-    re.IGNORECASE,
-)
-_STATUS_WORDS = re.compile(
-    r"\b(?:fertig|status|stand|soweit|so weit|done|finished|doing|macht|ready)\b", re.IGNORECASE
-)
-
-
-_REMEMBER = re.compile(
-    r"\b(?:merk\w*|notier\w*|remember|note that)\b|\bspeicher\w* (?:dir|ab)\b.*\b(?:dass|that)\b|"
-    # "Trag in deinem Gedächtnis ein, dass …" – a request, not a question about memory.
-    r"^(?![^?]*\?\s*$).*\b(?:trag\w*|speicher\w*|schreib\w*|save|store)\b.*"
-    r"\b(?:gedächtnis|memory)\b",
-    re.IGNORECASE,
-)
-_FORGET = re.compile(
-    r"\b(?:vergiss|vergesse|vergessen|forget)\b|\blösch\w*\b.*\b(?:gedächtnis|gemerkt)",
-    re.IGNORECASE,
-)
-
-
-_PROJECT = r"\b(?:projekt\w*|project\w*)\b"
-_CLOSE_PROJECT = re.compile(
-    r"\b(?:schließ\w*|schliess\w*|close)\b.*"
-    + _PROJECT
-    + "|"
-    + _PROJECT
-    + r".*\b(?:schließen|schliessen|zumachen|zu machen|close)\b",
-    re.IGNORECASE,
-)
-_OPEN_PROJECT = re.compile(
-    r"\b(?:öffne\w*|oeffne\w*|open|starte?)\b.*"
-    + _PROJECT
-    + "|"
-    + _PROJECT
-    + r".*\b(?:öffnen|oeffnen|aufmachen|auf machen|open)\b",
-    re.IGNORECASE,
-)
-_CLOSE_VERB = re.compile(r"\b(?:schließ\w*|schliess\w*|zumachen|zu machen|close)\b", re.IGNORECASE)
-_OPEN_VERB = re.compile(r"\b(?:öffne\w*|oeffne\w*|aufmachen|auf machen|open)\b", re.IGNORECASE)
-_PROJECT_TOOLS = ("close_project", "open_project")
-# How long "close it" still refers to the project request before it.
-FOLLOW_UP_SECONDS = 120.0
-
-
-# Replies that claim an action happened. Without a tool call in the same turn the claim
-# is made up ("Das Projekt ist jetzt geschlossen." after misheard speech), so the tool is
-# called after all. Only first person or completed forms count, so explanations like "du
-# schließt ein Projekt über File" do not trigger anything.
-# The apostrophe is required: German "Im Editor ist … geöffnet" is no "I'm".
-_CLAIM_MARKER = re.compile(
-    r"\b(?:ich|i|i['’]ve|i['’]ll|i['’]m|jetzt|nun|wurden?|erfolgreich|erledigt|now|"
-    r"has been|successfully|done)\b",
-    re.IGNORECASE,
-)
-# Describing what is on screen ("Ich sehe, dass flay geöffnet ist") claims no action.
-_DESCRIPTION = re.compile(
-    r"\b(?:sehe|siehst|sieht|zu sehen|erkenne|i see|i can see|visible|shows?|showing)\b",
-    re.IGNORECASE,
-)
-_NEGATION = re.compile(
-    r"\b(?:nicht|nichts|kein\w*|not|no|cannot|can't|couldn't|kann|konnte|leider)\b|\?",
-    re.IGNORECASE,
-)
-_CLAIMS = {
-    "close_project": re.compile(
-        r"\b(?:schließe|schliesse|geschlossen|closed?|closing)\b.*"
-        + _PROJECT
-        + "|"
-        + _PROJECT
-        + r".*\b(?:schließe|schliesse|geschlossen|closed)\b",
-        re.IGNORECASE,
-    ),
-    "open_project": re.compile(
-        r"\b(?:öffne|geöffnet|opened|opening)\b.*"
-        + _PROJECT
-        + "|"
-        + _PROJECT
-        + r".*\b(?:öffne|geöffnet|opened)\b",
-        re.IGNORECASE,
-    ),
-    "send_to_claude": re.compile(
-        r"\bclaude\b.*\b(?:geschickt|gesendet|eingegeben|eingetippt|weitergegeben|übergeben|"
-        r"sent|typed|passed)\b|\b(?:sent|passed)\b.*\bclaude\b",
-        re.IGNORECASE,
-    ),
-    "remember": re.compile(
-        r"\b(?:gemerkt|notiert|merke ich mir|remembered|noted|will remember)\b", re.IGNORECASE
-    ),
-    "forget": re.compile(r"\b(?:vergessen|gelöscht|forgotten|deleted)\b", re.IGNORECASE),
-}
-
-
-def fixed_reply(results: list[ToolResult], language: Language) -> str | None:
-    """What to say about tool results, if every one of them says it itself."""
-    if not results or any(result.say is None for result in results):
-        return None
-    texts = []
-    for result in results:
-        assert result.say is not None
-        texts.append(result.say.get(language) or next(iter(result.say.values())))
-    return " ".join(texts)
-
-
-def claimed_tool(sentence: str) -> str | None:
-    """Tool whose action a sentence of the reply claims to have done, if any."""
-    if (
-        not _CLAIM_MARKER.search(sentence)
-        or _NEGATION.search(sentence)
-        or _DESCRIPTION.search(sentence)
-    ):
-        return None
-    return next((name for name, claim in _CLAIMS.items() if claim.search(sentence)), None)
-
-
-def project_follow_up(text: str) -> str | None:
-    """Project tool a follow-up without a project name asks for ("schließ es doch")."""
-    if _CLOSE_VERB.search(text):
-        return "close_project"
-    if _OPEN_VERB.search(text):
-        return "open_project"
-    return None
-
-
-# "Wie schließe ich ein Projekt?" asks for an explanation, not for closing one.
-_HOW_TO = re.compile(r"^\W*(?:wie|how)\b.*\b(?:ich|man|i|you|one)\b", re.IGNORECASE)
-# "Ich habe flay gestern geöffnet" tells what happened, it asks for nothing: earlier
-# commands that sounded alike must not turn it into one.
-_NARRATION = re.compile(
-    r"\b(?:(?:habe|hab|hatte|haben|hatten)\b(?:\s+\S+){0,6}?\s+ge\w+(?:t|en)|"
-    r"gestern|vorhin|letzte woche|"
-    r"i (?:have |had |'ve )?(?:opened|closed|sent|told|asked)|yesterday|last week)\b",
-    re.IGNORECASE,
-)
-# The user takes the request back at the end: "…, never mind" / "ach, vergiss es".
-_CANCEL = re.compile(
-    r"\b(?:never ?mind|forget it|vergiss es|doch nicht|schon gut|lass (?:es|mal)|egal)\W*$",
-    re.IGNORECASE,
-)
-# Tools whose project argument must be something the user actually said; required = the
-# tool cannot act without it.
-_PROJECT_ARGUMENTS = {
-    "open_project": ("name", True),
-    "close_project": ("name", True),
-    "send_to_claude": ("project", False),
-    "claude_status": ("project", False),
-}
-
-
-CANCELLED = speech("Okay, dann nicht.", "Okay, never mind.")
-# Answers to "Meinst du …?": short, and starting with the yes or no.
-_YES = re.compile(
-    r"^\W*(?:ja|jo|jep|jawohl|genau|richtig|korrekt|stimmt|mach(?:\s+das)?|bitte|okay|ok|"
-    r"yes|yeah|yep|sure|correct|right|do it)\b",
-    re.IGNORECASE,
-)
-_NO = re.compile(r"^\W*(?:nein|nee|nö|no|nope|falsch|nicht|abbrechen|cancel)\b", re.IGNORECASE)
-# How long a question like "Meinst du …?" waits for its answer.
-CONFIRM_SECONDS = 60.0
-# Id of a call the user confirmed: it runs without asking again.
-CONFIRMED = "confirmed"
-# Actions whose request is kept as an example (not remember/forget: their content is the
-# point, not how the request was worded).
-LEARNABLE = frozenset(
-    {
-        "open_project",
-        "close_project",
-        "send_to_claude",
-        "claude_status",
-        "look_at_screen",
-        "ssh_connect",
-    }
-)
-# The user says the last action was wrong.
-_CORRECTION = re.compile(
-    r"^\W*(?:nein|nee|falsch|stopp|halt|nicht das|das (?:meinte|wollte) ich nicht|"
-    r"das war falsch|no|wrong|not that)\b",
-    re.IGNORECASE,
-)
-# A request that led to no action counts as tried again by the next one within this time.
-RETRY_SECONDS = 60.0
-# The user explicitly wants a thought-through answer.
-_THINK = re.compile(
-    r"\b(?:denk\w*\s+(?:\w+\s+){0,3}?(?:nach|drüber|darüber)|überleg\w*|gründlich|"
-    r"schritt für schritt|think (?:about|it through|carefully|hard)|step by step|"
-    r"take your time)\b",
-    re.IGNORECASE,
-)
-THINKING = speech("Moment, ich überlege kurz.", "One moment, let me think.")
-
-
-def wants_thinking(text: str) -> bool:
-    return bool(_THINK.search(text))
-
-
-# "…, mach es wieder zu": a story with a request at its end.
-_MAKE_VERB = re.compile(r"\bmach\w*\b.*\b(?:zu|auf)\b", re.IGNORECASE)
-
-
-def narrates(text: str) -> bool:
-    """Tells what happened ("hab flay gestern geöffnet") without asking for anything."""
-    return (
-        bool(_NARRATION.search(text))
-        and project_follow_up(text) is None
-        and not _MAKE_VERB.search(text)
-    )
-
-
-def wants_examples(text: str) -> bool:
-    """If earlier commands may help with this request (not for how-tos and stories)."""
-    return not _HOW_TO.search(text) and not narrates(text)
-
-
-def cancelled(text: str) -> bool:
-    return bool(_CANCEL.search(text.strip()))
-
-
-# "Klick auf Git", "Rechtsklick auf die Datei", "click the bell icon".
-_CLICK = re.compile(
-    r"\b(?:klick\w*|click\w*|rechtsklick\w*|doppelklick\w*|right[- ]click\w*|"
-    r"double[- ]click\w*|drück\w*\s+(?:\w+\s+){0,2}?auf|tipp\w*\s+(?:\w+\s+){0,2}?auf)\b",
-    re.IGNORECASE,
-)
-_SCROLL = re.compile(
-    r"\b(?:scroll\w*|runterscroll\w*|hochscroll\w*|blätter\w*|page (?:down|up))\b",
-    re.IGNORECASE,
-)
-# A web page: a link, a URL or an address ("heise punkt de").
-# "linke", "linken", "links" are the left side, not links.
-_WEB_WORDS = re.compile(
-    r"\b(?:link(?!e[nrsm]?\b|s\b)\w*|(?:die|den|alle|the|all) links|url|webseite\w*|"
-    r"website\w*|web ?page\w*|homepage|internetseite\w*)\b",
-    re.IGNORECASE,
-)
-# What to do with a page beyond opening it: read it.
-_READ = re.compile(
-    r"\b(?:les\w*|lies|fass\w*|zusammen\w*|inhalt\w*|steht|summar\w*|read\w*|content|"
-    r"what does|was sagt|erklär\w*|explain\w*|vergleich\w*|compar\w*|unterschied\w*|"
-    r"differen\w*|such\w*|search\w*|find\w*)\b",
-    re.IGNORECASE,
-)
-# The page open in the browser right now: "von dieser Seite", "this page".
-_THIS_PAGE = re.compile(
-    r"\b(?:diese[rnms]?|aktuelle[nr]?|offene[nr]?|geöffnete[nr]?)\s+(?:web|internet)?seite\b|"
-    r"\b(?:this|the current|the open)\s+(?:web ?)?page\b|\b(?:im|in the) browser\b",
-    re.IGNORECASE,
-)
-SCREEN_ACTIONS = frozenset(
-    {"click_on_screen", "scroll_screen", "open_url", "read_webpage", "fill_web_form"}
-)
-# "Trag bei Name Max ein", "Füll das Formular aus", "fill in the form": with a form, field or
-# page named, it is about a web form (not memory: "trag in deinem Gedächtnis ein").
-_FILL = re.compile(
-    r"\b(?:trag\w*|füll\w*|schreib\w*)\b.*\b(?:ein|aus)\b|\b(?:ausfüll\w*|eintrag\w*)\b|"
-    r"\bfill\b.*\b(?:in|out)\b|\benter\b.*\b(?:into|in)\b",
-    re.IGNORECASE,
-)
-_FORM_WORDS = re.compile(
-    r"\b(?:formular\w*|feld\w*|form|forms|field\w*|kontaktformular\w*)\b", re.IGNORECASE
-)
-
-
-# A local file: "die README von flay", "das PDF auf dem Schreibtisch", "notes.md".
-_FILE_WORDS = re.compile(
-    r"\b(?:datei\w*|pdf|dokument\w*|readme|changelog|lizenz\w*|license|notiz\w*|file|"
-    r"document\w*|word-datei)\b|\w\.(?:md|txt|pdf|docx|py|php|json|ya?ml|toml|csv)\b|"
-    # "die Roadmap im Projekt flay": something inside a project is a file there.
-    r"\b(?:im|in dem|aus dem|vom|in the|from the) (?:projekt|project) \w+",
-    re.IGNORECASE,
-)
-
-
-# "Sag Claude, er soll die README zusammenfassen", "Tell Claude to update the changelog":
-# Claude does the reading, Flay only passes the task on.
-_CLAUDE_DOES = re.compile(r"\b(?:er|sie|es) soll\w*\b|\bto (?!claude\b)[a-z]+", re.IGNORECASE)
-
-
-def file_intent(text: str) -> bool:
-    """Flay is to read a local file (no web address in the request)."""
-    if find_url(text) is not None or not _FILE_WORDS.search(text):
-        return False
-    if _HOW_TO.search(text) or narrates(text):
-        return False
-    if _CLAUDE.search(text) and _CLAUDE_DOES.search(text):
-        return False
-    return bool(_READ.search(text))
-
-
-# "Merk dir einen Ablauf", "Mach den Ablauf Release bauen", "Ablauf fertig".
-_WORKFLOW = re.compile(r"\b(?:abl[aä]uf\w*|workflow\w*|makro\w*|macro\w*)\b", re.IGNORECASE)
-_WORKFLOW_ACTIONS = re.compile(
-    r"\b(?:merk\w*|zeig\w*|nimm\w*|zeichne\w*|aufnehm\w*|aufzeichn\w*|mach\w*|führ\w*|"
-    r"start\w*|spiel\w*|wiederhol\w*|lösch\w*|fertig|ende|stopp?\w*|beend\w*|speicher\w*|"
-    r"welche|kennst|liste\w*|record\w*|run|play|repeat|delete|list|done|finish\w*|save)\b",
-    re.IGNORECASE,
-)
-
-
-def fill_intent(text: str) -> bool:
-    """The request fills in a web form."""
-    if not _FILL.search(text) or _HOW_TO.search(text) or narrates(text):
-        return False
-    return bool(_FORM_WORDS.search(text) or _THIS_PAGE.search(text) or find_url(text))
-
-
-READING = speech("Ich öffne die Seite und lese sie.", "I'm opening the page and reading it.")
-READING_OPEN = speech("Ich lese die Seite.", "I'm reading the page.")
-
-
-def web_intent(text: str) -> str | None:
-    """open_url or read_webpage if the request is about a web page.
-
-    read_webpage covers everything beyond opening: reading, answering, scrolling or clicking
-    on the page and handing what was found to Claude.
-    """
-    if fill_intent(text):
-        return None  # fill_web_form, routed like other actions
-    url = find_url(text)
-    link = url is not None or bool(_WEB_WORDS.search(text))
-    if not link and not _THIS_PAGE.search(text):
-        return None
-    if _HOW_TO.search(text) or narrates(text):
-        return None
-    if _READ.search(text) or to_claude(text):
-        return "read_webpage"
-    if _CLICK.search(text) or _SCROLL.search(text):
-        # "Öffne heise.de und klick auf Impressum" is a task on that page; "Klick auf den
-        # Link Impressum" is just a click.
-        return "read_webpage" if url else None
-    return "open_url" if link else None
-
-
-# "SSH auf prod", "Verbinde dich mit dem Server …", "connect to staging".
-_SSH = re.compile(
-    r"\bs\s?s\s?h\b|\b(?:verbind\w*|connect\w*|einlogg\w*|logg? dich)\b", re.IGNORECASE
-)
-
-
-def tool_intent(text: str) -> str | None:
-    """Tool a request clearly asks for (Claude, projects, remember, forget), if any."""
-    if claude := claude_intent(text):
-        return claude
-    if _HOW_TO.search(text):
-        return None
-    if _SSH.search(text) and not narrates(text):
-        return "ssh_connect"
-    if _WORKFLOW.search(text) and _WORKFLOW_ACTIONS.search(text) and not narrates(text):
-        return "workflow"
-    if fill_intent(text):
-        return "fill_web_form"
-    if _CLICK.search(text) and not narrates(text):
-        return "click_on_screen"
-    if _SCROLL.search(text) and not narrates(text):
-        return "scroll_screen"
-    if _CLOSE_PROJECT.search(text):
-        return "close_project"
-    if _OPEN_PROJECT.search(text):
-        return "open_project"
-    if _FORGET.search(text):
-        return "forget"
-    if _REMEMBER.search(text):
-        return "remember"
-    return None
-
-
-def to_claude(text: str) -> bool:
-    """The request hands something to Claude ("gib es an Claude", "schick Claude …")."""
-    return claude_intent(text) == "send_to_claude" or bool(
-        _CLAUDE.search(text) and _HAND_OVER.search(text)
-    )
-
-
-def claude_intent(text: str) -> str | None:
-    """Tool that a request about Claude Code clearly asks for, if any."""
-    if not _CLAUDE.search(text):
-        return None
-    if _ORDER_WORDS.search(text):
-        return "send_to_claude"
-    if _STATUS_WORDS.search(text):
-        return "claude_status"
-    return None
 
 
 @dataclass
@@ -541,6 +161,7 @@ class TurnTimings:
 
     def mark(self, name: str) -> None:
         self.marks.setdefault(name, self.clock() - self.start)
+        perf.mark(name)
 
     def summary(self) -> str:
         return " | ".join(f"{name} {seconds:.2f}s" for name, seconds in self.marks.items())
@@ -580,8 +201,14 @@ class Assistant:
         state: Callable[[], Coroutine[Any, Any, str | None]] | None = None,
         projects: Callable[[], list[str]] | None = None,
         wake_word_available: bool = True,
+        preferences: Preferences | None = None,
+        routines: Routines | None = None,
     ) -> None:
+        # Plans with a name, set up by voice ("Merk dir als Feierabend: …").
+        self._routines = routines
         self._settings = settings
+        # Changed by voice ("Antworte kürzer"): the answer length goes into the prompt.
+        self._preferences = preferences
         # Listen for "Hey Flay" while listening continuously (switchable in UI and tray).
         self._wake_word = settings.input.continuous.wake_word and wake_word_available
         self._wake_word_available = wake_word_available
@@ -605,8 +232,10 @@ class Assistant:
         self._overview_task: asyncio.Task[str | None] | None = None
         self.events = events or EventBus()
         self._turn: asyncio.Task[None] | None = None
-        # A plan with far-reaching steps waits for a yes: its steps and when it was asked.
-        self._pending_plan: tuple[list[str], float] | None = None
+        # Refills the server's prompt cache after a turn (see _rewarm_when_idle).
+        self._rewarm: asyncio.Task[None] | None = None
+        # Plans of several steps and routines (flay.planning).
+        self._planner = Planner(self)
         # Things to say on Flay's own initiative, and the task that says them when idle.
         self._announcement_queue: list[Mapping[Language, str]] = []
         self._announcer: asyncio.Task[None] | None = None
@@ -644,6 +273,11 @@ class Assistant:
     @property
     def pending_confirmation(self) -> ToolCall | None:
         return self._pending[0] if self._pending else None
+
+    @property
+    def awaiting_answer(self) -> bool:
+        """Flay asked a yes/no question: a tool call or a plan waits for the answer."""
+        return self._pending is not None or self._planner.pending is not None
 
     @property
     def history(self) -> list[Message]:
@@ -799,6 +433,8 @@ class Assistant:
         self._turn.add_done_callback(_log_failure)
 
     async def _turn_scope(self, turn: Coroutine[Any, Any, None]) -> None:
+        if self._rewarm is not None:
+            self._rewarm.cancel()  # the new request goes first
         self._memory.turn_started()
         # Read in parallel to speech recognition, so it costs no time.
         self._state_task = asyncio.create_task(self._state()) if self._state else None
@@ -822,6 +458,29 @@ class Assistant:
             self._memory.turn_finished()
             self._set_state(AssistantState.IDLE)
             self._last_activity = time.monotonic()
+            if self._settings.llm.rewarm:
+                self._rewarm = asyncio.create_task(self._rewarm_when_idle())
+
+    async def _rewarm_when_idle(self) -> None:
+        """Put the conversation's prompt start back into the server's cache.
+
+        The server keeps one cached prompt start. Routing, classifying and the memory's
+        upkeep (summaries, ~3 s after a turn) each push the conversation's ~2000 tokens out;
+        the next answer would read them again (~5 s on an M2 Pro instead of ~0.7 s). While
+        nothing else runs, Flay sends that start once more; a new request cancels it.
+        """
+        deadline = time.monotonic() + REWARM_WATCH_SECONDS
+        try:
+            while time.monotonic() < deadline:
+                await asyncio.sleep(REWARM_CHECK_SECONDS)
+                if perf.SERVER.active or perf.cache_fits_conversation():
+                    continue
+                if self._turn is not None and not self._turn.done():
+                    return
+                log.debug("Gesprächsanfang wieder in den Cache gelegt")
+                await self._warm()
+        except asyncio.CancelledError:
+            pass
 
     async def keep_warm(self, idle_seconds: float, check_every: float = 30.0) -> None:
         """While idle, periodically send the usual prompt so the next answer starts fast."""
@@ -840,6 +499,11 @@ class Assistant:
                 await warm_memory()
             self._last_activity = time.monotonic()
 
+    async def prewarm(self) -> None:
+        """Put the conversation's prompt start into the server's cache (at the start)."""
+        await self._warm()
+        log.debug("Gesprächsanfang vorab in den Cache gelegt")
+
     async def _warm(self) -> None:
         """Send the usual prompt without generating: loads the model and caches the prompt."""
         warm = getattr(self._llm, "warm", None)
@@ -847,7 +511,7 @@ class Assistant:
             return
         language = self._settings.language.default
         messages = build_messages(
-            self._settings.persona,
+            self._persona,
             self._memory.context(),
             Message.from_text(Role.USER, ".", language),
             language,
@@ -861,9 +525,21 @@ class Assistant:
             log.debug("Warmhalten fehlgeschlagen: %s", exc)
 
     async def _handle_text(self, text: str) -> None:
+        profile = perf.begin()
         timings = TurnTimings(self._clock)
         language = detect_text_language(text, self._settings.language.default)
-        await self._answer(text, language, "text", timings)
+        try:
+            await self._answer(text, language, "text", timings)
+        finally:
+            self._finish_profile(profile)
+
+    def _finish_profile(self, profile: perf.Profile) -> None:
+        """Log where the time went and hand it to the history (`flay stats --perf`)."""
+        if not profile.marks and not profile.calls:
+            return  # nothing was answered (noise, too short)
+        profile.mark("end")
+        log.info("Profil: %s", profile.summary())
+        self.events.publish(TurnProfiled(profile.to_dict()))
 
     async def _handle_audio(
         self, audio: AudioBuffer, recognized: asyncio.Task[Transcript | None] | None = None
@@ -883,6 +559,8 @@ class Assistant:
             return
 
         self._set_state(AssistantState.THINKING)
+        profile = perf.begin()
+        profile.marks["recorded"] = round(audio.duration, 2)  # how long the user spoke
         timings = TurnTimings(self._clock)
         filler = self._start_filler()
         try:
@@ -933,6 +611,7 @@ class Assistant:
         finally:
             if filler is not None:
                 filler.cancel()
+            self._finish_profile(profile)
 
     def _needs_wake_word(self) -> bool:
         """Listening continuously with the wake word, and no "Ja?" waiting for an answer."""
@@ -955,13 +634,15 @@ class Assistant:
     async def _recognize(self, audio: AudioBuffer) -> Transcript | None:
         """VAD trim + speech-to-text; None if the recording holds no speech."""
         if self._vad is not None:
-            speech = await self._vad.trim(audio)
+            with perf.span("vad"):
+                speech = await self._vad.trim(audio)
             if speech is None:
                 return None
             log.debug("Sprache %.1fs von %.1fs", speech.duration, audio.duration)
             audio = speech
         hint = None if self._settings.language.auto_detect else self._settings.language.default
-        return await self._stt.transcribe(audio, hint)
+        with perf.span("stt"):
+            return await self._stt.transcribe(audio, hint)
 
     def prefetch(self, audio: AudioBuffer) -> None:
         """Start recognizing a tentative utterance (continuous listening, first pause).
@@ -1027,10 +708,14 @@ class Assistant:
         self._request = text
         earlier = [m.text for m in self.history if m.role is Role.USER][-2:]
         self._heard = " ".join([*earlier, text])
-        state = await self._current_state()
+        # Classifying an unusual computer request costs the model ~0.4 s: it runs while the
+        # computer's state is read (PhpStorm, Claude sessions).
+        classifying = self._turn_task(self._classified(text)) if self._may_classify(text) else None
+        with perf.span("state"):
+            state = await self._current_state()
         # Searching memories runs while the request is routed; it is collected at the end.
         recall = getattr(self._memory, "recall", None)
-        recalling = self._turn_task(recall(text)) if callable(recall) else None
+        recalling = self._turn_task(_timed("recall", recall(text))) if callable(recall) else None
         find_examples = getattr(self._memory, "examples", None)
         finding = (
             self._turn_task(find_examples(text))
@@ -1039,8 +724,8 @@ class Assistant:
         )
         examples: tuple[Fact, ...] = ()
         user_message = Message.from_text(Role.USER, text, language)
-        if (plan := self._confirmed_plan(text)) is not None:
-            await self._run_plan(user_message, plan, language, timings, filler, state)
+        if (plan := self._planner.confirmed_plan(text)) is not None:
+            await self._planner.run_plan(user_message, plan, language, timings, filler, state)
             return
         if (answer := await self._confirmation(text, language)) is not None:
             await self._respond(user_message, language, timings, filler=filler, fixed=answer)
@@ -1052,8 +737,21 @@ class Assistant:
                 user_message, language, timings, filler=filler, fixed=CANCELLED[language]
             )
             return
-        if (steps := self._plan_steps(text)) is not None:
-            await self._plan(user_message, steps, language, timings, filler, state)
+        if self._routines is not None and await self._planner.routine(
+            user_message, text, language, timings, filler, state
+        ):
+            return
+        if (claude_answer := self._claude_answer(text)) is not None:
+            # "Ja" while Claude waits for a permission (and Flay asked nothing itself).
+            answered, results = await self._act(claude_answer, language)
+            timings.mark("tool")
+            await self._respond(
+                user_message, language, timings, answered, filler,
+                fixed=fixed_reply(results, language),
+            )  # fmt: skip
+            return
+        if (steps := self._planner.plan_steps(text)) is not None:
+            await self._planner.plan(user_message, steps, language, timings, filler, state)
             return
         if file_intent(text) and "read_file" in self._tools:
             await self._file(user_message, text, language, timings, filler, state)
@@ -1066,6 +764,20 @@ class Assistant:
         ):
             return
         intent, request = self._intent(text)
+        if intent is None and len(text.split()) > LONG_REQUEST_WORDS and not narrates(text):
+            # A long, rambling request: its core decides what to do.
+            with perf.span("core"):
+                core = await self._core(text, language)
+            if core is not None:
+                intent, request = self._intent(core)
+                if intent is None and (classified := await self._classified(core)) is not None:
+                    intent, request = classified, core
+        if classifying is not None:
+            classified = await classifying if intent is None else None
+            if classifying is not None and not classifying.done():
+                classifying.cancel()
+            if classified is not None:
+                intent, request = classified, text
         overview_only = SCREEN_TOOL in self._tools and intent is None and asks_what_is_open(text)
         # "Klick im PhpStorm-Fenster auf Git": the click looks itself.
         screen = (
@@ -1074,12 +786,18 @@ class Assistant:
             and intent not in SCREEN_ACTIONS
             and intent not in COMPUTER_TOOLS
             and not overview_only
+            # "Ich habe gestern Slack auf den zweiten Bildschirm geschoben" shows nothing.
+            and not narrates(text)
         )
         if "use_keyboard" in self._tools and mentions_selection(text):
             # "Übersetz das Markierte": the selection, copied from the front app. Sent with
             # the request, never stored.
             selection = describe_selection(await asyncio.to_thread(selected_text))
             state = f"{state} {selection}" if state else selection
+        if mentions_clipboard(text):
+            # "Fass zusammen, was ich kopiert habe": the clipboard, sent with the request.
+            copied = describe_clipboard(await asyncio.to_thread(clipboard_text))
+            state = f"{state} {copied}" if state else copied
         if screen or overview_only:
             # Which windows are where, by name: the model need not read titles from pixels,
             # and "the left monitor" means something. Sent with the request, never stored.
@@ -1095,7 +813,11 @@ class Assistant:
         fixed: str | None = None
         prelude: list[Message] = []
         # A story names projects and verbs like a command, but asks for no action.
-        exclude: set[str] = set(routing.ACTIONS) if intent is None and narrates(text) else set()
+        exclude: set[str] = (
+            {*routing.ACTIONS, *SCREEN_ACTIONS, SCREEN_TOOL}
+            if intent is None and narrates(text)
+            else set()
+        )
         try:
             # Heard exactly like this and confirmed before: that beats a learned verb.
             unclear = intent is None or self._by_learned_verb
@@ -1236,16 +958,17 @@ class Assistant:
                 (i for i, m in enumerate(conversation) if m.role is Role.USER), default=0
             )
             done = {call.name for m in conversation[last_request:] for call in m.tool_calls}
+            ran = set(done)  # really carried out for this request
             # Actions the routing form ruled out for this request.
             done |= exclude or set()
-            # The model may call tools, see their results and continue; the last round
-            # offers no tools so it has to answer in words.
+            # The model may call tools, see their results and continue. The tool list stays
+            # the same in every round and every turn: it sits at the start of the prompt, and
+            # a changed list makes the server read the whole prompt again (~5 s for 2000
+            # tokens on an M2 Pro instead of ~0.7 s). Calls of tools that are done or ruled
+            # out are dropped instead.
             for round_ in range(MAX_TOOL_ROUNDS + 1):
-                specs = (
-                    [s for s in self._conversation_specs if s.name not in done]
-                    if round_ < MAX_TOOL_ROUNDS
-                    else []
-                )
+                # The very last round (rare) offers none, so the model has to answer.
+                specs = self._conversation_specs if round_ < MAX_TOOL_ROUNDS else []
                 round_text: list[str] = []
                 calls: list[ToolCall] = []
                 stream = (
@@ -1253,13 +976,33 @@ class Assistant:
                     if think
                     else self._llm.stream(conversation, specs)
                 )
-                async for event in stream:
-                    if isinstance(event, ToolCall):
-                        calls.append(event)
-                        continue
-                    timings.mark("llm_first_token")
-                    emit(event.text, check_claims, new_round=not round_text)
-                    round_text.append(event.text)
+                with perf.span("answer"):
+                    async for event in stream:
+                        if isinstance(event, ToolCall):
+                            calls.append(event)
+                            continue
+                        timings.mark("llm_first_token")
+                        emit(event.text, check_claims, new_round=not round_text)
+                        round_text.append(event.text)
+                dropped = [c for c in calls if c.name in done]
+                calls = [c for c in calls if c not in dropped]
+                if dropped and not calls and not round_text and round_ < MAX_TOOL_ROUNDS:
+                    # Only a call that may not happen: ask for words, at the end of the
+                    # prompt (its start stays cached). Said truthfully – "already done" made
+                    # the model claim actions after a mere story.
+                    names = ", ".join(sorted({c.name for c in dropped}))
+                    repeated = {c.name for c in dropped} & ran
+                    log.debug("Werkzeugaufruf verworfen: %s", names)
+                    note = (
+                        f"(That was already done above: {names}. Do not call it again; answer "
+                        "in words.)"
+                        if repeated
+                        else "(I am not asking you to do anything – nothing was done, and "
+                        "nothing should be. Just reply in words; do not say you did or will "
+                        "do anything.)"
+                    )
+                    conversation.append(Message.from_text(Role.USER, note))
+                    continue
                 if not calls:
                     # The last sentence only comes out of the splitter now – a reply that
                     # is a single made-up "Ich schließe das Projekt …" must be checked too.
@@ -1312,7 +1055,7 @@ class Assistant:
 
         async def answer_with_model() -> None:
             base = build_messages(
-                self._settings.persona,
+                self._persona,
                 self._memory.context(),
                 user_message,
                 language,
@@ -1333,12 +1076,25 @@ class Assistant:
                     [*base, *(prelude or [])], check_claims=not prelude and not described
                 )
             except UnbackedClaimError as claim:
-                # Made-up success: do what was claimed and answer from the real result.
-                log.info("Antwort behauptete %s ohne Werkzeug – führe es aus", claim.tool)
                 parts.clear()
                 list(splitter.flush())  # the unspoken rest of the made-up reply
-                routed, results = await self._route_tool(claim.tool, user_message, language, state)
-                timings.mark("tool")
+                asked_for_nothing = narrates(user_message.text) or bool(
+                    _HOW_TO.search(user_message.text)
+                )
+                if asked_for_nothing:
+                    # "Ich habe gestern Moewe geöffnet", "Wie öffne ich …?": the user asked
+                    # for no action – a made-up one is not carried out, the model answers
+                    # again (with the note below).
+                    log.info("Antwort behauptete %s nach einer Erzählung/Frage", claim.tool)
+                    routed: list[Message] = []
+                    results: list[ToolResult] = []
+                else:
+                    # Made-up success: do what was claimed and answer from the real result.
+                    log.info("Antwort behauptete %s ohne Werkzeug – führe es aus", claim.tool)
+                    routed, results = await self._route_tool(
+                        claim.tool, user_message, language, state
+                    )
+                    timings.mark("tool")
                 if (say := fixed_reply(results, language)) is not None:
                     emit(say)
                     return
@@ -1349,7 +1105,12 @@ class Assistant:
                         Message.from_text(
                             Role.USER,
                             "(Note: no action was performed for this request. Do not claim "
-                            "otherwise; ask me what exactly to do.)",
+                            "otherwise; "
+                            + (
+                                "just reply to what I said.)"
+                                if asked_for_nothing
+                                else "ask me what exactly to do.)"
+                            ),
                         )
                     ]
                 await converse([*base, *routed], check_claims=False)
@@ -1515,7 +1276,10 @@ class Assistant:
             timings.mark("tool")
             if not results or not all(result.ok for result in results):
                 return prelude, fixed_reply(results, language)
-            finding = await self._browse(text, url, results[0], language, say, for_claude, others)
+            with perf.span("web"):
+                finding = await self._browse(
+                    text, url, results[0], language, say, for_claude, others
+                )
             if not finding.text:
                 unread = speech(
                     "Ich konnte auf der Seite nichts lesen.",
@@ -1570,16 +1334,17 @@ class Assistant:
             path = getattr(reader, "path", None)
             if isinstance(path, Path):
                 say(speech(f"Ich lese {path.name}.", f"I'm reading {path.name}.")[language])
-            finding = await browse_text(
-                self._llm,
-                text,
-                reader,  # type: ignore[arg-type]
-                language,
-                say,
-                for_claude=for_claude,
-                rules=self._rules(),
-                max_steps=self._settings.tools.web.max_steps,
-            )
+            with perf.span("file"):
+                finding = await browse_text(
+                    self._llm,
+                    text,
+                    reader,  # type: ignore[arg-type]
+                    language,
+                    say,
+                    for_claude=for_claude,
+                    rules=self._rules(),
+                    max_steps=self._settings.tools.web.max_steps,
+                )
             return [], await self._deliver(finding, for_claude, str(path or ""), language)
 
         await self._respond(
@@ -1777,12 +1542,25 @@ class Assistant:
             self._project_request = (learned[1], now)
             self._by_learned_verb = True
             return learned
+        if self._projects is not None and (heard := heard_verb(text, self._projects())):
+            log.info("Verb am Klang erkannt: „%s“ → %s", text, heard[1])
+            self._project_request = (heard[1], now)
+            return heard
         if self._project_request is not None:
             previous, at = self._project_request
             follow_up = project_follow_up(text)
             if follow_up is not None and now - at <= FOLLOW_UP_SECONDS:
                 return follow_up, f"{previous}\n{text}"
         return None, text
+
+    @property
+    def _persona(self) -> PersonaSettings:
+        """The persona, with the answer length the user asked for."""
+        persona = self._settings.persona
+        style = self._preferences.style() if self._preferences is not None else ""
+        if not style:
+            return persona
+        return persona.model_copy(update={"system_prompt": f"{persona.system_prompt} {style}"})
 
     @property
     def _conversation_specs(self) -> list[ToolSpec]:
@@ -1792,151 +1570,69 @@ class Assistant:
         (flay eval). It also keeps ~1000 tokens out of every request."""
         return [s for s in self._tools.specs if s.name not in COMPUTER_TOOLS]
 
-    def _step_intent(self, step: str) -> str | None:
-        """The tool one step of a plan clearly asks for."""
-        for found in (tool_intent(step), self._computer_intent(step), web_intent(step)):
-            if found is not None and found in self._tools:
-                return found
-        if file_intent(step) and "read_file" in self._tools:
-            return "read_file"
-        return None
-
-    def _plan_steps(self, text: str) -> list[str] | None:
-        """The steps if the request is a plan of several actions."""
-        steps = split_steps(text)
-        if len(steps) < 2:
+    def _claude_answer(self, text: str) -> ToolCall | None:
+        """answer_claude for a short yes / always / no while Claude waits for one."""
+        tool = self._tools.get("answer_claude")
+        if tool is None or not getattr(tool, "waiting", None) or len(text.split()) > 8:
             return None
-        intents = plan_intents(steps, self._step_intent)
-        if intents is None:
+        if _CLAUDE_ALWAYS.search(text):
+            answer = "always"
+        elif _CLAUDE_NO.search(text):
+            answer = "no"
+        elif _CLAUDE_YES.search(text):
+            answer = "yes"
+        else:
             return None
-        # "Öffne heise.de, dann klick auf Impressum" is one task on a page: read_webpage
-        # does it inside the page, better than two separate steps.
-        page_steps = {"open_url", "read_webpage", "click_on_screen", "scroll_screen", None}
-        if web_intent(text) is not None and set(intents) <= page_steps:
+        return ToolCall("claude-answer", "answer_claude", {"answer": answer})
+
+    def _may_classify(self, text: str) -> bool:
+        """Worth classifying: no pattern recognizes it, and it sounds like the computer.
+        Pure checks only – the routing itself runs later."""
+        if not self._settings.llm.classify_requests or not isinstance(self._llm, StructuredChat):
+            return False
+        if tool_intent(text) or web_intent(text) or file_intent(text):
+            return False
+        return self._computer_intent(text) is None
+
+    async def _core(self, text: str, language: Language) -> str | None:
+        """What a long request asks for, in one sentence (None if nothing)."""
+        if not isinstance(self._llm, StructuredChat):
             return None
-        return steps
-
-    def _confirmed_plan(self, text: str) -> list[str] | None:
-        """The waiting plan, if ``text`` says yes to it."""
-        pending, self._pending_plan = self._pending_plan, None
-        if pending is None or time.monotonic() - pending[1] > CONFIRM_SECONDS:
-            return None
-        if len(text.split()) <= 6 and _YES.search(text):
-            return pending[0]
-        if not _NO.search(text):
-            return None
-        self._pending_plan = None
-        return []  # declined: nothing to run, said below
-
-    async def _plan(
-        self,
-        user_message: Message,
-        steps: list[str],
-        language: Language,
-        timings: TurnTimings,
-        filler: TurnFiller | None,
-        state: str | None,
-    ) -> None:
-        """Say the steps; ask first if one reaches far, else do them right away."""
-        intents = [self._step_intent(step) for step in steps]
-        log.info(
-            "Plan: %s", " → ".join(f"{s} [{i or '?'}]" for s, i in zip(steps, intents, strict=True))
-        )
-        described = describe_plan(steps, language.value)
-        if FAR_REACHING & set(filter(None, intents)):
-            self._pending_plan = (steps, time.monotonic())
-            question = speech("Soll ich loslegen?", "Shall I start?")[language]
-            await self._respond(
-                user_message, language, timings, filler=filler, fixed=f"{described} {question}"
-            )
-            return
-        await self._run_plan(user_message, steps, language, timings, filler, state, described)
-
-    async def _run_plan(
-        self,
-        user_message: Message,
-        steps: list[str],
-        language: Language,
-        timings: TurnTimings,
-        filler: TurnFiller | None,
-        state: str | None,
-        described: str | None = None,
-    ) -> None:
-        if not steps:
-            await self._respond(
-                user_message, language, timings, filler=filler, fixed=CANCELLED[language]
-            )
-            return
-
-        async def work(say: Callable[[str], None]) -> tuple[list[Message], str | None]:
-            preludes: list[Message] = []
-            reports: list[str] = []
-            silent = False
-            for number, step in enumerate(steps, start=1):
-                # Each step sees what the earlier ones reported ("schick Claude die Fehler").
-                context = step + (
-                    f"\n(Earlier steps reported: {' | '.join(reports)})" if reports else ""
-                )
-                routed = Message.from_text(Role.USER, context, language)
-                intent = self._step_intent(step)
-                if intent is not None:
-                    prelude, results = await self._route_tool(intent, routed, language, state)
-                else:
-                    prelude, results = await self._route_any(routed, language, state)
-                timings.mark("tool")
-                preludes += prelude
-                if not results:
-                    stop = speech(
-                        f"Bei Schritt {number}, {step}, wusste ich nicht, was zu tun ist. Ich habe "
-                        "dort aufgehört.",
-                        f"At step {number}, {step}, I didn't know what to do. I stopped there.",
-                    )
-                    return [], stop[language]
-                spoken = fixed_reply(results, language)
-                if not all(result.ok for result in results):
-                    stopped = speech(
-                        " Die übrigen Schritte habe ich gelassen.", " I left the remaining steps."
-                    )[language]
-                    return [], (
-                        spoken or speech("Das hat nicht geklappt.", "That failed.")[language]
-                    ) + stopped
-                if spoken:
-                    say(spoken)
-                else:
-                    silent = True  # the model sums up what this step found
-                reports += [f"{step}: {result.text[:300]}" for result in results]
-            if silent:
-                return preludes, None
-            return [], speech("Fertig.", "Done.")[language]
-
-        await self._respond(
-            user_message,
-            language,
-            timings,
-            filler=filler,
-            state=state,
-            announce=described,
-            work=work,
-        )
-
-    async def _route_any(
-        self, user_message: Message, language: Language, state: str | None
-    ) -> tuple[list[Message], list[ToolResult]]:
-        """One step without a clear tool: the model picks the tool and fills it in."""
-        router = Message.from_text(
-            Role.SYSTEM,
-            "Turn the user's request into exactly one tool call. Only name a project if the "
-            "user names one." + (f"\n{state}" if state else "") + self._rules(),
-        )
-        request = Message.from_text(Role.USER, user_message.text, language)
-        calls = [
-            event
-            async for event in self._llm.stream([router, request], self._tools.specs)
-            if isinstance(event, ToolCall)
+        schema = {
+            "type": "object",
+            "properties": {"request": {"type": "string"}},
+            "required": ["request"],
+            "additionalProperties": False,
+        }
+        messages = [
+            Message.from_text(
+                Role.SYSTEM,
+                "The user spoke a long request. Write what they want done now as one short "
+                f"imperative sentence in {LANGUAGE_NAMES[language]}, keeping names, addresses "
+                "and quoted text exactly. Empty if they ask for nothing.",
+            ),
+            Message.from_text(Role.USER, text),
         ]
-        if not calls:
-            return [], []
-        return await self._act(calls[0], language)
+        try:
+            answer = await self._llm.complete_json(messages, schema, "core")
+        except Exception as exc:
+            log.debug("Kern der Anfrage nicht ermittelt: %s", exc)
+            return None
+        core = str(answer.get("request") or "").strip()
+        log.info("Kern der Anfrage: %s", core or "(nichts)")
+        return core or None
+
+    async def _classified(self, text: str) -> str | None:
+        """A computer action for a request the patterns missed, decided by the model."""
+        if not self._settings.llm.classify_requests or not isinstance(self._llm, StructuredChat):
+            return None
+        if narrates(text) or _HOW_TO.search(text):
+            return None
+        apps = getattr(self._tools.get("control_window"), "_apps", None) or []
+        if not may_be_computer_task(text, apps):
+            return None
+        with perf.span("classify"):
+            return await classify(self._llm, text, [s.name for s in self._tools.specs])
 
     def _computer_intent(self, text: str) -> str | None:
         """Apps, keyboard, PhpStorm, timers ...: a tool the request clearly asks for."""
@@ -2035,12 +1731,32 @@ class Assistant:
         *claimed* to act get imitated), and Ollama ignores ``tool_choice``. A minimal prompt
         with just this tool and the request makes the call reliable.
         """
+        apps = getattr(self._tools.get("control_window"), "_apps", None) or []
+        projects = self._projects() if self._projects is not None else []
+        if (direct := direct_arguments(name, user_message.text, projects, apps)) is not None:
+            # Nothing left to interpret: no model needed (~1 s saved, see flay.direct).
+            log.info("Ohne Modell: %s(%s)", name, direct)
+            perf.mark("direct")
+            return await self._act(ToolCall("direct", name, direct), language)
+        if (
+            self._settings.llm.shared_prefix_routing
+            and name in ANSWERED_TOOLS
+            and any(s.name == name for s in self._conversation_specs)
+        ):
+            shared = await self._route_in_conversation(name, user_message, language, state)
+            if shared is not None:
+                return await self._act(shared, language)
         spec = next(s for s in self._tools.specs if s.name == name)
+        brief = await self._claude_context(language) if name == "send_to_claude" else ""
         router = Message.from_text(
             Role.SYSTEM,
-            f"Turn the user's request into exactly one call of the tool '{name}'. Write any "
-            f"instruction or fact as a complete, precise sentence in "
-            f"{LANGUAGE_NAMES[language]}. Only name a project if the user names one."
+            (
+                brief
+                or f"Turn the user's request into exactly one call of the tool '{name}'. "
+                f"Write any instruction or fact as a complete, precise sentence in "
+                f"{LANGUAGE_NAMES[language]}."
+            )
+            + " Only name a project if the user names one."
             # Lets the model write the exact name of the project the user means.
             + (f"\n{state}" if state else "")
             # E.g. "never tell Claude to commit" must shape the instruction typed into Claude.
@@ -2048,15 +1764,86 @@ class Assistant:
             + (f"\n{shown}" if (shown := format_examples(examples)) else ""),
         )
         request = Message.from_text(Role.USER, user_message.text, language)
-        calls = [
-            event
-            async for event in self._llm.stream([router, request], [spec])
-            if isinstance(event, ToolCall) and event.name == name
-        ]
+        with perf.span("route"):
+            calls = [
+                event
+                async for event in self._llm.stream([router, request], [spec])
+                if isinstance(event, ToolCall) and event.name == name
+            ]
         if not calls:
             log.debug("Werkzeug %s wurde nicht erzwungen: Modell lieferte keinen Aufruf", name)
             return [], []
         return await self._act(calls[0], language)
+
+    async def _route_in_conversation(
+        self, name: str, user_message: Message, language: Language, state: str | None
+    ) -> ToolCall | None:
+        """The tool call, asked for with the conversation's own prompt plus one line.
+
+        The server keeps only the start of the last prompt. A separate routing prompt
+        pushes the conversation's ~2000 tokens out, and the answer after the action reads
+        them all again (~5 s on an M2 Pro). With the same start – system prompt, tool list,
+        history, the request – routing reads only the last line, and the answer after it
+        finds everything cached.
+        """
+        base = build_messages(
+            self._persona,
+            self._memory.context(),
+            user_message,
+            language,
+            self._now(),
+            tools=bool(self._tools),
+            state=state,
+        )
+        brief = await self._claude_context(language) if name == "send_to_claude" else ""
+        order = Message.from_text(
+            Role.USER,
+            f"(Call the tool '{name}' now for my request above – no text. "
+            + (brief if brief else f"Write any instruction or fact as a complete, precise "
+               f"sentence in {LANGUAGE_NAMES[language]}.")
+            + " Only name a project I named."
+            + self._rules()
+            + ")",
+            language,
+        )  # fmt: skip
+        with perf.span("route_shared"):
+            calls = [
+                event
+                async for event in self._llm.stream([*base, order], self._conversation_specs)
+                if isinstance(event, ToolCall)
+            ]
+        wanted = next((c for c in calls if c.name == name), None)
+        if wanted is None:
+            log.debug("Weiterleitung im Gespräch ohne %s (%s) – eigener Prompt", name, calls)
+        return wanted
+
+    async def _claude_context(self, language: Language) -> str:
+        """How to write a task for Claude Code, with what Claude cannot know itself.
+
+        Claude does not hear the conversation: "mach das wie eben besprochen" must arrive
+        as the actual task – goal, place in the code, known errors, when it is done.
+        """
+        lines = [
+            "Turn the user's request into exactly one call of the tool 'send_to_claude'. The "
+            "instruction goes to Claude Code, an AI agent working in the project's code, which "
+            "does not hear this conversation. Write it so Claude can act on it alone: what to "
+            "do and why, where (file, class, function – if known from the request or the "
+            "context below), what is known (error messages, what the user saw, earlier "
+            "results), and how to tell it is done (expected behaviour, tests). Keep exactly "
+            "the user's intent; do not invent requirements or extra steps. One paragraph "
+            f"without line breaks, imperative, in {LANGUAGE_NAMES[language]}. If the user "
+            "dictates the wording, keep it word for word."
+        ]
+        recent = [m for m in self.history if m.role in (Role.USER, Role.ASSISTANT)][-4:]
+        if recent:
+            said = " | ".join(
+                f"{'User' if m.role is Role.USER else 'Flay'}: {m.text[:300]}" for m in recent
+            )
+            lines.append(f"Conversation just before (for references like 'das'): {said}")
+        editor = await asyncio.to_thread(_phpstorm_title)
+        if editor:
+            lines.append(f"PhpStorm shows: {editor}")
+        return "\n".join(lines)
 
     async def _run_tools(self, calls: list[ToolCall]) -> tuple[list[Message], list[ToolResult]]:
         """Execute tool calls; returns the result messages for the conversation."""
@@ -2273,6 +2060,25 @@ async def _finished(task: asyncio.Task[None]) -> bool:
 def _log_failure(task: asyncio.Task[None]) -> None:
     if not task.cancelled() and (exc := task.exception()) is not None:
         log.error("Fehler bei der Verarbeitung: %s", exc, exc_info=exc)
+
+
+async def _timed(phase: str, work: Coroutine[Any, Any, Any]) -> Any:
+    """Await ``work`` as a phase of the turn's profile (flay.perf)."""
+    with perf.span(phase):
+        return await work
+
+
+def _phpstorm_title() -> str | None:
+    """The title of PhpStorm's front window ("flay – assistant.py"), if it is open."""
+    try:
+        from flay.tools.screen import list_windows
+
+        window = next(
+            (w for w in list_windows() if "phpstorm" in f"{w.app} {w.title}".lower()), None
+        )
+    except Exception:
+        return None
+    return window.title if window is not None and window.title else None
 
 
 def _compact_words(text: str) -> str:

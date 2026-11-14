@@ -264,3 +264,33 @@ cases:
     expect: {tool: remember, never: [use_keyboard]}
   - say: "Wie öffne ich in Firefox einen neuen Tab?"
     expect: {tool: none}
+
+  # Ungewöhnlich formuliert: das Modell ordnet ein (llm.classify_requests)
+  - say: "Wirf mir das Slack-Fenster auf den zweiten Bildschirm."
+    expect: {tool: control_window, contains: [slack], never: [look_at_screen]}
+  - say: "Hol mir mal den Browser nach vorne."
+    expect: {tool: control_window, never: [open_url, look_at_screen]}
+  - say: "Stell in den Systemeinstellungen den Dunkelmodus an."
+    expect: {tool: operate_computer, contains: [dunkelmodus]}
+  - say: "Mach in Slack einen neuen Kanal namens test auf."
+    expect: {tool: operate_computer, contains: [kanal], never: [open_project]}
+  - say: "Sag mir Bescheid, wenn der Download fertig ist."
+    expect: {tool: operate_computer, never: [timer]}
+  - say: "Was steht heute in meinem Kalender?"
+    expect: {tool: calendar}
+  - say: "Hab ich morgen Termine?"
+    expect: {tool: calendar}
+  - say: "Sprich bitte etwas langsamer."
+    expect: {tool: adjust_settings}
+  - say: "Antworte ab jetzt kürzer."
+    expect: {tool: adjust_settings}
+  - say: "Schau bitte nicht mehr auf meinen Bildschirm."
+    expect: {tool: adjust_settings, never: [look_at_screen]}
+  - say: "Streich das letzte Wort."
+    expect: {tool: use_keyboard}
+  - say: "Erzähl mir einen Witz über Programmierer."
+    expect: {tool: none}
+  - say: "Wie spät ist es gerade in Tokio?"
+    expect: {tool: none}
+  - say: "Ich habe gestern Slack auf den zweiten Bildschirm geschoben."
+    expect: {tool: none}
