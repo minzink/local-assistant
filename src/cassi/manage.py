@@ -619,6 +619,64 @@ def tabs_for(
     return tabs
 
 
+# One management UI per program: a second `manage` (tray, install script, terminal) opens the
+# running one instead of starting another. Its address lives here, readable only by the user.
+
+
+def instance_file(app: App, settings: Settings) -> Path:
+    return settings.data_dir / f"manage-{app.name}.json"
+
+
+def running_instance(path: Path) -> str | None:
+    """The address of the management UI recorded in ``path`` if it still answers; a stale
+    record (crashed, killed) is removed."""
+    import json
+    import urllib.request
+
+    from cassi.net import DIRECT
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        port, token = int(data["port"]), str(data["token"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    request = urllib.request.Request(
+        f"http://{HOST}:{port}/api/tabs", headers={"X-Cassi-Token": token}
+    )
+    try:
+        with DIRECT.open(request, timeout=1.5) as response:
+            if response.status == 200:
+                return f"http://{HOST}:{port}/#token={token}"
+    except OSError:
+        pass
+    with contextlib.suppress(OSError):
+        path.unlink()
+    return None
+
+
+def remember_instance(path: Path, server: ManageServer) -> None:
+    import json
+    import os
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    record = {"port": server.port, "token": server.token, "pid": os.getpid()}
+    # Created readable for the user only: the token allows to repair or uninstall.
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+        json.dump(record, file)
+
+
+def forget_instance(path: Path, server: ManageServer) -> None:
+    """Remove the record – only if it is still this server's (not a newer one's)."""
+    import json
+
+    try:
+        if json.loads(path.read_text(encoding="utf-8")).get("token") == server.token:
+            path.unlink()
+    except (OSError, ValueError, AttributeError):
+        pass
+
+
 async def serve(
     app: App,
     settings: Settings,
@@ -627,11 +685,20 @@ async def serve(
     open_browser: bool = True,
     port: int = 0,
 ) -> int:
+    record = instance_file(app, settings)
+    running = await asyncio.to_thread(running_instance, record)
+    if running is not None:
+        print(f"{app.title}-Verwaltung läuft schon: {running}", flush=True)
+        if open_browser:
+            with contextlib.suppress(Exception):
+                webbrowser.open(running)
+        return 0
     holder: list[ManageServer] = []
     tabs = tabs_for(app, settings, adapters, config, lambda: holder[0].quit_soon())
     server = ManageServer(app, tabs, port, launcher=Launcher(app, settings, config))
     holder.append(server)
     await server.start()
+    remember_instance(record, server)
     print(f"{app.title}-Verwaltung: {server.url}", flush=True)
     print("Beenden mit Strg+C oder „Schließen“ auf der Seite.", flush=True)
     if open_browser:
@@ -640,5 +707,6 @@ async def serve(
     try:
         await server.stopped.wait()
     finally:
+        forget_instance(record, server)
         await server.stop()
     return 0

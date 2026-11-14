@@ -92,7 +92,10 @@ ist; ein anderes Programm auf dem Port bleibt unangetastet. Darunter:
 | Wartung | **Diagnose** (`cassi doctor`), **Reparieren** (das Setup erneut), **Nach Updates suchen**, **Updaten** (neuester Stand, nur ohne eigene Änderungen, danach Reparieren), Autostart an/aus, Daten- und Log-Ordner öffnen |
 | Deinstallieren | entfernt Autostart und Befehl; auf Wunsch auch den Datenordner (Gedächtnis, Aufnahmen) und Cassis Modelle in Ollama. Den Programmordner löschst du danach selbst. |
 
-Adapter wie [Flay](https://github.com/minzink/flay) fügen eigene Tabs hinzu. Unter Windows
+Es läuft immer nur eine Verwaltung je Programm: Ein weiterer Aufruf (Terminal, Tray-Menü,
+Installationsskript) öffnet die schon laufende im Browser, statt eine neue zu starten (Adresse in
+`<Datenordner>/manage-cassi.json`, nur für dich lesbar). Adapter wie
+[Flay](https://github.com/minzink/flay) fügen eigene Tabs hinzu. Unter Windows
 laufen Reparieren und Updaten in einem eigenen Fenster, weil Windows Dateien eines laufenden
 Programms nicht ersetzen kann; die Verwaltung schließt sich dafür. Dasselbe ohne Browser:
 `cassi update [--check]`, `cassi uninstall [--data] [--models]`.

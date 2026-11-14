@@ -234,3 +234,53 @@ async def test_the_header_ends_the_assistant(tmp_path: Path) -> None:
         response = await client.post("/api/stop", headers=auth(client, post=True))
 
         assert (await response.json())["ok"] and not launcher.is_running
+
+
+async def test_a_second_manage_opens_the_running_one(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import json
+
+    from cassi.manage import instance_file, running_instance, serve
+
+    program = App("flay", tmp_path, None)
+    settings = Settings(data_dir=tmp_path / "data")
+    record = instance_file(program, settings)
+    first = asyncio.create_task(serve(program, settings, [], None, open_browser=False))
+    for _ in range(100):
+        if record.exists():
+            break
+        await asyncio.sleep(0.02)
+    data = json.loads(record.read_text(encoding="utf-8"))
+
+    # A second call does not start another server: it names (and would open) the first.
+    assert await serve(program, settings, [], None, open_browser=False) == 0
+    assert "läuft schon" in capsys.readouterr().out
+    assert not first.done()
+
+    url = await asyncio.to_thread(running_instance, record)
+    assert url == f"http://127.0.0.1:{data['port']}/#token={data['token']}"
+
+    from aiohttp import ClientSession
+
+    async with ClientSession() as session:
+        headers = {"X-Cassi-Token": data["token"], "Origin": f"http://127.0.0.1:{data['port']}"}
+        await session.post(f"http://127.0.0.1:{data['port']}/api/quit", headers=headers)
+    assert await asyncio.wait_for(first, 5) == 0
+    assert not record.exists()  # closed: the next manage starts a new one
+
+
+def test_a_stale_record_is_removed(tmp_path: Path) -> None:
+    import socket
+
+    from cassi.manage import running_instance
+
+    with socket.socket() as probe:  # a port nothing listens on
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    record = tmp_path / "manage-cassi.json"
+    record.write_text(f'{{"port": {port}, "token": "x", "pid": 1}}', encoding="utf-8")
+
+    assert running_instance(record) is None
+    assert not record.exists()
+    assert running_instance(tmp_path / "missing.json") is None

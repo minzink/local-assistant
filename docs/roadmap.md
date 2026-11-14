@@ -910,5 +910,6 @@ LLM-Server, semantische Suche im Gedächtnis, Windows-Tests.
 - [x] „Neues Gespräch“ (Web-UI, Tray) leert den Kontext; anderer Name oder anderes Modell als
   zuletzt beginnt automatisch ein neues Gespräch (Anlass: Cassi hielt sich nach Flay für Flay,
   weil beide den Datenordner teilen und die Sitzung zeitlich weiterlief)
+- [x] Verwaltung nur einmal je Programm: ein weiterer Aufruf öffnet die laufende
 - [ ] Installer auf einem frischen Windows-Rechner ausprobieren (bisher nur macOS)
 - [ ] Programmordner beim Deinstallieren mit entfernen (nach dem Beenden, per Hilfsskript)
