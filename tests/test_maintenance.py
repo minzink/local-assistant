@@ -184,10 +184,12 @@ def test_the_process_on_a_port_is_found_and_ended() -> None:
             if owner:
                 break
             time.sleep(0.1)
-        assert owner == child.pid
-        assert "time.sleep(60)" in maintenance.process_command(child.pid)
+        # On Windows a venv's python.exe is a launcher that starts the real Python as its
+        # child – the port belongs to that one, so compare command lines, not ids.
+        assert owner is not None
+        assert "time.sleep(60)" in maintenance.process_command(owner)
 
-        assert maintenance.stop_process(child.pid, timeout=5)
+        assert maintenance.stop_process(owner, timeout=5)
         with socket.socket() as probe:
             assert probe.connect_ex(("127.0.0.1", port)) != 0
     finally:
