@@ -52,6 +52,14 @@ PhpStorm-Terminal übergeben.
   oder Kunden klingen. Als Beispieladressen gelten nur `example.org`/`example.com` und
   öffentliche Seiten. Commits laufen unter `minzink <21335095+minzink@users.noreply.github.com>`.
   Vor jedem Commit den Diff auf solche Daten prüfen; im Zweifel nachfragen.
+  **Technisch abgesichert:** Die Git-Hooks in `.githooks/` (einmal je Klon:
+  `git config core.hooksPath .githooks`) lassen `scripts/check_private.py` jeden Commit und
+  jede Commit-Nachricht prüfen. Die Begriffe sammelt das Skript erst beim Ausführen auf dem
+  Rechner (Projektordner, Git-Identität, `~/.ssh/config`, `~/.config/private-terms.txt`), im
+  Repo steht nichts Privates. Schlägt es an: ersetzen, **nie mit `--no-verify` umgehen**, keine
+  Begriffe zur Erlaubnisliste hinzufügen, ohne den Nutzer zu fragen. Vor jedem Push zusätzlich
+  `python3 scripts/check_private.py tree`. Ein Treffer in der Historie heißt: Nutzer fragen,
+  nicht selbst die Historie umschreiben.
 
 - **Name:** Der Assistent heißt Cassi (gesprochen „Kassi“), Paket und Befehl `cassi`. Bis
   November 2026 hieß er Flay; „flay“ in Eval-Sätzen und Tests ist ein **Projektname** (die

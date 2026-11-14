@@ -42,3 +42,6 @@ logs/
 
 # Local listening samples and other test output
 test-output/
+
+# Local tool configuration (ports and servers of this computer)
+.codex/

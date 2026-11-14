@@ -632,6 +632,13 @@ uv run ruff check . && uv run ruff format .
 uv run mypy
 ```
 
+Einmal je Klon die Git-Hooks einschalten: `git config core.hooksPath .githooks`. Sie prüfen
+jeden Commit und jede Commit-Nachricht mit `scripts/check_private.py` auf private Daten (echte
+Projekt- und Kundennamen, E-Mail-Adressen, Benutzerordner, Server). Die Begriffe sammelt das
+Skript auf dem eigenen Rechner (Projektordner und weitere Begriffe aus
+`~/.config/private-terms.txt`, Git-Identität, `~/.ssh/config`); `check_private.py tree` prüft
+den ganzen Stand, `history` alle Commits.
+
 CI prüft dasselbe auf macOS und Windows. Code-Aufteilung: `cassi.intents` enthält alle festen
 Erkennungsmuster (Testtabelle `tests/test_patterns.py`), `cassi.planning` Pläne und Routinen,
 `cassi.assistant` den Ablauf einer Runde. Für Windows gibt es eine Prüfliste:
@@ -754,6 +761,3 @@ Flay gehört jetzt dem Adapter, der auf Cassi aufsetzt. Der alte Datenordner (`�
 Gedächtnis, Aufnahmen und Stimmen) wird beim ersten Start einmal nach `…/cassi` verschoben;
 eine alte `flay.yaml` muss von Hand in `cassi.yaml` umbenannt werden.
 
-Ältere Stände sind als Tags archiviert: `archive/v0-prototype` (Vosk/MMS-TTS, 2025).
-Der Zwischenstand mit Gemma 4 via transformers + EmotionEncoder (2026) liegt nur lokal als
-`archive/v1-transformers`, weil er private Gesprächsdaten enthält.

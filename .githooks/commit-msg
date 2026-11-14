@@ -1,0 +1,11 @@
+#!/bin/sh
+# Stops private data (real project/customer names, e-mail addresses, user paths, servers)
+# in the commit message. Set up once per clone: git config core.hooksPath .githooks
+root=$(git rev-parse --show-toplevel)
+checker="$root/scripts/check_private.py"
+python=$(command -v python3 || command -v python)
+if [ ! -f "$checker" ] || [ -z "$python" ]; then
+    echo "Prüfung auf private Daten fehlt ($checker) – Commit abgebrochen." >&2
+    exit 1
+fi
+exec "$python" "$checker" message "$1"
