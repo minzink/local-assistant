@@ -1,7 +1,7 @@
-# Flay-Stimme trainieren: Datensatz erzeugen (Qwen3-TTS spricht die Saetze, Whisper prueft).
+# Cassi-Stimme trainieren: Datensatz erzeugen (Qwen3-TTS spricht die Saetze, Whisper prueft).
 # Kann abgebrochen und erneut gestartet werden; fertige Saetze werden uebersprungen.
 #   powershell -ExecutionPolicy Bypass -File tools\voice-training\dataset.ps1 [-Voice ramona]
-#   ... dataset.ps1 -Recorded <Ordner>   # eigene Aufnahmen aus "flay voice dataset" statt Qwen3-TTS
+#   ... dataset.ps1 -Recorded <Ordner>   # eigene Aufnahmen aus "cassi voice dataset" statt Qwen3-TTS
 param([string]$Voice = "ramona", [string]$Recorded)
 $ErrorActionPreference = "Stop"
 # uv from setup.ps1, also when this shell was opened before it was installed

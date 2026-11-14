@@ -1,4 +1,4 @@
-# Testsatz für `flay eval-stt` und `flay record`: Sätze, wie man sie Flay sagt, in richtiger
+# Testsatz für `cassi eval-stt` und `cassi record`: Sätze, wie man sie Cassi sagt, in richtiger
 # Schreibweise. terms: Begriffe, die in der Erkennung vorkommen müssen (Groß-/Kleinschreibung,
 # Leerzeichen, Bindestriche und Umlaut-Schreibweise egal: "K X E W O" zählt als "kxewo").
 # Projektnamen und Verben sind die Stellen, an denen die Erkennung bisher scheiterte.

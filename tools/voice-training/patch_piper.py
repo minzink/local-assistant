@@ -1,4 +1,4 @@
-"""Apply Flay's four changes to a piper1-gpl checkout (idempotent).
+"""Apply Cassi's four changes to a piper1-gpl checkout (idempotent).
 
 1. monotonic_align: use the numba port instead of the Cython module (no compiler needed).
 2. __main__: drop the val_mos checkpoint callback (training runs with --model.mos_metric none,

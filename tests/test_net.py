@@ -13,9 +13,9 @@ from typing import Any
 
 import pytest
 
-from flay import net
-from flay.llm import ollama
-from flay.llm.openai_compatible import create_client
+from cassi import net
+from cassi.llm import ollama
+from cassi.llm.openai_compatible import create_client
 
 # Nothing listens here: a request that goes to this "proxy" fails like behind a dead
 # corporate proxy (on Windows urllib.getproxies() returns the registry proxy the same way).
@@ -237,8 +237,8 @@ def test_check_loaded_is_quiet_when_everything_fits(monkeypatch: pytest.MonkeyPa
 
 
 def test_limit_context_only_lowers() -> None:
-    from flay.llm.base import ModelCapabilities
-    from flay.llm.openai_compatible import OpenAICompatibleChat
+    from cassi.llm.base import ModelCapabilities
+    from cassi.llm.openai_compatible import OpenAICompatibleChat
 
     chat = OpenAICompatibleChat("http://x/v1", "m", ModelCapabilities(), context_tokens=8192)
     chat.limit_context(4096)

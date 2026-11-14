@@ -3,11 +3,11 @@ import random
 
 import pytest
 
-from flay.config import Settings
-from flay.evaluation import DEFAULT_CASES, _tool_specs, load_cases
-from flay.llm import ollama
-from flay.llm.ollama import EMBEDDING, POINTER, resolve
-from flay.training_synthetic import PROJECTS, spoken, synthetic_rows
+from cassi.config import Settings
+from cassi.evaluation import DEFAULT_CASES, _tool_specs, load_cases
+from cassi.llm import ollama
+from cassi.llm.ollama import EMBEDDING, POINTER, resolve
+from cassi.training_synthetic import PROJECTS, spoken, synthetic_rows
 
 
 def test_generated_projects_are_not_the_test_sets() -> None:

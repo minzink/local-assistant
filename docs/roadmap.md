@@ -11,7 +11,7 @@
 | Backends | LLM, STT und TTS liegen hinter Protokollen und werden per Config gewählt |
 | Multimodal | Pflicht: das auswertende LLM verarbeitet mindestens Text + Bild |
 | Lizenzen | Alle Modelle frei für jeden Zweck nutzbar (Apache 2.0, MIT, CC0, CC BY o. ä.); keine Llama-/Gemma-Lizenzen |
-| Lokal | Alles läuft lokal; nur `flay setup` lädt herunter, zur Laufzeit gehen keine Daten nach draußen |
+| Lokal | Alles läuft lokal; nur `cassi setup` lädt herunter, zur Laufzeit gehen keine Daten nach draußen |
 | Latenzziel | < 1 s vom Loslassen der Taste bis zum ersten Ton |
 
 ## Phase 0 – Aufräumen & Gerüst ✅
@@ -20,7 +20,7 @@
 - [x] `pyproject.toml` mit uv, Python 3.12, ruff, mypy (strict), pytest
 - [x] Paketstruktur mit Protokollen je Stufe (input, audio, stt, llm, tts)
 - [x] Multimodales Nachrichtenmodell + `ModelCapabilities`
-- [x] Validierte Konfiguration (`flay.yaml`, `$FLAY_CONFIG`), `flay info`
+- [x] Validierte Konfiguration (`cassi.yaml`, `$CASSI_CONFIG`), `cassi info`
 - [x] CI-Matrix macOS + Windows
 - [x] `main` als einzige Linie; `master` (mit privaten Logs) nur noch als lokaler Tag
 
@@ -36,7 +36,7 @@
 - [x] Orchestrator: Antwort in der erkannten Sprache, Verlauf der letzten 20 Nachrichten,
       neue Äußerung bricht laufende Antwort ab (Wiedergabe + HTTP-Stream)
 - [x] Modelle werden beim Start vorgewärmt
-- [x] Zeitmessung pro Stufe im Log, `flay bench` für LLM-Latenz
+- [x] Zeitmessung pro Stufe im Log, `cassi bench` für LLM-Latenz
 - ~~Benchmark weiterer Server/Modelle (LM Studio/MLX, llama.cpp, mlx-lm) auf Mac und Windows~~ (verworfen bzw. siehe unten)
 - ~~Manueller Test auf Windows (Hotkey, faster-whisper mit CUDA)~~ (verworfen bzw. siehe unten)
 
@@ -60,7 +60,7 @@ Satz-Streaming statt kompletter Antwort, ein dauerhaft offener Ausgabestream und
 - [x] Satz-Splitter mit Abkürzungen/Ordinalzahlen, entfernt Markdown/Emojis; lange Sätze werden
       an Kommas geteilt (erstes Stück ab 60 Zeichen), da kleine Modelle oft einen langen Satz bilden
 - [x] Silero VAD (ONNX): schneidet Stille ab, verwirft Aufnahmen ohne Sprache (~10 ms pro Aufnahme)
-- [x] Stumme Aufnahmen (< −60 dBFS) mit Hinweis auf Berechtigung verwerfen, `flay mic-test`
+- [x] Stumme Aufnahmen (< −60 dBFS) mit Hinweis auf Berechtigung verwerfen, `cassi mic-test`
 - [x] Ausgabestream bleibt offen: 0,3 s Audio in 0,31 s statt 0,73 s, Abbruch in 0,09 s
 - [x] Piper `medium` als Standard: erstes Audio ~0,1 s nach dem ersten Satz (`high`: bis 0,7 s)
 - [x] Antwortsprache zuverlässig: Hinweis in der aktuellen Nutzer-Nachricht (llama3.2 nach
@@ -106,7 +106,7 @@ Runde, dank austauschbarem Backend ohne Umbau der Pipeline:
 - [x] Langzeit-Fakten: LLM extrahiert/entfernt Fakten im Hintergrund (Prompt mit Beispiel;
       llama3.2 erfasst „merk dir …“ damit zuverlässig), Duplikate werden übersprungen
 - [x] Hintergrundpflege nur in Sprechpausen, Abbruch bei neuer Eingabe, Wiederaufnahme später
-- [x] `flay memory` (anzeigen, `forget`, `clear`), `memory.enabled: false` schaltet Speichern ab
+- [x] `cassi memory` (anzeigen, `forget`, `clear`), `memory.enabled: false` schaltet Speichern ab
 - ~~Semantische Suche über Fakten (Embeddings), sobald es mehr als ~50 werden~~ (verworfen bzw. siehe unten)
 - [x] Gezieltes Merken/Vergessen per Sprachbefehl über Tool-Calling (Phase 4)
 
@@ -125,14 +125,14 @@ Runde, dank austauschbarem Backend ohne Umbau der Pipeline:
 - [x] Tool-Calling über die OpenAI-kompatible API (gestreamte Aufrufe), bis zu 3 Runden pro Antwort
 - [x] `ToolRegistry`: nur Werkzeuge aus `tools.enabled` existieren für das Modell
 - [x] `open_project`: PhpStorms zuletzt geöffnete Projekte, unscharfe Namenssuche, Toolbox-Starter
-- [x] `send_to_claude`: schreibt in die Claude-Code-Sitzung, die per `flay claude` in einer
+- [x] `send_to_claude`: schreibt in die Claude-Code-Sitzung, die per `cassi claude` in einer
       tmux-Sitzung im PhpStorm-Terminal läuft (ohne Fokuswechsel, ohne Enter); sonst
       Zwischenablage + PhpStorm nach vorn. Tastatur-Automation verworfen: das Claude-Plugin
       (0.1.14 beta) reagiert in PhpStorm 2026.2 auf kein Kürzel
 - [x] `claude_status`: liest Claudes Terminal (tmux) und fasst den Zustand zusammen
 - [x] Sitzungswahl: genanntes Projekt, sonst die im Terminal geöffnete Sitzung (tmux
       „attached“); PhpStorms recentProjects.xml ist dafür zu selten aktualisiert
-- [x] Autostart über PhpStorms MCP-Server: temporäres `.flay-claude.sh` per `create_new_file`,
+- [x] Autostart über PhpStorms MCP-Server: temporäres `.cassi-claude.sh` per `create_new_file`,
       Start per `execute_run_configuration` (Shell-Scripts laufen in einem echten Terminal-Tab),
       danach löschen. Verworfen: `execute_terminal_command` (kein TTY), `Terminal.NewTab`/„Open
       in Terminal“ (über MCP nicht verfügbar), Plugin-Aktion „Claude Code“ (tut nichts).
@@ -151,22 +151,22 @@ Runde, dank austauschbarem Backend ohne Umbau der Pipeline:
 - [x] Werkzeuge im echten Betrieb getestet (macOS): Projekt öffnen, Bildschirm, Auftrag an
       Claude inkl. Öffnen des PhpStorm-Terminals
 - [x] Claude-Eingabe wird vor dem Tippen gelesen: nur leere Eingabe oder eigener, nicht
-      abgeschickter Text von Flay wird beschrieben; fremder Text bleibt unangetastet
+      abgeschickter Text von Cassi wird beschrieben; fremder Text bleibt unangetastet
 - ~~Windows: Zwischenablage-Weg und Fensteraktivierung testen~~ (verworfen bzw. siehe unten)
 - [x] Merken/Vergessen als Werkzeuge (`remember`, `forget`), per Satz erkannt und erzwungen;
       so behandelte Gesprächszüge werden nicht noch einmal per Hintergrund-Extraktion ausgewertet
-- [x] Offline-Garantie: Downloads nur über `flay setup`; im Betrieb strikt offline (geprüft in
+- [x] Offline-Garantie: Downloads nur über `cassi setup`; im Betrieb strikt offline (geprüft in
       einer macOS-Sandbox ohne Internet), Warnung bei nicht-lokalem LLM
 
 ## Phase 5 – Dauerhaftes Zuhören ✅
 
 - [x] `ContinuousListener`: Mikrofon-Strom mit Silero VAD (Block für Block) in Äußerungen zerlegt;
-      Vorlauf 300 ms, Satzende nach 600 ms Pause, `flay run --continuous` bzw. `input.mode`
-- [x] Unterbrechen per Sprache (Barge-in): während Flay spricht, zählt nur klare, anhaltende
-      Sprache; `input.continuous.barge_in: false` ohne Headset (Flay hört sich sonst selbst)
+      Vorlauf 300 ms, Satzende nach 600 ms Pause, `cassi run --continuous` bzw. `input.mode`
+- [x] Unterbrechen per Sprache (Barge-in): während Cassi spricht, zählt nur klare, anhaltende
+      Sprache; `input.continuous.barge_in: false` ohne Headset (Cassi hört sich sonst selbst)
 - [x] Menüleisten-/Tray-Symbol (pystray): Zustand als Farbe, Mikrofon/Sprache stumm, Web-UI,
-      Beenden; auf macOS läuft Flay dafür in einem Arbeitsthread
-- [x] Autostart: `flay autostart on|off|status` (macOS LaunchAgent, Windows Autostart-Ordner)
+      Beenden; auf macOS läuft Cassi dafür in einem Arbeitsthread
+- [x] Autostart: `cassi autostart on|off|status` (macOS LaunchAgent, Windows Autostart-Ordner)
 
 - [x] Dauerhaftes Zuhören zur Laufzeit umschaltbar (Web-UI, Menüleiste); Push-to-Talk bleibt aktiv
 - [x] Projekt schließen (`close_project`, PhpStorm-Aktion `CloseProject` über MCP, Erfolg geprüft);
@@ -195,7 +195,7 @@ Runde, dank austauschbarem Backend ohne Umbau der Pipeline:
 
 ## Phase 7 – Zuverlässigkeit der Aktionen
 
-Anlass: Flay führte zu oft falsche Aktionen aus oder behauptete Erfolge, die nicht stimmten.
+Anlass: Cassi führte zu oft falsche Aktionen aus oder behauptete Erfolge, die nicht stimmten.
 Ursachen aus echten Gesprächen: das Modell formulierte Werkzeug-Ergebnisse frei (und falsch)
 um, der Verlauf enthielt nur Text statt der tatsächlichen Aktionen, eigene falsche Antworten
 wurden nachgeahmt, und die Spracherkennung verstümmelte Projektnamen und Befehlsverben.
@@ -207,7 +207,7 @@ wurden nachgeahmt, und die Spracherkennung verstümmelte Projektnamen und Befehl
 - [x] Aktions-Protokoll im Verlauf: ausgeführte Werkzeuge und ihr Ergebnis werden gespeichert und
       dem Modell in späteren Runden als echte Werkzeug-Aufrufe gezeigt
 - [x] Fehlgeschlagener Screenshot wird fest beantwortet statt vom Modell „beschrieben“; ein
-      Fenster, das gerade die Flay-UI zeigt (Firefox-Tab), zählt bei ausdrücklicher Nennung mit
+      Fenster, das gerade die Cassi-UI zeigt (Firefox-Tab), zählt bei ausdrücklicher Nennung mit
 - [x] Mehrdeutiger Projektname beim Claude-Auftrag: Rückfrage statt stiller Zwischenablage
 - [x] Spracherkennung: Korrektur gegen das eigene Vokabular (Projektnamen, Fachbegriffe);
       unscharf nur mit Projekt-Kontext, damit normale Wörter bleiben
@@ -218,7 +218,7 @@ wurden nachgeahmt, und die Spracherkennung verstümmelte Projektnamen und Befehl
 ### Schritt 2 – Modell und Server ✅ (Mac; Windows-Messung offen)
 
 - [x] Testsatz `eval/cases.yaml` (38 Fälle, viele aus echten Gesprächen inkl. Erkennungsfehlern)
-      und `flay eval`: echter Assistent mit simulierten Werkzeugen, misst Trefferquote, falsche
+      und `cassi eval`: echter Assistent mit simulierten Werkzeugen, misst Trefferquote, falsche
       Aktionen, Rückfragen und Zeit bis Werkzeug/erster Antwort
 - [x] Qwen3.5-9B (Q4_K_M, llama.cpp) gegen qwen3-vl:8b-instruct (Ollama) auf dem M2 Pro,
       je 38 Fälle × 3:
@@ -243,7 +243,7 @@ wurden nachgeahmt, und die Spracherkennung verstümmelte Projektnamen und Befehl
       - Zurückgenommene Anfragen („…, never mind“) lösen nichts aus
       - „Wie schließe ich ein Projekt?“ ist eine Frage, keine Aktion
       - Ergebnis qwen3-vl: 88,6 % → 93,9 %, Gespräch 23/27 → 27/27
-- [ ] Gleiche Messung auf Windows (RTX 4070 Ti): `uv run flay eval --repeat 3`
+- [ ] Gleiche Messung auf Windows (RTX 4070 Ti): `uv run cassi eval --repeat 3`
 
 ### Schritt 3 – Weiterleitung und Denken ✅
 
@@ -257,7 +257,7 @@ wurden nachgeahmt, und die Spracherkennung verstümmelte Projektnamen und Befehl
       | Formular nur nach erkannter Aktion | 92,1 % | 2 | 1,70 s |
 
       Das Formular behebt keine Verständnisfehler (verstümmelte Verben → „open“) und nimmt dem
-      Modell die Rückfrage. Bleibt abschaltbar (`llm.structured_routing`, `flay eval
+      Modell die Rückfrage. Bleibt abschaltbar (`llm.structured_routing`, `cassi eval
       --structured-routing`) für spätere Modelle
 - [x] Rückfrage vor dem Schließen, wenn das Projekt in den Worten nur ungefähr vorkommt
       („KEWO“ → „Meinst du project symfony kx ewo?“); „ja“ führt aus, „nein“ bricht ab, alles
@@ -278,7 +278,7 @@ wurden nachgeahmt, und die Spracherkennung verstümmelte Projektnamen und Befehl
       Ollama hält mit dem Standard-Kontext (32k, je 10 GB) nicht beide Modelle im Speicher;
       zurück zum normalen Modell kostet dann 5,8 s. Mit 8k Kontext (je 6,1 GB) bleiben beide
       geladen und der Wechsel kostet nichts (Ollama-Einstellung „Context length“ bzw.
-      `OLLAMA_CONTEXT_LENGTH=8192`; Flays Prompts brauchen < 8k). Zusätzlich lädt Flay das
+      `OLLAMA_CONTEXT_LENGTH=8192`; Cassis Prompts brauchen < 8k). Zusätzlich lädt Cassi das
       normale Modell nach einer Denk-Antwort sofort im Hintergrund nach
 - [ ] Windows (12 GB VRAM): zwei 8B-Modelle passen nicht gleichzeitig – dort kostet Denken
       den Modellwechsel; messen
@@ -286,7 +286,7 @@ wurden nachgeahmt, und die Spracherkennung verstümmelte Projektnamen und Befehl
 ### Schritt 4 – Spracherkennung vergleichen (läuft)
 
 - [x] Testsatz `eval/speech.yaml` (25 Sätze, de/en, mit Pflichtbegriffen: Verben, Projektnamen,
-      Fachbegriffe), `flay record` zum Einsprechen, `flay eval-stt` misst Wortfehlerrate,
+      Fachbegriffe), `cassi record` zum Einsprechen, `cassi eval-stt` misst Wortfehlerrate,
       Begriffe, Spracherkennung und Zeit
 - [x] Canary-1B-v2 (CC BY 4.0) als Backend `canary`; Whisper mit Begriffsvorgaben
       (`stt.vocabulary_prompt`)
@@ -303,7 +303,7 @@ wurden nachgeahmt, und die Spracherkennung verstümmelte Projektnamen und Befehl
       Canary braucht die Sprache vorab und *übersetzt* englische Sätze, wenn es Deutsch
       erwartet – für gemischtes Deutsch/Englisch ungeeignet
 - [x] Mit echten Aufnahmen verglichen (eigene Stimme, 25 Sätze, M2 Pro); „nach Korrektur“ = nach
-      Flays Abgleich mit dem eigenen Vokabular, also das, womit Flay arbeitet:
+      Cassis Abgleich mit dem eigenen Vokabular, also das, womit Cassi arbeitet:
 
       | Modell | Wortfehler | Begriffe nach Korrektur | Sätze komplett | Zeit/Satz |
       |---|---|---|---|---|
@@ -319,7 +319,7 @@ wurden nachgeahmt, und die Spracherkennung verstümmelte Projektnamen und Befehl
 - [x] Umgestellt auf Whisper + Begriffsvorgaben (`stt.backend: auto`, `stt.vocabulary_prompt`)
 - [x] Nachbearbeitung der Erkennung durch das Sprachmodell (qwen3-vl:8b, mit Vokabular) getestet
       und verworfen: Parakeet 46 → 49/54 Begriffe, Whisper 51 → 50/54, je +0,5 s, und
-      Überkorrektur („Mach mal Moewe auf“ → „PhpStorm“, „Flay“ → „nexo-cms“, Englisch wird
+      Überkorrektur („Mach mal Moewe auf“ → „PhpStorm“, „Cassi“ → „stadt-wolkenthal“, Englisch wird
       übersetzt)
 - [x] Modell mit Audio-Eingang getestet: Gemma 4 E4B (Apache 2.0, Text + Bild + Audio + Tools,
       9,5 GB über Ollama; Audio nur über `input_audio` der OpenAI-Schnittstelle):
@@ -335,7 +335,7 @@ wurden nachgeahmt, und die Spracherkennung verstümmelte Projektnamen und Befehl
       Assistenten für PhpStorm/Claude, Namen: …“) hilft einem hörenden Modell stark
 - [x] Voxtral Mini 4B Realtime (Apache 2.0) als Backend `voxtral` (nur Mac, mlx-audio – MIT –
       nicht in den Abhängigkeiten: `uv run --with "mlx-audio[stt]" …`): nicht genauer und mit
-      ~2,3 s pro Satz viel zu langsam für Flay
+      ~2,3 s pro Satz viel zu langsam für Cassi
 
 ## Phase 8 – Langzeit-Gedächtnis (RAG) ✅
 
@@ -357,7 +357,7 @@ wurden nachgeahmt, und die Spracherkennung verstümmelte Projektnamen und Befehl
       Gesprächszusammenfassungen) zählen beim Suchen weniger. Bewertet von der Extraktion und
       beim Merken; Formulierungen wie „in Zukunft“, „nie“, „immer“, „wichtig“ machen eine
       Erinnerung immer wichtig
-- [x] `flay memory search`, `flay setup` prüft das Embedding-Modell
+- [x] `cassi memory search`, `cassi setup` prüft das Embedding-Modell
 - [x] Nebenbei gefunden: der Wechsel vom Füllwort zur Antwort verschluckte eine Unterbrechung
       (Abbruch des Gesprächszugs) – behoben
 
@@ -378,13 +378,13 @@ wurden nachgeahmt, und die Spracherkennung verstümmelte Projektnamen und Befehl
       | erste Antwort (Gespräch) | 0,52 s | 0,57 s |
       | Zeit bis Werkzeug | 1,23 s | 1,56 s |
 
-- [x] `flay train-export`: Trainingsdaten für einen LoRA-Adapter aus den Beispielen
+- [x] `cassi train-export`: Trainingsdaten für einen LoRA-Adapter aus den Beispielen
 - [x] Korrekturen („nein, falsch“) als Fehler aufbewahren – nur Trainingsdaten (Antwort: nachfragen), nie im Prompt
-- [x] Stand der Sammlung beim Start von `flay run` und in `flay memory` (LoRA lohnt sich ab etwa 300 Beispielen)
+- [x] Stand der Sammlung beim Start von `cassi run` und in `cassi memory` (LoRA lohnt sich ab etwa 300 Beispielen)
 - [x] Fix: ein im Gespräch schon benutztes Werkzeug wurde für spätere Anfragen nicht mehr angeboten (nur der Behauptungs-Schutz rettete es, teils mit ~4 s)
-- [x] Erzählungen („hab flay gestern geöffnet“) bekommen keine Befehlsbeispiele und keine Projektaktionen; `flay eval` prüft Folgeanfragen mit ausgeführten Aktionen in der Vorgeschichte
+- [x] Erzählungen („hab flay gestern geöffnet“) bekommen keine Befehlsbeispiele und keine Projektaktionen; `cassi eval` prüft Folgeanfragen mit ausgeführten Aktionen in der Vorgeschichte
   (44 Fälle × 2, qwen3-vl:8b-instruct: ohne Beispiele 93,2 %, mit Beispielen 100 %, Gesprächssätze 24/24)
-- [x] Verben lernen (`flay/verbs.py`): aus „She K Command“ → Schließen wird „she“ als Schließen-Verb für alle Projekte gelernt (nur kurze Bitte + Projektname)
+- [x] Verben lernen (`cassi/verbs.py`): aus „She K Command“ → Schließen wird „she“ als Schließen-Verb für alle Projekte gelernt (nur kurze Bitte + Projektname)
 - [x] Trennbare Verben: erstes Wort + Endung am Satzende (zu/auf/aus/an/ab/ein/weg/up/down/off) als ein Verb („mach … zu“ ≠ „mach … auf“); „mach“ allein wird nie gelernt
   (KX-Testsatz 6 Fälle × 3: ohne gelernte Verben 3/18 mit 3 falschen Aktionen, mit 18/18; voller Testsatz mit Beispielen 100 %)
 - [x] Lernen nach Rückfrage: führte eine kurze Bitte zu keiner Aktion und öffnet/schließt die nächste (≤ 60 s) dasselbe Projekt, wird die erste mitgelernt – samt Verb („Sli flay“ → „Schließe flay“ lehrt „sli“); ein „nein“ verwirft beides
@@ -413,7 +413,7 @@ wurden nachgeahmt, und die Spracherkennung verstümmelte Projektnamen und Befehl
   Terminalfenster mit `ssh <host>`; Server nur aus der ssh-Config (inkl. `Include`, ohne
   Platzhalter), Abgleich über Alias und HostName, nie ein ungenannter Server, nur der Alias
   geht an ssh (keine Optionen, keine Shell)
-- [ ] `flay eval`: Fälle für `ssh_connect` (braucht simulierte Server-Liste)
+- [ ] `cassi eval`: Fälle für `ssh_connect` (braucht simulierte Server-Liste)
 - [ ] Windows: Windows Terminal / Konsole ausprobieren
 
 ## Phase 11 – Eine Stimme für beide Sprachen
@@ -421,7 +421,7 @@ wurden nachgeahmt, und die Spracherkennung verstümmelte Projektnamen und Befehl
 - [x] Qwen3-TTS 0.6B (Apache 2.0) klont eine Stimme für Deutsch und Englisch; M2 Pro mit
   MLX 8 Bit (jetzt 4 Bit, gleich gut verständlich): erster Ton ~0,2 s, ~0,4 s Rechenzeit je Sekunde Sprache (PyTorch auf dem Mac:
   1,4–2,0 s je Sekunde, zu langsam)
-- [x] Stimmen: eigene Aufnahme (`flay voice record`, je Sprache eine), sonst Ramona bzw.
+- [x] Stimmen: eigene Aufnahme (`cassi voice record`, je Sprache eine), sonst Ramona bzw.
   Hokuspokus (LibriVox, gemeinfrei), sonst Thorsten (CC0). Eine englische Referenz (Kristin) gab
   dem Deutschen einen englischen Akzent – deshalb deutsche Sprecherinnen
 - [x] `tts.voice.pitch` (Halbtöne) und `tts.voice.speed`: einmal auf die Referenz angewendet
@@ -483,7 +483,7 @@ Umsetzung:
   rechts, doppelt; Rückmeldung, was getroffen wurde. Echte Rechtsklicks: „Git“-Menü und
   „UTF-8“ über die Bedienungshilfen getroffen; „Glocken-Symbol rechts“ nur nach Bild
   daneben (Statusleiste statt Seitenleiste)
-- [x] Sicherheit: nie in Flays eigenes Fenster; Linksklick auf „Löschen“, „Senden“, „Push“ u. ä.
+- [x] Sicherheit: nie in Cassis eigenes Fenster; Linksklick auf „Löschen“, „Senden“, „Push“ u. ä.
   erst nach „ja“ (`ToolResult.confirm`); fehlende Berechtigung „Bedienungshilfen“ wird erklärt
   und von macOS abgefragt
 - [x] `scroll_screen(direction, pages, window, look)`: Mausrad über dem aktiven oder genannten
@@ -499,8 +499,8 @@ Umsetzung:
   Modell aus den Screenshots. Werkzeugrunden 3 → 5; langsame Werkzeuge kündigen sich an,
   wenn das Modell sie selbst aufruft (`announcement`)
 - [x] Links: getippt, gesprochen („heise punkt de“, „python dot org“), aus der Zwischenablage
-  oder aus Claudes letzter Antwort; fehlt einer, fragt Flay nach
-- [x] `flay eval`: 11 neue Fälle (Klicken, Scrollen, Webseiten inkl. Kette mit `then`),
+  oder aus Claudes letzter Antwort; fehlt einer, fragt Cassi nach
+- [x] `cassi eval`: 11 neue Fälle (Klicken, Scrollen, Webseiten inkl. Kette mit `then`),
   22/22; voller Satz mit Beispielen 100 % (84/84 Aktionen, 26/26 Gespräche)
 
 Offen:
@@ -516,7 +516,7 @@ Offen:
 
 ### Aufgaben auf Webseiten
 
-Ziel: „Schick Claude die Installationsschritte von <Link> als Aufgabe“ – Flay öffnet die
+Ziel: „Schick Claude die Installationsschritte von <Link> als Aufgabe“ – Cassi öffnet die
 Seite, scrollt und klickt, bis die gewünschte Information zu sehen ist, und gibt sie Claude
 als Aufgabe.
 
@@ -539,7 +539,7 @@ als Aufgabe.
   allgemein brauchte „Schick das Gleiche an Claude“ den Verlauf (Eval-Fall fiel sonst um)
 - [x] Riskante Beschriftungen nur am Wortanfang („Weitere Informationen“ ist nicht „format“),
   dazu Warenkorb, Kasse, Abonnieren, Registrieren
-- [x] `flay eval`: 3 neue Fälle, Webseiten 14/14; voller Satz 96,6 %, wie vorher nur die
+- [x] `cassi eval`: 3 neue Fälle, Webseiten 14/14; voller Satz 96,6 %, wie vorher nur die
   genuschelten Befehle ohne Beispiele daneben
 - [ ] Echter Test auf einer Doku-Seite (z. B. Installation hinter einem Menüpunkt) und
   Zeitmessung: jeder Schritt mit neuem Bild kostet ~8 s
@@ -563,7 +563,7 @@ Prototyp ohne Modell (M2 Pro, Firefox als Standardbrowser):
 - Firefox und Chrome bauen den Baum der Webseite nur auf Anfrage (`AXEnhancedUserInterface`
   bzw. `AXManualAccessibility` setzen); Links liefern `AXURL`, Aktionen `AXPress`,
   `AXScrollToVisible`
-- Direktes Holen ist eine neue Netzverbindung von Flay selbst (bisher öffnet nur der Browser
+- Direktes Holen ist eine neue Netzverbindung von Cassi selbst (bisher öffnet nur der Browser
   Seiten) – bewusste Ausnahme nötig, sonst nur als Rückfall
 - [x] Reihenfolge in `read_webpage`: direkt per HTTP (`pages.fetch_page`) → Browser im
   Hintergrund über die Bedienungshilfen (`browser_text.read_url`) → Screenshots, wenn die
@@ -587,7 +587,7 @@ Prototyp ohne Modell (M2 Pro, Firefox als Standardbrowser):
   Claude wird entfernt; „slash“ in gesprochenen Adressen
 - [x] Datenschutz: direktes Laden ist bewusste Ausnahme (README, `.ai-instruct`),
   abschaltbar mit `tools.web.direct: false`
-- [x] `flay eval`: Simulation liest Text mit Links, neuer Fall mit Linkfolgen; Webseiten
+- [x] `cassi eval`: Simulation liest Text mit Links, neuer Fall mit Linkfolgen; Webseiten
   16/16, voller Satz 96,6 % (wie vorher nur die genuschelten Befehle)
 - [x] Windows: `browser_uia.py` mit denselben Funktionen über UI Automation (comtypes, nur
   unter Windows installiert): Standardbrowser aus der Registry, Dokument-Element lesen (ein
@@ -595,8 +595,8 @@ Prototyp ohne Modell (M2 Pro, Firefox als Standardbrowser):
   `ValuePattern`, Tab über seinen Schließen-Knopf, Öffnen ohne Aktivieren
   (`SW_SHOWNOACTIVATE`). **Auf echtem Windows ungetestet** – jeder Fehler fällt auf direkt
   bzw. Screenshots zurück
-- [x] Tabs: im Hintergrund geöffnete Tabs schließt Flay nach der Anfrage über ihren
-  Schließen-Knopf (`tools.web.close_tabs`), nur wenn der ausgewählte Tab noch Flays Seite
+- [x] Tabs: im Hintergrund geöffnete Tabs schließt Cassi nach der Anfrage über ihren
+  Schließen-Knopf (`tools.web.close_tabs`), nur wenn der ausgewählte Tab noch Cassis Seite
   zeigt; bleibt offen, wenn er für Screenshots nach vorn kam. Geprüft: Tab zu, PhpStorm
   blieb vorn
 - [x] Lange Seiten in Abschnitten (Überschriften), passende zur Anfrage zuerst, Rest als
@@ -609,7 +609,7 @@ Prototyp ohne Modell (M2 Pro, Firefox als Standardbrowser):
   Python-Doku gesucht und erklärt, 16 s
 - [x] Vergleichen: mehrere Links in einer Anfrage (`find_urls`) werden zusammen gelesen,
   ohne Links zu folgen; uv vs. pip echt 11 s
-- [x] `flay eval`: 2 neue Fälle (Vergleich, Suche), Webseiten 20/20; voller Satz 95,9 % – neu
+- [x] `cassi eval`: 2 neue Fälle (Vergleich, Suche), Webseiten 20/20; voller Satz 95,9 % – neu
   daneben nur einmal „Mach mal Moewe auf“, das schon früher ohne Beispiele schwankte
 - [ ] Windows-Test auf dem RTX-Rechner: UI Automation mit Chrome/Edge/Firefox, Öffnen im
   Hintergrund, Tab schließen
@@ -638,7 +638,7 @@ Prototyp ohne Modell (M2 Pro, Firefox als Standardbrowser):
   Wortanfängen (nicht „ai“ in „training“), „neueste“ nach Datum, Projektname in den Wörtern
   als Ort; Text/Code/Markdown, PDF (pypdf, BSD), Word (docx ohne Zusatzpaket); dieselbe
   Text-Schleife wie Webseiten (Abschnitte, an Claude mit Quelle)
-- [x] Finden in ≤ 0,01 s (flay-README, Roadmap, `.ai-instruct`, `flay.example.yaml`); echt:
+- [x] Finden in ≤ 0,01 s (flay-README, Roadmap, `.ai-instruct`, `cassi.example.yaml`); echt:
   README-Frage 52 s (las drei Abschnitte nach), Roadmap → Claude 35 s
 - [x] Fix: Echo der Anfrage am Anfang der Nachricht an Claude auch nach zweitem Schreibversuch
   entfernt
@@ -647,7 +647,7 @@ Prototyp ohne Modell (M2 Pro, Firefox als Standardbrowser):
 
 - [x] `workflow` (start/stop/run/list/delete): Klicks mit Beschriftung und App (über die
   Bedienungshilfen, auch Menüleiste), Stelle im Fenster als Rückfall, Doppelklick, Tastenkürzel,
-  Sondertasten, Scrollen; kein getippter Text, nie Flays Fenster, nicht die Sprechtaste
+  Sondertasten, Scrollen; kein getippter Text, nie Cassis Fenster, nicht die Sprechtaste
 - [x] Abspielen sucht jedes Element neu (bis 5 s), aktiviert die App; Enter oder „Löschen“ im
   Ablauf → Rückfrage; „Ablauf fertig“ benennt nicht um
 - [x] Echt: Klick aufs Git-Menü + Esc aufgenommen und in 2 s wieder abgespielt
@@ -655,7 +655,7 @@ Prototyp ohne Modell (M2 Pro, Firefox als Standardbrowser):
 
 ### Kleineres Ortungsmodell
 
-- [x] Ollama-Varianten mit kleinem Kontext (`llm/ollama.py`, `flay setup`, „auto“ in der Config):
+- [x] Ollama-Varianten mit kleinem Kontext (`llm/ollama.py`, `cassi setup`, „auto“ in der Config):
   `qwen3-vl:4b-instruct-ctx4k` (Ortung) und `qwen3-embedding:0.6b-ctx2k` (Gedächtnis; Name
   behält „qwen3-embedding“ für die Suchanweisung). Nur bei ≥ 20 GB nutzbarem Speicher
   (Mac 32 GB: 22,9) – nicht auf der RTX 4070 Ti (12 GB)
@@ -663,38 +663,38 @@ Prototyp ohne Modell (M2 Pro, Firefox als Standardbrowser):
   (vorher 4,8 GB fürs Embedding allein); Menüleiste mit frischem Bild: 4B 3/4 Treffer in
   4,5 s, 8B 2/4 in 8,5 s
 
-### Aktivierungswort „Hey Flay“
+### Aktivierungswort „Hey Cassi“
 
-- [x] Eigener Erkenner (`wake.py`): openWakeWord-Merkmalsmodelle (Apache 2.0, `flay setup`,
+- [x] Eigener Erkenner (`wake.py`): openWakeWord-Merkmalsmodelle (Apache 2.0, `cassi setup`,
   SHA-256 geprüft) → 16 Embeddings (1,28 s) → numpy-Netz 1536 → 128 → 1; fertiges Modell im
-  Paket (`data/hey_flay.npz`, 1,6 MB), `flay train-wake` überschreibt es im Datenordner
+  Paket (`data/hey_cassi.npz`, 1,6 MB), `cassi train-wake` überschreibt es im Datenordner
 - [x] Training (`wake_training.py`, ~1 h CPU): Piper-Stimmen mit freien Lizenzen – Kerstin,
   Kristin, Thorsten (3), Ramona und die Mehrsprecher-Modelle LibriTTS-R (904 Sprecher), MLS
   (236), VCTK (109), CC BY 4.0; Tempo, Tonhöhe, Hall, Rauschen; Gegenbeispiele: ähnliche
   Laute, Alltagssätze, „Hey Leute, …“/„Okay, …“-Anfänge, Rauschen, „Hey“ allein; eigene
-  Aufnahmen (`flay voice wake`) zählen mit
-- [x] Verlauf, geprüft mit 12 fremden macOS-Stimmen (36× „Hey Flay“, 96 andere Sätze):
+  Aufnahmen (`cassi voice wake`) zählen mit
+- [x] Verlauf, geprüft mit 12 fremden macOS-Stimmen (36× „Hey Cassi“, 96 andere Sätze):
   nur fünf Einzelstimmen 1/5 erkannt → mit Mehrsprecher-Stimmen gleich → mit 1 s Stille
   davor beim Erkennen (Aufnahmen beginnen direkt mit dem Sprechen, die Merkmale brauchen
-  0,8 s Vorlauf) und Befehl nach „Hey Flay“ im Training 36/36, aber 26/96 Fehlauslösungen
+  0,8 s Vorlauf) und Befehl nach „Hey Cassi“ im Training 36/36, aber 26/96 Fehlauslösungen
   → mit „Hey …“-Gegenbeispielen **35/36 erkannt, 18/96 Fehlauslösungen** (fast nur Sätze,
   die mit „Hey“ oder „Okay“ beginnen)
 - [x] Darum entscheidet der Text: der Erkenner filtert nur (Schwelle 0,7), dann erkennt die
-  Spracherkennung – nebenher, die laufende Antwort geht weiter – und nur mit „Hey Flay“ am
-  Anfang (hey/hei/ey + flay/fley/flei/flai, nicht „play“/„fly“) startet ein Zug; „Hey Flay“
+  Spracherkennung – nebenher, die laufende Antwort geht weiter – und nur mit „Hey Cassi“ am
+  Anfang (hey/hei/ey + cassi/kassi/cassie/…, nicht „Kasse“) startet ein Zug; „Hey Cassi“
   allein → „Ja?“, der nächste Satz braucht es nicht (8 s)
 - [x] Fix beim Bauen: eine Äußerung ohne Aktivierungswort brach die laufende Antwort ab
   (jede Äußerung startete einen neuen Zug); die Vorab-Erkennung konnte überschrieben werden
 - [x] Schalter in Web-UI und Menüleiste, jederzeit (das dauerhafte Zuhören startet dafür neu,
   erst nachdem der alte Mikrofon-Strom zu ist); das Modell wird immer geladen, wenn vorhanden
 - [x] Laufende Ablauf-Aufnahme in Web-UI (Balken mit „Fertig“) und Menüleiste sichtbar
-- [ ] Echter Test mit Mikrofon und eigener Stimme; danach `flay voice wake` + `flay train-wake`
+- [ ] Echter Test mit Mikrofon und eigener Stimme; danach `cassi voice wake` + `cassi train-wake`
 - [ ] Mehr echte Gegenbeispiele (freie Sprachdaten, z. B. Common Voice CC0) gegen die
   „Hey …“-Fehlauslösungen
 
 ### Eigene Stimme
 
-- [x] `flay voice dataset`: die 965 Sätze des Stimmen-Trainings (jetzt `data/sentences/`) zum
+- [x] `cassi voice dataset`: die 965 Sätze des Stimmen-Trainings (jetzt `data/sentences/`) zum
   Vorlesen, jede Aufnahme sofort geprüft (Stille, Übersteuerung, Tempo 7–22 Zeichen/s),
   wiederholen/überspringen, fortsetzbar (`recorded.jsonl`), 22,05 kHz
 - [x] `make_dataset.py --recorded` / `dataset.ps1 -Recorded`: Datensatz aus den Aufnahmen statt
@@ -704,12 +704,12 @@ Prototyp ohne Modell (M2 Pro, Firefox als Standardbrowser):
 
 ### LoRA mit erzeugten Beispielen (nicht übernommen)
 
-- [x] `flay train-export --synthetic N`: zusätzliche Zeilen mit verstümmelten Befehlen
+- [x] `cassi train-export --synthetic N`: zusätzliche Zeilen mit verstümmelten Befehlen
   (buchstabierte/verhörte Projektnamen, „Slie“, „She“, „Cloud“) und Gesprächen ohne Auftrag,
-  mit erfundenen Projekten – keines aus `eval/cases.yaml`, damit `flay eval` Gelerntes misst
+  mit erfundenen Projekten – keines aus `eval/cases.yaml`, damit `cassi eval` Gelerntes misst
 - [x] Getestet: Qwen3-VL-8B 4-bit (mlx-vlm), Rang 8, 260 Zeilen, 1 Epoche (~3,5 h auf dem M2 Pro,
   Prüf-Loss 0,0013 – das Muster ist auswendig gelernt)
-- [x] Ergebnis `flay eval` (je 2 Durchläufe, 140 Läufe): ohne Adapter 95,7 % (108/114 Aktionen,
+- [x] Ergebnis `cassi eval` (je 2 Durchläufe, 140 Läufe): ohne Adapter 95,7 % (108/114 Aktionen,
   Fehler nur #10, #11, #30), mit Adapter 88,6 % (100/114, 8 falsche Aktionen). Behoben nur #10;
   neu kaputt u. a. #05/#06 (Projekt öffnen), #42 (Links an Claude), #51 (PDF), #53 (Ablauf),
   #59. Der Adapter verengt das Modell auf die drei geübten Werkzeuge → nicht übernommen,
@@ -735,25 +735,25 @@ Prototyp ohne Modell (M2 Pro, Firefox als Standardbrowser):
 - [x] Von sich aus: Timer, fertige Befehle, Claude fertig / wartet auf Freigabe
 - [x] Mehrere Schritte („…, dann …, danach …“) als Plan; weitreichende Schritte erst nach „ja“
 - [x] Klicks: UI Automation unter Windows, nummerierte Kandidaten für Symbole ohne
-  Beschriftung, Bildvergleich nach dem Klick (ohne Änderung sagt Flay das)
-- [x] `flay doctor`: prüft GPU, Ollama, Kontext, Grafikspeicher, Stimme, Mikrofon,
+  Beschriftung, Bildvergleich nach dem Klick (ohne Änderung sagt Cassi das)
+- [x] `cassi doctor`: prüft GPU, Ollama, Kontext, Grafikspeicher, Stimme, Mikrofon,
   Berechtigungen, PhpStorm, tmux
-- [x] `flay eval` (M2 Pro, qwen3-vl:8b-instruct, je 2 Läufe): vorher 89,3 % (108/124 Aktionen,
+- [x] `cassi eval` (M2 Pro, qwen3-vl:8b-instruct, je 2 Läufe): vorher 89,3 % (108/124 Aktionen,
   26/26 Gespräche, Median 1,96 s), nachher mit 15 neuen Fällen 91,1 % (136/152, 28/28,
   1,59 s); alle neuen Fälle richtig, die Fehler sind dieselben 8 Fälle wie vorher. Frei
   angeboten griff das Modell bei Erzählungen zu `phpstorm` – die Rechner-Werkzeuge gibt es
   daher nur über erkannte Anfragen (spart ~1000 Token je Anfrage)
 - [ ] Windows: alles oben auf dem RTX-Rechner ausprobieren (UI Automation, Fenster nach vorn
-  holen, Start-Menü-Verknüpfungen, Lautstärke per Medientasten), `flay eval` dort laufen lassen
+  holen, Start-Menü-Verknüpfungen, Lautstärke per Medientasten), `cassi eval` dort laufen lassen
 - [x] Nummerierte Kandidaten: PhpStorms eigene Symbolleisten fehlen in den Bedienungshilfen –
   beschriftete Stellen findet dort jetzt die Texterkennung (Phase 15); nur reine Symbole
   bleiben beim Schätzen eines Punkts
 
 ## Phase 15 – Treffsicherheit, freie Bedienung, Alltag, Datenschutz
 
-Leitlinie: keine eigene Implementierung je Aufgabe. Flay bekommt Grundzüge (schauen, klicken,
+Leitlinie: keine eigene Implementierung je Aufgabe. Cassi bekommt Grundzüge (schauen, klicken,
 tippen, Tasten, scrollen, Fenster, warten, beobachten) und findet den Weg selbst; Entwicklung
-läuft immer über Claude, Flay formuliert nur den Auftrag.
+läuft immer über Claude, Cassi formuliert nur den Auftrag.
 
 - [x] Die 8 alten Fehlfälle: Verben am Klang (Kölner Phonetik: „Slie“ ≈ „schließe“, „She K
   Command“), „mach … auf/zu“ mit Projektnamen, „sag mir, was du siehst“ liest die Seite,
@@ -775,8 +775,8 @@ läuft immer über Claude, Flay formuliert nur den Auftrag.
 - [x] Kalender (EventKit, Outlook), Einstellungen per Sprache (Tempo, Stimme, Antwortlänge,
   Bildschirm-Pause; bleiben nach Neustart)
 - [x] Datenschutz: keine Aufnahme bei sichtbaren privaten Fenstern; Verlauf mit
-  `flay history` / `flay stats` / `--eval`; Menüleiste zeigt die letzte Erkennung und Antwort
-- [x] `flay eval` (M2 Pro, qwen3-vl:8b-instruct, je 2 Läufe, 104 Fälle): 99 % (172/174
+  `cassi history` / `cassi stats` / `--eval`; Menüleiste zeigt die letzte Erkennung und Antwort
+- [x] `cassi eval` (M2 Pro, qwen3-vl:8b-instruct, je 2 Läufe, 104 Fälle): 99 % (172/174
   Aktionen, 34/34 Gespräche, Median 1,66 s) statt 91,1 %; die 8 alten Fehlfälle und alle 14
   neuen richtig. Der einzige Fehler („Mach bitte auch Moewe auf“) ist danach behoben
 - [ ] Windows: Texterkennung, Outlook-Kalender, UI-Automation-Beobachtung ausprobieren
@@ -785,7 +785,7 @@ läuft immer über Claude, Flay formuliert nur den Auftrag.
 
 ## Phase 16 – Zuverlässigkeit und Wartbarkeit
 
-- [x] `flay eval-computer`: Rechnerbedienung mit echten Klicks (TextEdit, Systemeinstellungen).
+- [x] `cassi eval-computer`: Rechnerbedienung mit echten Klicks (TextEdit, Systemeinstellungen).
   Gefundene und behobene Fehler: Text sechsmal getippt (gleicher Zug wird nicht wiederholt,
   Schreibaufgabe endet nach dem Tippen), private Fenster hinter anderen sperrten die
   Texterkennung (jetzt zählt nur Sichtbares), „Systemeinstellungen“ unbekannt (deutsche
@@ -799,21 +799,21 @@ läuft immer über Claude, Flay formuliert nur den Auftrag.
   einstellbar, nicht Standard
 - [x] Einordnung parallel zum Lesen des Rechnerzustands; lange Bitten auf ihren Kern verkürzt
 - [x] Sprachausgabe: kurze feste Sätze einmal erzeugt und aus dem Speicher gespielt
-- [x] ~~`flay doctor` misst, ob Ollama Anfragen gleichzeitig annimmt~~ – wieder entfernt
+- [x] ~~`cassi doctor` misst, ob Ollama Anfragen gleichzeitig annimmt~~ – wieder entfernt
   (Phase 17: qwen3-vl kann in Ollama keine parallelen Anfragen)
-- [x] Muster in `flay.intents` gebündelt, eine Testtabelle (`tests/test_patterns.py`); Pläne und
-  Routinen in `flay.planning`; `assistant.py` von ~2600 auf ~1900 Zeilen
+- [x] Muster in `cassi.intents` gebündelt, eine Testtabelle (`tests/test_patterns.py`); Pläne und
+  Routinen in `cassi.planning`; `assistant.py` von ~2600 auf ~1900 Zeilen
 - [x] pyobjc und winrt mit Obergrenzen (winrt stand unbemerkt auf 4!10.0, der Code ist für 3.x)
 - [x] Verlauf: Hinweis nach zweimal derselben gescheiterten Bitte, Fehlschläge beim Start
 - [x] Windows-Checkliste: `docs/windows-test.md`
-- [x] `flay eval` danach: 100 % (174/174 Aktionen, 34/34 Gespräche), Median 1,8 s (vorher 1,66 s)
+- [x] `cassi eval` danach: 100 % (174/174 Aktionen, 34/34 Gespräche), Median 1,8 s (vorher 1,66 s)
 
 ## Phase 17 – Geschwindigkeit messen und verbessern
 
-- [x] Messprofil je Anfrage (`flay.perf`): Phasen (Spracherkennung, Zustand, Einordnung,
+- [x] Messprofil je Anfrage (`cassi.perf`): Phasen (Spracherkennung, Zustand, Einordnung,
   Weiterleitung, Werkzeuge, Antwort, Warten auf Sprachausgabe), Zeitpunkte (erster Satz,
   erster Ton) und jeder Modellaufruf mit Zweck, Token, erstem Token und Lesetempo. Im Log
-  („Profil: …“), im Verlauf, in `flay stats --perf` und am Ende von `flay eval`
+  („Profil: …“), im Verlauf, in `cassi stats --perf` und am Ende von `cassi eval`
 - [x] Gefunden: Ollama hält für qwen3-vl nur **einen** Prompt-Cache (parallele Anfragen
   unterstützt die Architektur nicht, `-np 1`). Jeder andere Prompt (Weiterleitung, Einordnung,
   Gedächtnispflege) verdrängt den ~2000 Token langen Gesprächsanfang; nicht im Cache liest ihn
@@ -826,35 +826,61 @@ läuft immer über Claude, Flay formuliert nur den Auftrag.
   (der lange wäre ~0,5 s langsamer)
 - [x] Nach einer Runde den Gesprächsanfang im Leerlauf neu in den Cache legen
   (`llm.rewarm`), abgebrochen, sobald eine neue Anfrage kommt; beim Start vorab
-- [x] Gemessen (M2 Pro, `flay eval`, je 1 Lauf, gleiche Codebasis): Median unverändert
+- [x] Gemessen (M2 Pro, `cassi eval`, je 1 Lauf, gleiche Codebasis): Median unverändert
   (1,61 → 1,62 s), p90 bis fertig 3,95 → 3,66 s, p90 erstes Token 3,48 → 2,13 s; gegenüber
   vorher (p90 5,96 s, erstes Token 6,22 s) vor allem durch die gleichbleibende Werkzeugliste.
   Gespräch über mehrere Runden: Plauderei nach einer Aktion erstes Token 0,33 s statt
   0,72–1,0 s
 - [x] Sprachkette gemessen: Parakeet 0,10 s für 4 s Sprache (beim Start vorgewärmt),
   Qwen3-TTS erster Ton ~0,2 s, Piper ~0,1 s, feste Sätze aus dem Speicher sofort
-- [x] Abschluss `flay eval` (2 Läufe): 100 % (174/174, 34/34), Median 1,63 s, p90 3,57 s
+- [x] Abschluss `cassi eval` (2 Läufe): 100 % (174/174, 34/34), Median 1,63 s, p90 3,57 s
   (vor dieser Phase 1,55 s / 5,96 s), erstes Token p90 2,12 s (vorher 6,22 s)
 - [x] Weiterleitung selbst: ~1 s, davon ~0,75 s für die ~27 Token des Werkzeugaufrufs
   (~31 Token/s) – eindeutige Fälle jetzt ohne Modell (Phase 18)
 
 ## Phase 18 – Eindeutiges ohne Modell, eigener erster Satz statt „Hm“
 
-- [x] `flay.direct`: Argumente ohne Modell, wenn nichts zu deuten ist – Projekt genau genannt
+- [x] `cassi.direct`: Argumente ohne Modell, wenn nichts zu deuten ist – Projekt genau genannt
   (passt ein Name grob auf ein zweites, entscheidet wie bisher das Modell), App + Verb +
   Monitor, Tastenkürzel und „Schreib: …“, Lautstärke/Musik/Sperren, Timer „in N Minuten“,
-  Flays Einstellungen, Kalender heute/morgen/Woche, Claude-Status, Git-Status und Fehlerliste,
+  Cassis Einstellungen, Kalender heute/morgen/Woche, Claude-Status, Git-Status und Fehlerliste,
   Ablauf fertig/Liste. Tabelle in `tests/test_patterns.py`
 - [x] Kein vorgefertigtes „Mhm“ mehr bei Antworten: Der erste Satz des Modells wird gesprochen,
   sobald er fertig ist (~0,9 s nach Sprechende); „Moment.“ nur noch, wenn nach 1,2 s nichts
   gesprochen ist. Eine Anweisung für einen besonders kurzen ersten Satz brachte nichts (erster
   Satz 0,90–0,95 s mit und ohne) und ließ das Modell öfter Aktionen behaupten – verworfen
-- [x] Gemessen (`flay eval`, 2 Läufe, 208 Anfragen, 100 % richtig): 60 Anfragen ganz ohne
+- [x] Gemessen (`cassi eval`, 2 Läufe, 208 Anfragen, 100 % richtig): 60 Anfragen ganz ohne
   Modell; bei Aktionen startet das Werkzeug im Median nach 0,01 s statt 1,03 s; Median bis
   fertig über alles 1,38 s statt 1,63 s; erster Satz einer Antwort unverändert ~0,9 s
 - [x] Behauptet das Modell nach einer Erzählung oder Wie-Frage eine Aktion („Ich habe Moewe
-  geöffnet“), führt Flay sie nicht aus, sondern lässt neu antworten (vorher konnte die
+  geöffnet“), führt Cassi sie nicht aus, sondern lässt neu antworten (vorher konnte die
   Behauptungsprüfung sie ausführen)
+
+## Phase 19 – Cassi: Umbenennung und Adapter
+
+- [x] Flay heißt jetzt Cassi: Paket, Befehl, `cassi.yaml`, `$CASSI_CONFIG`, Datenordner (der alte
+  wird einmal verschoben), Autostart-Label, tmux-Sitzungen `cassi-claude-<projekt>`, Stimme
+  `cassi-ramona-medium`; „Hey Cassi“ im Text (cassi/kassi/cassie …, nach „Hey“ auch kasi)
+- [x] Adapter (`cassi.adapters`): andere Pakete binden Cassi ein und personalisieren es per
+  `configure`/`prepare` – als erstes Flay mit eigenem Modell
+- [x] Aktivierungswort „Hey Cassi“ neu trainiert (`data/hey_cassi.npz`, 24 min CPU, nur
+  synthetische Stimmen, ohne eigene Aufnahmen): mit der zurückgehaltenen Stimme Kristin
+  **87 % erkannt, 11 von 287 anderen Sätzen ausgelöst** (23,8 min, Schwelle 0,7). Das alte
+  „Hey Flay“ kam auf 97 % – „Kassi“ ist kürzer und klingt nach „Kasse“, „Klasse“. Der Text
+  entscheidet weiterhin. Messwerte älterer Phasen beziehen sich auf „Hey Flay“.
+- [x] Aktivierungswort einstellbar (`input.continuous.wake_model`, `wake_pattern`) – Flay
+  bringt damit sein altes „Hey Flay“ mit
+- [x] Nachgemessen mit 15 fremden macOS-Stimmen (9 deutsch, 6 englisch; 60× „Hey …“ mit und
+  ohne Befehl, 216 andere Sätze, viele davon „Hey Kasse/Klasse/Lasse …“), Spracherkennung
+  Parakeet: Der Erkenner hört „Hey Cassi“ 60/60, löst aber bei 84/216 aus – es scheiterte der
+  Text: Parakeet macht aus deutschem „Hey Kassi“ oft Englisch („Hi Casi“, „Hi Cussie“, „Hell
+  Cassie“, „Hey Kessy“), nur 31/60 (deutsch 8/36). Mit breiterem Muster für den Text
+  (Gruß + k/c, a/u/e, s/ss/z, i/y/ie) **58/60 (deutsch 35/36), 0/216 Fehltreffer im Text**
+- [x] Verglichen mit „Hey Lassi“ (gleiches Training, gleiche Prüfung): Erkenner 98 % bei der
+  zurückgehaltenen Stimme, aber mit fremden Stimmen 57/60 und im Text höchstens 45/60 – Parakeet
+  macht daraus echte Wörter („lazy“, „lost“, „lucky“). Cassi bleibt.
+- [ ] „Hey Cassi“ mit eigenen Aufnahmen verbessern (`cassi voice wake`) und mit echten
+  Stimmen nachmessen
 
 ## Verworfen (bei Bedarf wieder aufnehmen)
 

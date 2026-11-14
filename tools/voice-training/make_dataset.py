@@ -1,10 +1,10 @@
-"""Speak the sentence lists with Flay's Qwen3-TTS voice; keep what Whisper understands.
+"""Speak the sentence lists with Cassi's Qwen3-TTS voice; keep what Whisper understands.
 
 With --recorded <dir> the sentences come from the user's own recordings instead
-(``flay voice dataset``): the same checks, trimming and conversion, no Qwen3-TTS.
+(``cassi voice dataset``): the same checks, trimming and conversion, no Qwen3-TTS.
 
 Writes the Piper training set: <out>/wavs/*.wav (22,050 Hz mono) and <out>/metadata.csv
-(file|text|phoneme ids). The ids come from espeak via the Piper Flay runs – German with "de",
+(file|text|phoneme ids). The ids come from espeak via the Piper Cassi runs – German with "de",
 English with "en-us" – so one model learns the voice for both languages.
 Resumable: sentences already decided are skipped. Downloads the models it needs.
 
@@ -28,17 +28,17 @@ import numpy as np
 from piper.phoneme_ids import phonemes_to_ids
 from piper.phonemize_espeak import EspeakPhonemizer
 
-import flay
-from flay.audio.base import AudioBuffer
-from flay.config import VoiceSettings, load_settings
-from flay.core.language import Language
-from flay.core.platform import detect_hardware
-from flay.stt.factory import create_stt
-from flay.tts.factory import create_tts
-from flay.tts.voice import resample
+import cassi
+from cassi.audio.base import AudioBuffer
+from cassi.config import VoiceSettings, load_settings
+from cassi.core.language import Language
+from cassi.core.platform import detect_hardware
+from cassi.stt.factory import create_stt
+from cassi.tts.factory import create_tts
+from cassi.tts.voice import resample
 
 HERE = Path(__file__).parent
-SENTENCES = Path(flay.__file__).parent / "data" / "sentences"
+SENTENCES = Path(cassi.__file__).parent / "data" / "sentences"
 RATE = 22_050
 TTS_RATE = 24_000
 MAX_WER = 0.1
@@ -66,7 +66,7 @@ def trim(samples: np.ndarray, rate: int, pad: float = 0.12) -> np.ndarray:
 
 
 def own_recordings(folder: Path) -> dict[tuple[str, str], Path]:
-    """(language, sentence) → WAV of the user's recordings (recorded.jsonl from flay)."""
+    """(language, sentence) → WAV of the user's recordings (recorded.jsonl from cassi)."""
     found = {}
     for line in (folder / "recorded.jsonl").read_text("utf-8").splitlines():
         record = json.loads(line)
@@ -89,7 +89,7 @@ async def main() -> None:
     parser.add_argument("--out", type=Path, default=HERE / "work" / "dataset")
     parser.add_argument("--limit", type=int, help="only the first N sentences per language")
     parser.add_argument(
-        "--recorded", type=Path, help="own recordings (flay voice dataset) instead of Qwen3-TTS"
+        "--recorded", type=Path, help="own recordings (cassi voice dataset) instead of Qwen3-TTS"
     )
     args = parser.parse_args()
     out: Path = args.out

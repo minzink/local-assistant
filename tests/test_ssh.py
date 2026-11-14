@@ -5,11 +5,11 @@ from typing import Any
 
 import pytest
 
-from flay.assistant import Assistant
-from flay.config import Settings
-from flay.intents import tool_intent
-from flay.tools.base import ToolRegistry
-from flay.tools.ssh import SshConnectTool, SshHost, read_ssh_hosts, terminal_command
+from cassi.assistant import Assistant
+from cassi.config import Settings
+from cassi.intents import tool_intent
+from cassi.tools.base import ToolRegistry
+from cassi.tools.ssh import SshConnectTool, SshHost, read_ssh_hosts, terminal_command
 from tests.test_assistant import FakeOutput, FakeSource, FakeSTT, FakeTTS
 from tests.test_examples import EagerLLM
 
@@ -117,20 +117,20 @@ def assistant(llm: Any, ssh: SshConnectTool) -> Assistant:
 async def test_a_server_the_user_never_named_is_not_connected(config: Path) -> None:
     started = Started()
     llm = EagerLLM("ssh_connect", {"host": "db"})
-    flay = assistant(llm, tool(config, started))
+    cassi = assistant(llm, tool(config, started))
 
-    await flay.handle_text("Verbinde dich mit dem Server.")
+    await cassi.handle_text("Verbinde dich mit dem Server.")
 
     assert started.commands == []
-    assert flay.history[-1].text == "Mit welchem Server?"
+    assert cassi.history[-1].text == "Mit welchem Server?"
 
 
 async def test_ssh_request_opens_the_terminal(config: Path) -> None:
     started = Started()
     llm = EagerLLM("ssh_connect", {"host": "staging"})
-    flay = assistant(llm, tool(config, started))
+    cassi = assistant(llm, tool(config, started))
 
-    await flay.handle_text("SSH auf staging.")
+    await cassi.handle_text("SSH auf staging.")
 
     assert 'do script "ssh staging"' in started.commands[0]
-    assert flay.history[-1].text == "Ich verbinde dich mit staging."
+    assert cassi.history[-1].text == "Ich verbinde dich mit staging."

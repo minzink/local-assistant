@@ -8,14 +8,14 @@ from typing import Any
 
 import pytest
 
-from flay.assistant import MAX_TOOL_ROUNDS, Assistant
-from flay.config import Settings
-from flay.core.events import ToolUsed
-from flay.core.language import Language
-from flay.core.messages import ImagePart, Message, Modality, Role, TextPart, ToolCall
-from flay.llm.base import LLMEvent, ModelCapabilities, TextDelta, ToolSpec
-from flay.tools.base import ToolRegistry, ToolResult, speech
-from flay.tools.claude_code import (
+from cassi.assistant import MAX_TOOL_ROUNDS, Assistant
+from cassi.config import Settings
+from cassi.core.events import ToolUsed
+from cassi.core.language import Language
+from cassi.core.messages import ImagePart, Message, Modality, Role, TextPart, ToolCall
+from cassi.llm.base import LLMEvent, ModelCapabilities, TextDelta, ToolSpec
+from cassi.tools.base import ToolRegistry, ToolResult, speech
+from cassi.tools.claude_code import (
     ClaudeStatusTool,
     SendToClaudeTool,
     Session,
@@ -25,15 +25,15 @@ from flay.tools.claude_code import (
     session_name,
     single_line,
 )
-from flay.tools.factory import create_tools
-from flay.tools.phpstorm import (
+from cassi.tools.factory import create_tools
+from cassi.tools.phpstorm import (
     OpenProjectTool,
     Project,
     latest_config_dir,
     match_projects,
     read_recent_projects,
 )
-from flay.tools.screen import LookAtScreenTool, Window
+from cassi.tools.screen import LookAtScreenTool, Window
 from tests.test_assistant import ONE_SECOND, FakeOutput, FakeSource, FakeSTT, FakeTTS
 
 RECENT_PROJECTS = """<application>
@@ -194,10 +194,10 @@ async def test_autostart_starts_claude_and_types_when_ready(tmp_path: Path) -> N
 
     assert result.ok
     assert tmux.started == [
-        ("flay-claude-stadt-wolkenthal", tmp_path / "stadt-wolkenthal", ["claude"])
+        ("cassi-claude-stadt-wolkenthal", tmp_path / "stadt-wolkenthal", ["claude"])
     ]
-    assert tmux.typed == [("flay-claude-stadt-wolkenthal", "Prüfe die README.")]
-    assert "flay claude" in result.text
+    assert tmux.typed == [("cassi-claude-stadt-wolkenthal", "Prüfe die README.")]
+    assert "cassi claude" in result.text
     assert result.action is not None and "gestartet" in result.action
 
 
@@ -227,19 +227,19 @@ async def test_autostart_gives_up_when_claude_never_gets_ready(tmp_path: Path) -
 async def test_named_project_without_session_is_not_typed_into_other_project(
     tmp_path: Path,
 ) -> None:
-    tmux = FakeTmux([FLAY], screens=[READY_SCREEN])
+    tmux = FakeTmux([CASSI], screens=[READY_SCREEN])
 
     await autostart_tool(tmux, tmp_path).run({"instruction": "x", "project": "Stadt Wolkenthal"})
 
-    assert tmux.typed == [("flay-claude-stadt-wolkenthal", "x")]
+    assert tmux.typed == [("cassi-claude-stadt-wolkenthal", "x")]
 
 
 async def test_unresolvable_project_falls_back_to_clipboard(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     copied: list[str] = []
-    monkeypatch.setattr("flay.tools.claude_code.copy_to_clipboard", copied.append)
-    monkeypatch.setattr("flay.tools.claude_code.bring_phpstorm_to_front", lambda: None)
+    monkeypatch.setattr("cassi.tools.claude_code.copy_to_clipboard", copied.append)
+    monkeypatch.setattr("cassi.tools.claude_code.bring_phpstorm_to_front", lambda: None)
     tmux = FakeTmux([])
 
     result = await autostart_tool(tmux, tmp_path).run(
@@ -261,30 +261,30 @@ async def test_without_session_and_project_flay_asks(tmp_path: Path) -> None:
     assert tmux.started == [] and tmux.typed == []
 
 
-FLAY = Session("flay-claude-flay", last_activity=200)
-WOLKENTHAL = Session("flay-claude-stadt-wolkenthal", last_activity=100)
+CASSI = Session("cassi-claude-flay", last_activity=200)
+WOLKENTHAL = Session("cassi-claude-stadt-wolkenthal", last_activity=100)
 
 
 def test_session_name() -> None:
-    assert session_name(Path("/x/Stadt Wolkenthal_2")) == "flay-claude-stadt-wolkenthal-2"
+    assert session_name(Path("/x/Stadt Wolkenthal_2")) == "cassi-claude-stadt-wolkenthal-2"
 
 
 @pytest.mark.parametrize(
     ("project", "expected"),
-    [(None, FLAY), ("Stadt Wolkenthal", WOLKENTHAL), ("unbekannt", None)],
+    [(None, CASSI), ("Stadt Wolkenthal", WOLKENTHAL), ("unbekannt", None)],
 )
 def test_pick_session(project: str | None, expected: Session | None) -> None:
-    assert pick_session([WOLKENTHAL, FLAY], project) == expected
+    assert pick_session([WOLKENTHAL, CASSI], project) == expected
 
 
 def test_pick_session_prefers_the_session_the_user_has_open() -> None:
-    open_wolkenthal = Session("flay-claude-stadt-wolkenthal", last_activity=100, attached=True)
+    open_wolkenthal = Session("cassi-claude-stadt-wolkenthal", last_activity=100, attached=True)
 
-    assert pick_session([open_wolkenthal, FLAY], None) == open_wolkenthal
+    assert pick_session([open_wolkenthal, CASSI], None) == open_wolkenthal
 
 
 async def test_send_to_claude_types_into_tmux_session_without_enter() -> None:
-    tmux = FakeTmux([WOLKENTHAL, FLAY])
+    tmux = FakeTmux([WOLKENTHAL, CASSI])
     tool = SendToClaudeTool(tmux=tmux)  # type: ignore[arg-type]
 
     result = await tool.run(
@@ -292,16 +292,16 @@ async def test_send_to_claude_types_into_tmux_session_without_enter() -> None:
     )
 
     assert result.ok
-    assert tmux.typed == [("flay-claude-stadt-wolkenthal", "Füge Tests für den Login hinzu.")]
+    assert tmux.typed == [("cassi-claude-stadt-wolkenthal", "Füge Tests für den Login hinzu.")]
     assert "NOT sent" in result.text
 
 
 async def test_send_to_claude_falls_back_to_clipboard(monkeypatch: pytest.MonkeyPatch) -> None:
     copied: list[str] = []
     fronted: list[bool] = []
-    monkeypatch.setattr("flay.tools.claude_code.copy_to_clipboard", copied.append)
+    monkeypatch.setattr("cassi.tools.claude_code.copy_to_clipboard", copied.append)
     monkeypatch.setattr(
-        "flay.tools.claude_code.bring_phpstorm_to_front", lambda: fronted.append(True)
+        "cassi.tools.claude_code.bring_phpstorm_to_front", lambda: fronted.append(True)
     )
     tool = SendToClaudeTool(tmux=FakeTmux([]), autostart=False)  # type: ignore[arg-type]
 
@@ -322,24 +322,24 @@ async def test_tmux_only_transport_reports_missing_session() -> None:
 
 
 async def test_claude_status_reads_screen() -> None:
-    ok = await ClaudeStatusTool(FakeTmux([FLAY])).run({})  # type: ignore[arg-type]
+    ok = await ClaudeStatusTool(FakeTmux([CASSI])).run({})  # type: ignore[arg-type]
     missing = await ClaudeStatusTool(FakeTmux([])).run({})  # type: ignore[arg-type]
 
-    assert ok.ok and "screen of flay-claude-flay" in ok.text
+    assert ok.ok and "screen of cassi-claude-flay" in ok.text
     assert not missing.ok
 
 
 @pytest.mark.skipif(shutil.which("tmux") is None, reason="needs tmux")
 async def test_real_tmux_session_receives_text_without_enter() -> None:
     # A separate tmux server, so the user's own sessions are never touched.
-    socket = ["-L", f"flay-test-{os.getpid()}"]
+    socket = ["-L", f"cassi-test-{os.getpid()}"]
 
     class SocketTmux(Tmux):
         async def _run(self, *args: str) -> str:
             return await super()._run(*socket, *args)
 
     tmux = SocketTmux()
-    name = "flay-claude-test"
+    name = "cassi-claude-test"
     await tmux._run("new-session", "-d", "-s", name, "-x", "80", "-y", "10", "cat")
     try:
         assert [s.name for s in await tmux.sessions()] == [name]
@@ -364,7 +364,7 @@ def test_single_line() -> None:
 
 
 async def test_screen_tool_returns_png(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("flay.tools.screen.capture_png", lambda monitor, size: b"\x89PNG")
+    monkeypatch.setattr("cassi.tools.screen.capture_png", lambda monitor, size: b"\x89PNG")
 
     result = await LookAtScreenTool().run({})
 
@@ -535,7 +535,7 @@ def test_blank_screenshot_raises_permission_hint(
 ) -> None:
     import mss
 
-    from flay.tools.screen import capture_png
+    from cassi.tools.screen import capture_png
 
     class Shot:
         size = (4, 2)
@@ -573,7 +573,7 @@ def test_blank_screenshot_raises_permission_hint(
     ],
 )
 def test_mentions_screen(text: str, expected: bool) -> None:
-    from flay.intents import mentions_screen
+    from cassi.intents import mentions_screen
 
     assert mentions_screen(text) is expected
 
@@ -641,15 +641,15 @@ async def test_registry_logs_actions(caplog: pytest.LogCaptureFixture) -> None:
         async def run(self, arguments: dict[str, Any]) -> ToolResult:
             return ToolResult("done", action="PhpStorm: Projekt geöffnet")
 
-    with caplog.at_level("INFO", logger="flay.tools"):
+    with caplog.at_level("INFO", logger="cassi.tools"):
         await ToolRegistry([ActingTool()]).execute(ToolCall("1", "echo", {}))
 
     assert "PhpStorm: Projekt geöffnet" in caplog.messages
 
 
 async def test_clipboard_fallback_says_nothing_was_typed(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("flay.tools.claude_code.copy_to_clipboard", lambda text: None)
-    monkeypatch.setattr("flay.tools.claude_code.bring_phpstorm_to_front", lambda: None)
+    monkeypatch.setattr("cassi.tools.claude_code.copy_to_clipboard", lambda text: None)
+    monkeypatch.setattr("cassi.tools.claude_code.bring_phpstorm_to_front", lambda: None)
 
     tool = SendToClaudeTool(tmux=FakeTmux([]), autostart=False)  # type: ignore[arg-type]
     result = await tool.run({"instruction": "x"})
@@ -662,7 +662,7 @@ async def test_clipboard_fallback_says_nothing_was_typed(monkeypatch: pytest.Mon
 
 
 def test_parse_open_projects() -> None:
-    from flay.tools.phpstorm_mcp import parse_open_projects
+    from cassi.tools.phpstorm_mcp import parse_open_projects
 
     text = (
         "Unable to determine the target project for the current MCP tool call.\n"
@@ -676,7 +676,7 @@ def test_parse_open_projects() -> None:
 def test_projects_from_claude_locks(tmp_path: Path) -> None:
     import json
 
-    from flay.tools.phpstorm_mcp import projects_from_claude_locks
+    from cassi.tools.phpstorm_mcp import projects_from_claude_locks
 
     def lock(name: str, pid: int, ide: str, folder: str) -> None:
         data = {"pid": pid, "ideName": ide, "workspaceFolders": [folder], "authToken": "x"}
@@ -704,7 +704,7 @@ class FakePhpStorm:
         self.commands.append(("open_claude", project))
         if self.starts_session:
             self.tmux._sessions.append(Session(session_name(project), 1, attached=True))
-        return self.launcher or project / ".flay-claude.sh"
+        return self.launcher or project / ".cassi-claude.sh"
 
     launcher: Path | None = None
 
@@ -725,7 +725,7 @@ async def test_single_open_project_gets_claude_terminal(tmp_path: Path) -> None:
     assert result.ok
     assert phpstorm.commands[0][0] == "open_claude"
     assert phpstorm.commands[0][1] == Path("/p/ai/flay")
-    assert tmux.typed == [("flay-claude-flay", "Prüfe die README.")]
+    assert tmux.typed == [("cassi-claude-flay", "Prüfe die README.")]
     assert tmux.started == []  # no hidden background session
 
 
@@ -759,7 +759,7 @@ async def test_named_project_not_open_uses_background_session(tmp_path: Path) ->
 
     assert result.ok
     assert phpstorm.commands == []
-    assert tmux.started[0][0] == "flay-claude-stadt-wolkenthal"
+    assert tmux.started[0][0] == "cassi-claude-stadt-wolkenthal"
 
 
 async def test_unconfirmed_terminal_types_nothing(tmp_path: Path) -> None:
@@ -774,16 +774,16 @@ async def test_unconfirmed_terminal_types_nothing(tmp_path: Path) -> None:
 
 
 async def test_detached_session_is_shown_in_phpstorm_before_typing(tmp_path: Path) -> None:
-    detached = Session("flay-claude-flay", 1, attached=False)
+    detached = Session("cassi-claude-flay", 1, attached=False)
     tmux = FakeTmux([detached])
     phpstorm = FakePhpStorm([Path("/p/ai/flay")], tmux)
-    # `flay claude` attaches to the existing session instead of creating another one.
+    # `cassi claude` attaches to the existing session instead of creating another one.
     phpstorm.starts_session = False
 
     async def attach(project: Path) -> Path:
         phpstorm.commands.append(("open_claude", project))
-        tmux._sessions[0] = Session("flay-claude-flay", 2, attached=True)
-        return project / ".flay-claude.sh"
+        tmux._sessions[0] = Session("cassi-claude-flay", 2, attached=True)
+        return project / ".cassi-claude.sh"
 
     phpstorm.open_claude = attach  # type: ignore[method-assign]
 
@@ -793,11 +793,11 @@ async def test_detached_session_is_shown_in_phpstorm_before_typing(tmp_path: Pat
 
     assert result.ok and "background" not in result.text
     assert [project for _, project in phpstorm.commands] == [Path("/p/ai/flay")]
-    assert tmux.typed == [("flay-claude-flay", "x")]
+    assert tmux.typed == [("cassi-claude-flay", "x")]
 
 
 async def test_detached_session_of_closed_project_is_typed_with_hint(tmp_path: Path) -> None:
-    tmux = FakeTmux([Session("flay-claude-flay", 1, attached=False)])
+    tmux = FakeTmux([Session("cassi-claude-flay", 1, attached=False)])
     phpstorm = FakePhpStorm([Path("/p/umx")], tmux)
 
     result = await phpstorm_tool(tmux, phpstorm, tmp_path).run(
@@ -805,12 +805,12 @@ async def test_detached_session_of_closed_project_is_typed_with_hint(tmp_path: P
     )
 
     assert phpstorm.commands == []
-    assert tmux.typed == [("flay-claude-flay", "x")]
-    assert "background" in result.text and "flay claude" in result.text
+    assert tmux.typed == [("cassi-claude-flay", "x")]
+    assert "background" in result.text and "cassi claude" in result.text
 
 
 def test_describe_flattens_exception_groups() -> None:
-    from flay.tools.phpstorm_mcp import describe
+    from cassi.tools.phpstorm_mcp import describe
 
     error = ExceptionGroup("outer", [ExceptionGroup("inner", [ConnectionError("refused")])])
 
@@ -838,7 +838,7 @@ def test_describe_flattens_exception_groups() -> None:
     ],
 )
 def test_claude_intent(text: str, expected: str | None) -> None:
-    from flay.intents import claude_intent
+    from cassi.intents import claude_intent
 
     assert claude_intent(text) == expected
 
@@ -920,7 +920,7 @@ async def test_routing_without_tool_call_falls_back_to_normal_answer() -> None:
 
 
 async def test_launcher_script_is_deleted_after_start(tmp_path: Path) -> None:
-    launcher = tmp_path / ".flay-claude.sh"
+    launcher = tmp_path / ".cassi-claude.sh"
     launcher.write_text("#!/bin/sh\n")
     tmux = FakeTmux([], screens=[READY_SCREEN])
     phpstorm = FakePhpStorm([Path("/p/ai/flay")], tmux)
@@ -933,7 +933,7 @@ async def test_launcher_script_is_deleted_after_start(tmp_path: Path) -> None:
 
 
 def test_launcher_script_runs_flay_claude() -> None:
-    from flay.tools.phpstorm_mcp import launcher_script
+    from cassi.tools.phpstorm_mcp import launcher_script
 
     script = launcher_script()
 
@@ -944,7 +944,7 @@ def test_launcher_script_runs_flay_claude() -> None:
 
 LEFTOVER_SCREEN = """ ▝▝   ▝▝   ~/phpstormprojects/ai/flay
 ──────────────────────────────────────────────────
-❯ [⧉ In README.md] Fasse die Readme-Datei des Projekts Flay kurz zusammen.Fasse die Readme des
+❯ [⧉ In README.md] Fasse die Readme-Datei des Projekts Cassi kurz zusammen.Fasse die Readme des
   Projekts kurz zusammen.
 ──────────────────────────────────────────────────
   ⏵⏵ auto mode on (shift+tab to cycle)"""
@@ -965,20 +965,20 @@ def input_screen(text: str) -> str:
         (input_screen("Prüfe die README."), "Prüfe die README."),
         (
             LEFTOVER_SCREEN,
-            "Fasse die Readme-Datei des Projekts Flay kurz zusammen.Fasse die Readme des "
+            "Fasse die Readme-Datei des Projekts Cassi kurz zusammen.Fasse die Readme des "
             "Projekts kurz zusammen.",
         ),
         ("Claude startet …", None),
     ],
 )
 def test_read_input(screen: str, expected: str | None) -> None:
-    from flay.tools.claude_code import read_input
+    from cassi.tools.claude_code import read_input
 
     assert read_input(screen) == expected
 
 
 async def test_foreign_text_in_claude_input_is_never_overwritten() -> None:
-    tmux = FakeTmux([FLAY], screens=[input_screen("Mein eigener Entwurf")])
+    tmux = FakeTmux([CASSI], screens=[input_screen("Mein eigener Entwurf")])
     tool = SendToClaudeTool(tmux=tmux, autostart=False)  # type: ignore[arg-type]
 
     result = await tool.run({"instruction": "Neuer Auftrag."})
@@ -990,7 +990,7 @@ async def test_foreign_text_in_claude_input_is_never_overwritten() -> None:
 
 async def test_own_unsent_text_is_replaced() -> None:
     tmux = FakeTmux(
-        [FLAY], screens=[input_screen(""), input_screen("Erster Auftrag."), input_screen("")]
+        [CASSI], screens=[input_screen(""), input_screen("Erster Auftrag."), input_screen("")]
     )
     tool = SendToClaudeTool(tmux=tmux, autostart=False)  # type: ignore[arg-type]
 
@@ -998,12 +998,12 @@ async def test_own_unsent_text_is_replaced() -> None:
     result = await tool.run({"instruction": "Zweiter Auftrag."})
 
     assert result.ok
-    assert tmux.pressed == [("flay-claude-flay", "BSpace", len("Erster Auftrag."))]
-    assert tmux.typed[-1] == ("flay-claude-flay", "Zweiter Auftrag.")
+    assert tmux.pressed == [("cassi-claude-flay", "BSpace", len("Erster Auftrag."))]
+    assert tmux.typed[-1] == ("cassi-claude-flay", "Zweiter Auftrag.")
 
 
 async def test_nothing_is_typed_when_the_input_line_is_not_visible() -> None:
-    tmux = FakeTmux([FLAY], screens=["Do you want to proceed?\n 1. Yes\n 2. No"])
+    tmux = FakeTmux([CASSI], screens=["Do you want to proceed?\n 1. Yes\n 2. No"])
     tool = SendToClaudeTool(tmux=tmux, autostart=False)  # type: ignore[arg-type]
 
     result = await tool.run({"instruction": "x"})
@@ -1018,7 +1018,7 @@ def test_claude_state_with_no_break_space() -> None:
 # Screen regions --------------------------------------------------------------------------
 
 WINDOWS = [
-    Window(1, "Firefox", "Flay", (0, 0, 800, 600)),
+    Window(1, "Firefox", "Cassi", (0, 0, 800, 600)),
     Window(2, "PHPStorm", "flay – assistant.py", (0, 0, 1200, 800)),
     Window(3, "Terminal", "zsh", (0, 0, 600, 400)),
 ]
@@ -1032,12 +1032,12 @@ WINDOWS = [
         ("phpstorm", 2),
         ("Terminal", 3),
         ("Slack", None),
-        # Named explicitly: Firefox showing the Flay tab is still Firefox.
+        # Named explicitly: Firefox showing the Cassi tab is still Firefox.
         ("Firefox", 1),
     ],
 )
 def test_find_window_skips_flay_ui(query: str | None, expected: int | None) -> None:
-    from flay.tools.screen import find_window
+    from cassi.tools.screen import find_window
 
     window = find_window(query, WINDOWS)
 
@@ -1057,14 +1057,14 @@ def test_find_window_skips_flay_ui(query: str | None, expected: int | None) -> N
     ],
 )
 def test_screen_arguments(text: str, expected: dict[str, object]) -> None:
-    from flay.tools.screen import screen_arguments
+    from cassi.tools.screen import screen_arguments
 
     assert screen_arguments(text, ["PHPStorm", "Firefox", "Terminal"]) == expected
 
 
 async def test_window_capture_and_missing_window(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("flay.tools.screen.list_windows", lambda: WINDOWS)
-    monkeypatch.setattr("flay.tools.screen.capture_window_png", lambda window, size: b"png")
+    monkeypatch.setattr("cassi.tools.screen.list_windows", lambda: WINDOWS)
+    monkeypatch.setattr("cassi.tools.screen.capture_window_png", lambda window, size: b"png")
 
     found = await LookAtScreenTool().run({"window": "phpstorm"})
     missing = await LookAtScreenTool().run({"window": "Slack"})
@@ -1075,7 +1075,7 @@ async def test_window_capture_and_missing_window(monkeypatch: pytest.MonkeyPatch
 
 
 async def test_unknown_monitor_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("flay.tools.screen.monitor_count", lambda: 1)
+    monkeypatch.setattr("cassi.tools.screen.monitor_count", lambda: 1)
 
     result = await LookAtScreenTool().run({"monitor": 2})
 
@@ -1084,7 +1084,7 @@ async def test_unknown_monitor_is_reported(monkeypatch: pytest.MonkeyPatch) -> N
 
 @pytest.fixture
 def permission_granted(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("flay.tools.screen.ensure_permission", lambda: None)
+    monkeypatch.setattr("cassi.tools.screen.ensure_permission", lambda: None)
 
 
 class GradientMss:
@@ -1119,9 +1119,9 @@ def test_window_is_cropped_from_monitor_with_retina_scale(
 
     from PIL import Image
 
-    from flay.tools.screen import capture_window_png
+    from cassi.tools.screen import capture_window_png
 
-    monkeypatch.setattr("flay.tools.screen._mss", GradientMss)
+    monkeypatch.setattr("cassi.tools.screen._mss", GradientMss)
     window = Window(9, "PHPStorm", "", (40, 10, 40, 20))  # straddles dark and bright half
 
     image = Image.open(io.BytesIO(capture_window_png(window, max_size=1000))).convert("L")
@@ -1131,12 +1131,12 @@ def test_window_is_cropped_from_monitor_with_retina_scale(
 
 
 def test_missing_screen_permission_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
-    from flay.tools.screen import ScreenPermissionError, capture_png
+    from cassi.tools.screen import ScreenPermissionError, capture_png
 
     def deny() -> None:
         raise ScreenPermissionError("screen recording is not allowed")
 
-    monkeypatch.setattr("flay.tools.screen.ensure_permission", deny)
+    monkeypatch.setattr("cassi.tools.screen.ensure_permission", deny)
 
     with pytest.raises(PermissionError, match="not allowed"):
         capture_png(1, 1280)
@@ -1154,7 +1154,7 @@ def test_missing_screen_permission_is_reported(monkeypatch: pytest.MonkeyPatch) 
     ],
 )
 def test_open_project_setting(tmp_path: Path, content: str, expected: int) -> None:
-    from flay.tools.phpstorm import open_project_setting
+    from cassi.tools.phpstorm import open_project_setting
 
     (tmp_path / "options").mkdir()
     (tmp_path / "options" / "ide.general.xml").write_text(content)
@@ -1179,7 +1179,7 @@ class FakeIde:
 
 
 async def test_close_project_closes_matching_open_project() -> None:
-    from flay.tools.phpstorm import CloseProjectTool
+    from cassi.tools.phpstorm import CloseProjectTool
 
     ide = FakeIde([Path("/p/umx"), Path("/p/stadt-wolkenthal")])
 
@@ -1190,7 +1190,7 @@ async def test_close_project_closes_matching_open_project() -> None:
 
 
 async def test_close_project_reports_unknown_and_still_open() -> None:
-    from flay.tools.phpstorm import CloseProjectTool
+    from cassi.tools.phpstorm import CloseProjectTool
 
     unknown = await CloseProjectTool(FakeIde([Path("/p/umx")])).run({"name": "flay"})  # type: ignore[arg-type]
     stuck_ide = FakeIde([Path("/p/flay")], closes=False)
@@ -1213,7 +1213,7 @@ async def test_close_project_reports_unknown_and_still_open() -> None:
     ],
 )
 def test_project_intents(text: str, expected: str | None) -> None:
-    from flay.intents import tool_intent
+    from cassi.intents import tool_intent
 
     assert tool_intent(text) == expected
 
@@ -1282,7 +1282,7 @@ class ShadowIde(FakeIde):
 
 
 async def test_close_project_refuses_when_a_parent_project_would_be_closed_instead() -> None:
-    from flay.tools.phpstorm import CloseProjectTool
+    from cassi.tools.phpstorm import CloseProjectTool
 
     umx, ewo = Path("/p/umx"), Path("/p/umx/central/project-symfony-kx-ewo")
     ide = ShadowIde([umx, ewo], shadowed={ewo: umx})
@@ -1294,7 +1294,7 @@ async def test_close_project_refuses_when_a_parent_project_would_be_closed_inste
 
 
 async def test_close_project_with_separate_parent_project_closes_the_subproject() -> None:
-    from flay.tools.phpstorm import CloseProjectTool
+    from cassi.tools.phpstorm import CloseProjectTool
 
     umx, ewo = Path("/p/umx"), Path("/p/umx/central/project-symfony-kx-ewo")
     ide = ShadowIde([umx, ewo], shadowed={})
@@ -1306,7 +1306,7 @@ async def test_close_project_with_separate_parent_project_closes_the_subproject(
 
 
 async def test_close_project_reports_when_phpstorm_closed_another_project() -> None:
-    from flay.tools.phpstorm import CloseProjectTool
+    from cassi.tools.phpstorm import CloseProjectTool
 
     class WrongIde(FakeIde):
         async def invoke_action(self, action: str, project: Path) -> str:
@@ -1341,7 +1341,7 @@ async def test_close_project_reports_when_phpstorm_closed_another_project() -> N
     ],
 )
 def test_claimed_tool(sentence: str, expected: str | None) -> None:
-    from flay.intents import claimed_tool
+    from cassi.intents import claimed_tool
 
     assert claimed_tool(sentence) == expected
 
@@ -1482,14 +1482,14 @@ async def test_claude_asks_instead_of_using_the_clipboard_when_project_is_ambigu
 
 
 async def test_computer_state_lists_projects_and_claude_sessions() -> None:
-    from flay.tools.claude_code import Session
-    from flay.tools.state import ComputerState
+    from cassi.tools.claude_code import Session
+    from cassi.tools.state import ComputerState
 
     class Ide:
         async def open_projects(self) -> list[Path]:
             return [Path("/p/flay"), Path("/p/umx")]
 
-    sessions = [Session("flay-claude-flay", 1, attached=True), Session("flay-claude-umx", 2)]
+    sessions = [Session("cassi-claude-flay", 1, attached=True), Session("cassi-claude-umx", 2)]
     state = ComputerState(Ide(), FakeTmux(sessions))  # type: ignore[arg-type]
 
     assert await state.describe() == (
@@ -1542,7 +1542,7 @@ async def test_single_sentence_claim_is_caught_too() -> None:
     ],
 )
 def test_mentioned(name: str, said: str, expected: bool) -> None:
-    from flay.tools.phpstorm import mentioned
+    from cassi.tools.phpstorm import mentioned
 
     assert mentioned(name, said) is expected
 
@@ -1620,7 +1620,7 @@ async def test_request_taken_back_does_nothing() -> None:
 
 
 def test_how_to_question_is_no_project_action() -> None:
-    from flay.intents import tool_intent
+    from cassi.intents import tool_intent
 
     assert tool_intent("Wie schließe ich in PhpStorm ein Projekt?") is None
     assert tool_intent("Kannst du das Projekt flay schließen?") == "close_project"
@@ -1680,7 +1680,7 @@ async def test_clearly_named_project_is_closed_at_once() -> None:
 
 
 async def test_rules_reach_the_instruction_for_claude() -> None:
-    from flay.memory.base import IMPORTANT, Fact, MemoryContext, ShortTermMemory
+    from cassi.memory.base import IMPORTANT, Fact, MemoryContext, ShortTermMemory
 
     class RuledMemory(ShortTermMemory):
         def context(self) -> MemoryContext:
@@ -1709,7 +1709,7 @@ SIDE_BY_SIDE = [(0, 0, 1920, 1080), (-1920, 0, 1920, 1080)]  # main right, secon
 
 
 def test_monitor_positions() -> None:
-    from flay.tools.screen import monitor_positions
+    from cassi.tools.screen import monitor_positions
 
     assert monitor_positions([(0, 0, 1920, 1080)]) == {}
     assert monitor_positions(SIDE_BY_SIDE) == {1: "right", 2: "left"}
@@ -1732,16 +1732,16 @@ def test_monitor_positions() -> None:
     ],
 )
 def test_screen_arguments_by_position(text: str, expected: dict[str, object]) -> None:
-    from flay.tools.screen import screen_arguments
+    from cassi.tools.screen import screen_arguments
 
     assert screen_arguments(text, [], SIDE_BY_SIDE) == expected
 
 
 def test_describe_windows_per_monitor() -> None:
-    from flay.tools.screen import Window, describe_windows
+    from cassi.tools.screen import Window, describe_windows
 
     windows = [
-        Window(1, "Firefox", "Flay", (0, 0, 800, 600)),  # Flay's own UI: left out
+        Window(1, "Firefox", "Cassi", (0, 0, 800, 600)),  # Flay's own UI: left out
         Window(2, "PhpStorm", "flay – assistant.py", (100, 100, 1200, 800)),
         Window(3, "Slack", "Slack", (-1800, 50, 1000, 700)),
     ]
@@ -1768,7 +1768,7 @@ def test_describe_windows_per_monitor() -> None:
     ],
 )
 def test_asks_what_is_open(text: str, expected: bool) -> None:
-    from flay.intents import asks_what_is_open
+    from cassi.intents import asks_what_is_open
 
     assert asks_what_is_open(text) is expected
 
@@ -1811,7 +1811,7 @@ async def test_screenshot_comes_with_the_window_list() -> None:
 
 
 def test_area_around_the_pointer_stays_on_its_monitor() -> None:
-    from flay.tools.screen import area_around
+    from cassi.tools.screen import area_around
 
     assert area_around((960, 540), SIDE_BY_SIDE) == (640, 340, 640, 400)
     # Near the edge the area moves inside instead of being cut off.
@@ -1833,8 +1833,8 @@ def test_area_around_the_pointer_stays_on_its_monitor() -> None:
     ],
 )
 def test_screen_arguments_at_the_pointer(text: str, expected: dict[str, object]) -> None:
-    from flay.intents import mentions_screen
-    from flay.tools.screen import screen_arguments
+    from cassi.intents import mentions_screen
+    from cassi.tools.screen import screen_arguments
 
     assert mentions_screen(text)
     assert screen_arguments(text, ["Terminal"], SIDE_BY_SIDE) == expected
@@ -1843,8 +1843,8 @@ def test_screen_arguments_at_the_pointer(text: str, expected: dict[str, object])
 async def test_look_at_pointer_says_where_the_pointer_is(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from flay.tools import screen
-    from flay.tools.screen import LookAtScreenTool, Shot
+    from cassi.tools import screen
+    from cassi.tools.screen import LookAtScreenTool, Shot
 
     captured: list[tuple[tuple[float, ...], int]] = []
 

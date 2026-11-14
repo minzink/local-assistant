@@ -2,15 +2,15 @@ from typing import Any
 
 import pytest
 
-from flay.assistant import Assistant
-from flay.config import Settings
-from flay.core.language import Language
-from flay.core.messages import ToolCall
-from flay.intents import tool_intent
-from flay.llm.base import ToolSpec
-from flay.tools import pointer
-from flay.tools.base import ToolRegistry, ToolResult, speech
-from flay.tools.pointer import (
+from cassi.assistant import Assistant
+from cassi.config import Settings
+from cassi.core.language import Language
+from cassi.core.messages import ToolCall
+from cassi.intents import tool_intent
+from cassi.llm.base import ToolSpec
+from cassi.tools import pointer
+from cassi.tools.base import ToolRegistry, ToolResult, speech
+from cassi.tools.pointer import (
     ClickTool,
     Element,
     ScrollTool,
@@ -18,7 +18,7 @@ from flay.tools.pointer import (
     label_score,
     parse_point,
 )
-from flay.tools.screen import Shot, Window
+from cassi.tools.screen import Shot, Window
 from tests.test_assistant import FakeOutput, FakeSource, FakeSTT, FakeTTS
 from tests.test_tools import PickingLLM
 
@@ -26,7 +26,7 @@ GIT_MENU = Element("Git", "AXMenuBarItem", (612, 0, 39, 33), "PhpStorm")
 GIT_BUTTON = Element("Git", "AXButton", (1480, 861, 32, 32), "PhpStorm")
 SAVE = Element("Speichern", "AXButton", (100, 500, 80, 24), "TextEdit")
 DELETE = Element("Löschen", "AXButton", (200, 500, 80, 24), "TextEdit")
-FLAY = Window(9, "Firefox", "Flay", (0, 650, 400, 150))
+CASSI = Window(9, "Firefox", "Cassi", (0, 650, 400, 150))
 
 
 @pytest.mark.parametrize(
@@ -82,7 +82,7 @@ def screen(monkeypatch: pytest.MonkeyPatch) -> list[tuple[tuple[float, float], s
     """No real screen, mouse or accessibility; returns the clicks made."""
     clicks: list[tuple[tuple[float, float], str]] = []
     monkeypatch.setattr(pointer, "accessibility_allowed", lambda prompt=False: True)
-    monkeypatch.setattr(pointer, "list_windows", lambda: [FLAY])
+    monkeypatch.setattr(pointer, "list_windows", lambda: [CASSI])
     monkeypatch.setattr(pointer, "click", lambda point, button: clicks.append((point, button)))
     monkeypatch.setattr(pointer, "is_visible", lambda element: True)
     monkeypatch.setattr(pointer, "element_at", lambda point: None)
@@ -297,7 +297,7 @@ def test_risky_labels(label: str, risky: bool) -> None:
 def test_changed_share() -> None:
     from PIL import Image, ImageDraw
 
-    from flay.tools.pointer import changed_share
+    from cassi.tools.pointer import changed_share
 
     before = Image.new("L", (100, 100), 200)
     after = before.copy()
@@ -307,8 +307,8 @@ def test_changed_share() -> None:
 
 
 async def test_click_without_visible_effect_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
-    from flay.tools import pointer
-    from flay.tools.pointer import ClickTool, Element
+    from cassi.tools import pointer
+    from cassi.tools.pointer import ClickTool, Element
 
     button = Element("Speichern", "AXButton", (10, 10, 80, 20), "App")
     monkeypatch.setattr(pointer, "accessibility_allowed", lambda prompt=False: True)
@@ -327,8 +327,8 @@ async def test_click_without_visible_effect_is_reported(monkeypatch: pytest.Monk
 def test_windows_elements_from_ui_automation(monkeypatch: pytest.MonkeyPatch) -> None:
     from types import SimpleNamespace
 
-    from flay.tools import browser_uia, uia_elements
-    from flay.tools.screen import Window
+    from cassi.tools import browser_uia, uia_elements
+    from cassi.tools.screen import Window
 
     def element(name: str, kind: int, rect: tuple[int, int, int, int], off: bool = False) -> Any:
         left, top, right, bottom = rect
@@ -357,7 +357,7 @@ def test_windows_elements_from_ui_automation(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(browser_uia, "_uia", lambda: (None, uia))
     monkeypatch.setattr(uia_elements.sys, "platform", "win32")
     monkeypatch.setattr(
-        "flay.tools.screen.list_windows",
+        "cassi.tools.screen.list_windows",
         lambda: [Window(7, "Notepad", "x – Notepad", (0, 0, 9, 9))],
     )
 
@@ -376,8 +376,8 @@ class NumberModel:
         self.images: list[bytes] = []
 
     async def stream(self, messages: Any, tools: Any = ()) -> Any:
-        from flay.core.messages import ImagePart
-        from flay.llm.base import TextDelta
+        from cassi.core.messages import ImagePart
+        from cassi.llm.base import TextDelta
 
         self.images += [p.data for p in messages[0].parts if isinstance(p, ImagePart)]
         yield TextDelta(self.answer)
@@ -394,8 +394,8 @@ def _png(width: int, height: int) -> bytes:
 
 
 async def test_unlabelled_icon_is_picked_by_number(monkeypatch: pytest.MonkeyPatch) -> None:
-    from flay.tools import pointer
-    from flay.tools.pointer import ClickTool, Element, VisionLocator
+    from cassi.tools import pointer
+    from cassi.tools.pointer import ClickTool, Element, VisionLocator
 
     icons = [
         Element("", "AXButton", (10, 10, 20, 20), "App"),
@@ -424,8 +424,8 @@ async def test_unlabelled_icon_is_picked_by_number(monkeypatch: pytest.MonkeyPat
 
 
 async def test_no_number_falls_back_to_a_point(monkeypatch: pytest.MonkeyPatch) -> None:
-    from flay.tools import pointer
-    from flay.tools.pointer import ClickTool, Element, VisionLocator
+    from cassi.tools import pointer
+    from cassi.tools.pointer import ClickTool, Element, VisionLocator
 
     icons = [Element("", "AXButton", (10, 10, 20, 20)), Element("", "AXButton", (50, 10, 20, 20))]
     monkeypatch.setattr(pointer, "accessibility_allowed", lambda prompt=False: True)
@@ -438,7 +438,7 @@ async def test_no_number_falls_back_to_a_point(monkeypatch: pytest.MonkeyPatch) 
 
     class Answers(NumberModel):
         async def stream(self, messages: Any, tools: Any = ()) -> Any:
-            from flay.llm.base import TextDelta
+            from cassi.llm.base import TextDelta
 
             yield TextDelta(self.answer)
             self.answer = '{"point_2d": [500, 500]}'

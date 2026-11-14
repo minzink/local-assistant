@@ -14,7 +14,7 @@ dist/
 .vscode/
 
 # Local configuration and secrets
-flay.yaml
+cassi.yaml
 .env
 *token*.txt
 
@@ -23,16 +23,16 @@ flay.yaml
 *.wav
 *.mp3
 # …except the bundled, freely licensed reference voices (see their SOURCES.md)
-!src/flay/tts/voices/*.wav
+!src/cassi/tts/voices/*.wav
 models/
 data/
-# …except Flay's own data files (sentence lists, the trained wake word)
-!src/flay/data/
+# …except Cassi's own data files (sentence lists, the trained wake word)
+!src/cassi/data/
 
 # OS
 .DS_Store
 Thumbs.db
-.flay-claude.sh
+.cassi-claude.sh
 
 # Voice training: dataset, checkpoints and models (see tools/voice-training/README.md)
 tools/voice-training/work/

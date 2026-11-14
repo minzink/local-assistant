@@ -1,6 +1,6 @@
 import numpy as np
 
-from flay.input.continuous import FRAME_MS, Segmenter, SegmenterConfig, frames
+from cassi.input.continuous import FRAME_MS, Segmenter, SegmenterConfig, frames
 
 SILENT, SPEECH = 0.05, 0.95
 CONFIG = SegmenterConfig(start_ms=96, end_silence_ms=320, min_speech_ms=128, pre_roll_ms=96)
@@ -63,7 +63,7 @@ def test_barge_in_needs_clear_and_longer_speech_while_assistant_speaks() -> None
     config = SegmenterConfig(barge_in=True, barge_in_threshold=0.85, barge_in_ms=256)
     segmenter = Segmenter(config)
 
-    weak = run(segmenter, [0.7] * 20, speaking=True)  # e.g. Flay's own voice, quieter
+    weak = run(segmenter, [0.7] * 20, speaking=True)  # e.g. Cassi's own voice, quieter
     strong = run(segmenter, [0.95] * 8, speaking=True)
 
     assert not any(e.started for e in weak)

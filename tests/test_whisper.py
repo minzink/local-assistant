@@ -5,9 +5,9 @@ import numpy as np
 import pytest
 from huggingface_hub.errors import LocalEntryNotFoundError
 
-from flay.audio.base import AudioBuffer
-from flay.core.language import Language
-from flay.stt.whisper import Decoded, _WhisperBase, cached_model_path
+from cassi.audio.base import AudioBuffer
+from cassi.core.language import Language
+from cassi.stt.whisper import Decoded, _WhisperBase, cached_model_path
 
 AUDIO = AudioBuffer(pcm=bytes(32_000), sample_rate=16_000)
 
@@ -109,7 +109,7 @@ def test_missing_model_is_downloaded(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_missing_model_is_not_downloaded_while_running(monkeypatch: pytest.MonkeyPatch) -> None:
-    from flay.offline import MissingModelError
+    from cassi.offline import MissingModelError
 
     calls: list[bool] = []
 
@@ -119,7 +119,7 @@ def test_missing_model_is_not_downloaded_while_running(monkeypatch: pytest.Monke
 
     monkeypatch.setattr(huggingface_hub, "snapshot_download", fake_snapshot_download)
 
-    with pytest.raises(MissingModelError, match="flay setup"):
+    with pytest.raises(MissingModelError, match="cassi setup"):
         cached_model_path("mlx-community/whisper-tiny")
     assert calls == [True]
 

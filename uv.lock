@@ -239,6 +239,109 @@ wheels = [
 ]
 
 [[package]]
+name = "cassi"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "comtypes", marker = "sys_platform == 'win32'" },
+    { name = "faster-whisper", marker = "platform_machine != 'arm64' or sys_platform != 'darwin'" },
+    { name = "httpx2" },
+    { name = "huggingface-hub", version = "0.36.2", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'arm64' or sys_platform != 'darwin'" },
+    { name = "huggingface-hub", version = "2.3.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
+    { name = "mcp" },
+    { name = "mlx-audio", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
+    { name = "mlx-whisper", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
+    { name = "mss" },
+    { name = "numpy" },
+    { name = "onnx-asr" },
+    { name = "onnxruntime" },
+    { name = "openai" },
+    { name = "pillow" },
+    { name = "piper-tts" },
+    { name = "platformdirs" },
+    { name = "pydantic" },
+    { name = "pynput" },
+    { name = "pyobjc-core", marker = "sys_platform == 'darwin'" },
+    { name = "pyobjc-framework-eventkit", marker = "sys_platform == 'darwin'" },
+    { name = "pyobjc-framework-vision", marker = "sys_platform == 'darwin'" },
+    { name = "pypdf" },
+    { name = "pyperclip" },
+    { name = "pystray" },
+    { name = "pyyaml" },
+    { name = "qwen-tts", marker = "platform_machine != 'arm64' or sys_platform != 'darwin'" },
+    { name = "sounddevice" },
+    { name = "torch", version = "2.14.1+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'win32'" },
+    { name = "torchaudio", version = "2.11.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'win32'" },
+    { name = "transformers", version = "4.57.3", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'arm64' or sys_platform != 'darwin'" },
+    { name = "transformers", version = "5.22.1", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
+    { name = "winrt-windows-foundation", marker = "sys_platform == 'win32'" },
+    { name = "winrt-windows-globalization", marker = "sys_platform == 'win32'" },
+    { name = "winrt-windows-graphics-imaging", marker = "sys_platform == 'win32'" },
+    { name = "winrt-windows-media-ocr", marker = "sys_platform == 'win32'" },
+    { name = "winrt-windows-storage-streams", marker = "sys_platform == 'win32'" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "ruff" },
+    { name = "types-pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiohttp", specifier = ">=3.14.5" },
+    { name = "comtypes", marker = "sys_platform == 'win32'", specifier = ">=1.4" },
+    { name = "faster-whisper", marker = "platform_machine != 'arm64' or sys_platform != 'darwin'", specifier = ">=1.2.1" },
+    { name = "httpx2", specifier = ">=2.16" },
+    { name = "huggingface-hub", marker = "platform_machine != 'arm64' or sys_platform != 'darwin'", specifier = ">=0.34" },
+    { name = "huggingface-hub", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", specifier = ">=2.3.0" },
+    { name = "mcp", specifier = ">=2.3.0" },
+    { name = "mlx-audio", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", specifier = ">=0.6.3" },
+    { name = "mlx-whisper", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", specifier = ">=0.4.3" },
+    { name = "mss", specifier = ">=10.2.0" },
+    { name = "numpy", specifier = ">=2.5.4" },
+    { name = "onnx-asr", specifier = ">=0.12.0" },
+    { name = "onnxruntime", specifier = ">=1.31.0" },
+    { name = "openai", specifier = ">=3.37.0" },
+    { name = "pillow", specifier = ">=13.0.0" },
+    { name = "piper-tts", specifier = ">=1.8.0" },
+    { name = "platformdirs", specifier = ">=4.2" },
+    { name = "pydantic", specifier = ">=2.7" },
+    { name = "pynput", specifier = ">=1.8.2" },
+    { name = "pyobjc-core", marker = "sys_platform == 'darwin'", specifier = ">=12.2,<14" },
+    { name = "pyobjc-framework-eventkit", marker = "sys_platform == 'darwin'", specifier = ">=12.2,<14" },
+    { name = "pyobjc-framework-vision", marker = "sys_platform == 'darwin'", specifier = ">=12.2,<14" },
+    { name = "pypdf", specifier = ">=5" },
+    { name = "pyperclip", specifier = ">=1.11.0" },
+    { name = "pystray", specifier = ">=0.19.5" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "qwen-tts", marker = "platform_machine != 'arm64' or sys_platform != 'darwin'", specifier = ">=0.1" },
+    { name = "sounddevice", specifier = ">=0.5.6" },
+    { name = "torch", marker = "sys_platform == 'win32'", specifier = ">=2.9", index = "https://download.pytorch.org/whl/cu130" },
+    { name = "torchaudio", marker = "sys_platform == 'win32'", specifier = ">=2.9", index = "https://download.pytorch.org/whl/cu130" },
+    { name = "transformers", marker = "platform_machine != 'arm64' or sys_platform != 'darwin'", specifier = "==4.57.3" },
+    { name = "transformers", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", specifier = ">=5.14" },
+    { name = "winrt-windows-foundation", marker = "sys_platform == 'win32'", specifier = ">=3.2,<4" },
+    { name = "winrt-windows-globalization", marker = "sys_platform == 'win32'", specifier = ">=3.2,<4" },
+    { name = "winrt-windows-graphics-imaging", marker = "sys_platform == 'win32'", specifier = ">=3.2,<4" },
+    { name = "winrt-windows-media-ocr", marker = "sys_platform == 'win32'", specifier = ">=3.2,<4" },
+    { name = "winrt-windows-storage-streams", marker = "sys_platform == 'win32'", specifier = ">=3.2,<4" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.10" },
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-asyncio", specifier = ">=0.23" },
+    { name = "ruff", specifier = ">=0.5" },
+    { name = "types-pyyaml", specifier = ">=6.0" },
+]
+
+[[package]]
 name = "certifi"
 version = "2026.10.23"
 source = { registry = "https://pypi.org/simple" }
@@ -645,109 +748,6 @@ version = "25.12.19"
 source = { registry = "https://pypi.org/simple" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e8/2d/d2a548598be01649e2d46231d151a6c56d10b964d94043a335ae56ea2d92/flatbuffers-25.12.19-py2.py3-none-any.whl", hash = "sha256:7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4", size = 26661, upload-time = "2025-12-19T23:16:13.622Z" },
-]
-
-[[package]]
-name = "flay"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "aiohttp" },
-    { name = "comtypes", marker = "sys_platform == 'win32'" },
-    { name = "faster-whisper", marker = "platform_machine != 'arm64' or sys_platform != 'darwin'" },
-    { name = "httpx2" },
-    { name = "huggingface-hub", version = "0.36.2", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'arm64' or sys_platform != 'darwin'" },
-    { name = "huggingface-hub", version = "2.3.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
-    { name = "mcp" },
-    { name = "mlx-audio", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
-    { name = "mlx-whisper", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
-    { name = "mss" },
-    { name = "numpy" },
-    { name = "onnx-asr" },
-    { name = "onnxruntime" },
-    { name = "openai" },
-    { name = "pillow" },
-    { name = "piper-tts" },
-    { name = "platformdirs" },
-    { name = "pydantic" },
-    { name = "pynput" },
-    { name = "pyobjc-core", marker = "sys_platform == 'darwin'" },
-    { name = "pyobjc-framework-eventkit", marker = "sys_platform == 'darwin'" },
-    { name = "pyobjc-framework-vision", marker = "sys_platform == 'darwin'" },
-    { name = "pypdf" },
-    { name = "pyperclip" },
-    { name = "pystray" },
-    { name = "pyyaml" },
-    { name = "qwen-tts", marker = "platform_machine != 'arm64' or sys_platform != 'darwin'" },
-    { name = "sounddevice" },
-    { name = "torch", version = "2.14.1+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'win32'" },
-    { name = "torchaudio", version = "2.11.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'win32'" },
-    { name = "transformers", version = "4.57.3", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'arm64' or sys_platform != 'darwin'" },
-    { name = "transformers", version = "5.22.1", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
-    { name = "winrt-windows-foundation", marker = "sys_platform == 'win32'" },
-    { name = "winrt-windows-globalization", marker = "sys_platform == 'win32'" },
-    { name = "winrt-windows-graphics-imaging", marker = "sys_platform == 'win32'" },
-    { name = "winrt-windows-media-ocr", marker = "sys_platform == 'win32'" },
-    { name = "winrt-windows-storage-streams", marker = "sys_platform == 'win32'" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "ruff" },
-    { name = "types-pyyaml" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiohttp", specifier = ">=3.14.5" },
-    { name = "comtypes", marker = "sys_platform == 'win32'", specifier = ">=1.4" },
-    { name = "faster-whisper", marker = "platform_machine != 'arm64' or sys_platform != 'darwin'", specifier = ">=1.2.1" },
-    { name = "httpx2", specifier = ">=2.16" },
-    { name = "huggingface-hub", marker = "platform_machine != 'arm64' or sys_platform != 'darwin'", specifier = ">=0.34" },
-    { name = "huggingface-hub", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", specifier = ">=2.3.0" },
-    { name = "mcp", specifier = ">=2.3.0" },
-    { name = "mlx-audio", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", specifier = ">=0.6.3" },
-    { name = "mlx-whisper", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", specifier = ">=0.4.3" },
-    { name = "mss", specifier = ">=10.2.0" },
-    { name = "numpy", specifier = ">=2.5.4" },
-    { name = "onnx-asr", specifier = ">=0.12.0" },
-    { name = "onnxruntime", specifier = ">=1.31.0" },
-    { name = "openai", specifier = ">=3.37.0" },
-    { name = "pillow", specifier = ">=13.0.0" },
-    { name = "piper-tts", specifier = ">=1.8.0" },
-    { name = "platformdirs", specifier = ">=4.2" },
-    { name = "pydantic", specifier = ">=2.7" },
-    { name = "pynput", specifier = ">=1.8.2" },
-    { name = "pyobjc-core", marker = "sys_platform == 'darwin'", specifier = ">=12.2,<14" },
-    { name = "pyobjc-framework-eventkit", marker = "sys_platform == 'darwin'", specifier = ">=12.2,<14" },
-    { name = "pyobjc-framework-vision", marker = "sys_platform == 'darwin'", specifier = ">=12.2,<14" },
-    { name = "pypdf", specifier = ">=5" },
-    { name = "pyperclip", specifier = ">=1.11.0" },
-    { name = "pystray", specifier = ">=0.19.5" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "qwen-tts", marker = "platform_machine != 'arm64' or sys_platform != 'darwin'", specifier = ">=0.1" },
-    { name = "sounddevice", specifier = ">=0.5.6" },
-    { name = "torch", marker = "sys_platform == 'win32'", specifier = ">=2.9", index = "https://download.pytorch.org/whl/cu130" },
-    { name = "torchaudio", marker = "sys_platform == 'win32'", specifier = ">=2.9", index = "https://download.pytorch.org/whl/cu130" },
-    { name = "transformers", marker = "platform_machine != 'arm64' or sys_platform != 'darwin'", specifier = "==4.57.3" },
-    { name = "transformers", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", specifier = ">=5.14" },
-    { name = "winrt-windows-foundation", marker = "sys_platform == 'win32'", specifier = ">=3.2,<4" },
-    { name = "winrt-windows-globalization", marker = "sys_platform == 'win32'", specifier = ">=3.2,<4" },
-    { name = "winrt-windows-graphics-imaging", marker = "sys_platform == 'win32'", specifier = ">=3.2,<4" },
-    { name = "winrt-windows-media-ocr", marker = "sys_platform == 'win32'", specifier = ">=3.2,<4" },
-    { name = "winrt-windows-storage-streams", marker = "sys_platform == 'win32'", specifier = ">=3.2,<4" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "mypy", specifier = ">=1.10" },
-    { name = "pytest", specifier = ">=8.0" },
-    { name = "pytest-asyncio", specifier = ">=0.23" },
-    { name = "ruff", specifier = ">=0.5" },
-    { name = "types-pyyaml", specifier = ">=6.0" },
 ]
 
 [[package]]

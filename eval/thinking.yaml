@@ -1,8 +1,8 @@
 # Testsatz für das Denken auf Wunsch: Aufgaben mit prüfbarer Antwort, so formuliert, wie man
-# sie Flay sagen würde. expect.answer: eine dieser Angaben muss in der Antwort stehen.
+# sie Cassi sagen würde. expect.answer: eine dieser Angaben muss in der Antwort stehen.
 #
-#   uv run flay eval --cases eval/thinking.yaml                       # ohne Denken
-#   uv run flay eval --cases eval/thinking.yaml --thinking-model qwen3-vl:8b-thinking
+#   uv run cassi eval --cases eval/thinking.yaml                       # ohne Denken
+#   uv run cassi eval --cases eval/thinking.yaml --thinking-model qwen3-vl:8b-thinking
 
 cases:
   - say: "Denk mal nach: Ein Sprint hat zehn Arbeitstage. Ich habe drei Tage Urlaub und zwei Tage Workshops. Wie viele Tage bleiben zum Entwickeln?"

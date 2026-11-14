@@ -4,8 +4,8 @@ import io
 
 from PIL import Image
 
-from flay.core.messages import ImagePart, Message, Role, TextPart, ToolCall
-from flay.llm import budget
+from cassi.core.messages import ImagePart, Message, Role, TextPart, ToolCall
+from cassi.llm import budget
 
 
 def text(role: Role, chars: int, tool_call_id: str | None = None) -> Message:

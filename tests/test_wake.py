@@ -4,26 +4,38 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from flay.audio.base import AudioBuffer
-from flay.core.language import Language
-from flay.voice_recording import Progress, check_take
-from flay.wake import WINDOW, Classifier, WakeGate, strip_wake_word, windows
-from flay.wake_training import Clip, labelled, train
+from cassi.audio.base import AudioBuffer
+from cassi.core.language import Language
+from cassi.voice_recording import Progress, check_take
+from cassi.wake import WINDOW, Classifier, WakeGate, strip_wake_word, windows
+from cassi.wake_training import Clip, labelled, train
 
 
 @pytest.mark.parametrize(
     ("heard", "command"),
     [
-        ("Hey Flay, öffne das Projekt flay.", "öffne das Projekt flay."),
-        ("Hey Fley öffne flay", "öffne flay"),
-        ("hey flay", ""),
-        ("Hey Flay?", ""),
+        ("Hey Cassi, öffne das Projekt flay.", "öffne das Projekt flay."),
+        ("Hey Kassi öffne flay", "öffne flay"),
+        ("hey cassie", ""),
+        ("Hey Cassi?", ""),
         ("Öffne das Projekt flay", "Öffne das Projekt flay"),
-        ("Display the logs", "Display the logs"),
-        ("Hey, play some music", "Hey, play some music"),
-        ("Hey, Flea, sag mir, was du siehst.", "sag mir, was du siehst."),
-        ("Flee the building", "Flee the building"),
-        ("Hey, fly me to the moon", "Hey, fly me to the moon"),
+        ("Classic rock is playing", "Classic rock is playing"),
+        ("Hey, Kasse ist zu", "Hey, Kasse ist zu"),
+        ("Hey, Kasi, sag mir, was du siehst.", "sag mir, was du siehst."),
+        ("Kasi kommt gleich", "Kasi kommt gleich"),
+        ("Hey Cassidy, come here", "Hey Cassidy, come here"),
+        # How Parakeet hears "Hey Kassi" from German voices.
+        ("Hi Casi.", ""),
+        ("Hi Cussie, wie spät ist es?", "wie spät ist es?"),
+        ("Hell Cassie, öffne das Projekt Möde.", "öffne das Projekt Möde."),
+        ("I kassi, of the dasproject move.", "of the dasproject move."),
+        ("Hey Kessy, wie spät ist es?", "wie spät ist es?"),
+        ("Hi Kazi", ""),
+        ("Hi Kassa.", "Hi Kassa."),
+        ("Hey Casa.", "Hey Casa."),
+        ("Hi Cusses", "Hi Cusses"),
+        ("Hey Cassius.", "Hey Cassius."),
+        ("I see the status.", "I see the status."),
     ],
 )
 def test_the_wake_word_is_taken_off_the_request(heard: str, command: str) -> None:
@@ -76,7 +88,7 @@ class FakeWake:
     threshold = 0.5
 
     def score(self, audio: np.ndarray) -> float:
-        return float(audio.max() > 0.5)  # loud = "Hey Flay"
+        return float(audio.max() > 0.5)  # loud = "Hey Cassi"
 
 
 def utterance(seconds: float, loud: bool) -> AudioBuffer:
@@ -111,7 +123,7 @@ async def test_only_utterances_with_the_wake_word_pass() -> None:
         passed.append(item)
         now[0] += 1
 
-    # Background talk is dropped; "Hey Flay" alone passes (Flay answers "Ja?") and lets the
+    # Background talk is dropped; "Hey Cassi" alone passes (Cassi answers "Ja?") and lets the
     # next utterance through without it – but only that one.
     assert passed == [wake_and_command, wake_alone, command]
     assert len(woken) == 2
@@ -152,14 +164,14 @@ class ChangingSTT:
         self.texts = list(texts)
 
     async def transcribe(self, audio: AudioBuffer, language_hint: object = None) -> object:
-        from flay.stt.base import Transcript
+        from cassi.stt.base import Transcript
 
         return Transcript(self.texts.pop(0), Language.DE)
 
 
 async def test_the_transcript_decides_when_listening_with_the_wake_word() -> None:
-    from flay.assistant import Assistant
-    from flay.config import Settings
+    from cassi.assistant import Assistant
+    from cassi.config import Settings
     from tests.test_assistant import ONE_SECOND, FakeLLM, FakeOutput, FakeTTS
 
     settings = Settings.model_validate({"input": {"continuous": {"wake_word": True}}})
@@ -169,8 +181,8 @@ async def test_the_transcript_decides_when_listening_with_the_wake_word() -> Non
         ContinuousSource(),  # type: ignore[arg-type]
         ChangingSTT(
             "Wir treffen uns um drei.",  # someone nearby: dropped
-            "Hey Flay, wie spät ist es?",
-            "Hey Flay.",  # alone: "Ja?", the next one needs no wake word
+            "Hey Cassi, wie spät ist es?",
+            "Hey Cassi.",  # alone: "Ja?", the next one needs no wake word
             "Erzähl einen Witz.",
             "Und dann gehen wir essen.",  # the window is used up: dropped
         ),
@@ -183,15 +195,15 @@ async def test_the_transcript_decides_when_listening_with_the_wake_word() -> Non
         await assistant._handle_audio(ONE_SECOND)
 
     asked = [m.text for m in assistant.history if m.role.value == "user"]
-    assert asked == ["wie spät ist es?", "Hey Flay.", "Erzähl einen Witz."]
+    assert asked == ["wie spät ist es?", "Hey Cassi.", "Erzähl einen Witz."]
     assert assistant.history[3].text == "Ja?"
 
 
 async def test_talk_nearby_does_not_cancel_the_answer() -> None:
     import asyncio
 
-    from flay.assistant import Assistant
-    from flay.config import Settings
+    from cassi.assistant import Assistant
+    from cassi.config import Settings
     from tests.test_assistant import ONE_SECOND, FakeLLM, FakeOutput, FakeTTS
 
     class SlowLLM(FakeLLM):
@@ -209,7 +221,7 @@ async def test_talk_nearby_does_not_cancel_the_answer() -> None:
     assistant = Assistant(
         settings,
         Twice(),  # type: ignore[arg-type]
-        ChangingSTT("Hey Flay, erzähl einen Witz.", "Wir treffen uns um drei."),
+        ChangingSTT("Hey Cassi, erzähl einen Witz.", "Wir treffen uns um drei."),
         SlowLLM("Ein Witz."),
         FakeTTS(),
         FakeOutput(),
@@ -219,3 +231,17 @@ async def test_talk_nearby_does_not_cancel_the_answer() -> None:
 
     assert [m.text for m in assistant.history] == ["erzähl einen Witz.", "Ein Witz."]
     assert not assistant.history[-1].interrupted
+
+
+def test_another_wake_word_replaces_hey_cassi(tmp_path: Path) -> None:
+    from cassi.wake import BUNDLED, classifier_path, wake_pattern
+
+    pattern = wake_pattern(r"^\W*hey[\s,]*robo\b[\s,.!?-]*")
+
+    assert strip_wake_word("Hey Robo, wie spät ist es?", pattern) == "wie spät ist es?"
+    assert strip_wake_word("hey robo", pattern) == ""
+    assert strip_wake_word("Hey Cassi, wie spät ist es?", pattern) == "Hey Cassi, wie spät ist es?"
+    assert wake_pattern(None).match("Hey Cassi")
+    own = tmp_path / "robo.npz"
+    assert classifier_path(tmp_path, own) == own
+    assert classifier_path(tmp_path) == BUNDLED

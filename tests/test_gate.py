@@ -2,14 +2,14 @@ import asyncio
 import time
 from collections.abc import AsyncIterator, Sequence
 
-from flay.assistant import Assistant
-from flay.audio.base import AudioBuffer
-from flay.config import Settings
-from flay.core.language import Language
-from flay.core.messages import Message
-from flay.llm.base import LLMEvent, ToolSpec
-from flay.llm.gate import SynthesisGate, synthesis
-from flay.tools.base import ToolRegistry
+from cassi.assistant import Assistant
+from cassi.audio.base import AudioBuffer
+from cassi.config import Settings
+from cassi.core.language import Language
+from cassi.core.messages import Message
+from cassi.llm.base import LLMEvent, ToolSpec
+from cassi.llm.gate import SynthesisGate, synthesis
+from cassi.tools.base import ToolRegistry
 from tests.test_assistant import ONE_SECOND, FakeOutput, FakeSource, FakeSTT, FakeTTS
 from tests.test_tools import EchoTool, ToolCallingLLM
 

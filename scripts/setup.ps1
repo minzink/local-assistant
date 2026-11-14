@@ -1,4 +1,4 @@
-# Flay unter Windows einrichten: Programme (uv, Git LFS, Ollama), Python-Pakete, Modelle.
+# Cassi unter Windows einrichten: Programme (uv, Git LFS, Ollama), Python-Pakete, Modelle.
 # Kann beliebig oft ausgefuehrt werden; was schon da ist, wird uebersprungen.
 #   scripts\setup.cmd                  (Doppelklick oder aus cmd/PowerShell)
 #   powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 [-NoInstall] [-SkipModels]
@@ -6,7 +6,7 @@
 # ASCII only: Windows PowerShell 5.1 reads scripts without BOM as ANSI.
 param(
     [switch]$NoInstall,   # fehlende Programme nicht per winget installieren, nur pruefen
-    [switch]$SkipModels   # 'flay setup' (Modelle laden) auslassen
+    [switch]$SkipModels   # 'cassi setup' (Modelle laden) auslassen
 )
 $ErrorActionPreference = "Stop"
 
@@ -116,7 +116,7 @@ function Install-Program {
     return $false
 }
 
-# HTTP GET without any proxy (like Flay since the proxy fix). Returns the body or $null.
+# HTTP GET without any proxy (like Cassi since the proxy fix). Returns the body or $null.
 function Get-Direct([string]$Url, [int]$TimeoutMs = 3000) {
     try {
         $request = [System.Net.WebRequest]::Create($Url)
@@ -152,7 +152,7 @@ function Write-Diagnostics {
         }
     }
 
-    # Proxies: the cause of "All connection attempts failed" in older Flay versions.
+    # Proxies: the cause of "All connection attempts failed" in older Cassi versions.
     foreach ($name in "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "OLLAMA_HOST") {
         $value = [Environment]::GetEnvironmentVariable($name)
         if ($value) { Write-Log "Umgebung: $name=$value" }
@@ -160,7 +160,7 @@ function Write-Diagnostics {
     $inet = Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings" -ErrorAction SilentlyContinue
     if ($inet -and $inet.ProxyEnable -eq 1) {
         Write-Log "System-Proxy aktiv: $($inet.ProxyServer) (Ausnahmen: $($inet.ProxyOverride))" "WARN"
-        Write-Log "Python sieht diesen Proxy auch fuer localhost; Flay umgeht ihn fuer lokale Server." "INFO"
+        Write-Log "Python sieht diesen Proxy auch fuer localhost; Cassi umgeht ihn fuer lokale Server." "INFO"
     } else {
         Write-Log "Kein System-Proxy eingetragen"
     }
@@ -175,7 +175,7 @@ function Write-Diagnostics {
             Write-Log "NVIDIA-Treiber $($driver.Trim()) ist zu alt fuer PyTorch mit CUDA 13 (mind. 580) - Treiber aktualisieren, sonst laufen Stimme und Spracherkennung nur auf der CPU" "WARN"
         }
     } else {
-        Write-Log "Keine NVIDIA-GPU gefunden (nvidia-smi fehlt) - Flay nimmt Piper statt Qwen3-TTS und rechnet auf der CPU" "WARN"
+        Write-Log "Keine NVIDIA-GPU gefunden (nvidia-smi fehlt) - Cassi nimmt Piper statt Qwen3-TTS und rechnet auf der CPU" "WARN"
     }
 }
 
@@ -210,7 +210,7 @@ function Update-Lfs {
     } finally {
         Pop-Location
     }
-    $voice = Join-Path $Root "src\flay\tts\voices\ramona.wav"
+    $voice = Join-Path $Root "src\cassi\tts\voices\ramona.wav"
     if ((Test-Path $voice) -and (Get-Item $voice).Length -lt 2048) {
         Write-Log "$voice ist nur ein LFS-Zeiger - Stimme fehlt (git lfs pull pruefen)" "ERROR"
     } else {
@@ -226,7 +226,7 @@ function Test-ReservedPort([int]$Port) {
         $start = [int]$match.Groups[1].Value
         $end = [int]$match.Groups[2].Value
         if ($Port -ge $start -and $Port -le $end) {
-            Write-Log "Port $Port ist von Windows reserviert ($start-$end, Hyper-V/WSL 2/Docker) - Ollama kann dort nicht lauschen. Abhilfe: Benutzer-Umgebungsvariable OLLAMA_HOST=127.0.0.1:11500 setzen, Ollama neu starten, in flay.yaml llm.base_url: http://127.0.0.1:11500/v1" "ERROR"
+            Write-Log "Port $Port ist von Windows reserviert ($start-$end, Hyper-V/WSL 2/Docker) - Ollama kann dort nicht lauschen. Abhilfe: Benutzer-Umgebungsvariable OLLAMA_HOST=127.0.0.1:11500 setzen, Ollama neu starten, in cassi.yaml llm.base_url: http://127.0.0.1:11500/v1" "ERROR"
             return $true
         }
     }
@@ -234,14 +234,14 @@ function Test-ReservedPort([int]$Port) {
     return $false
 }
 
-# Without Ollama in the autostart, Flay finds no LLM server after the next login.
+# Without Ollama in the autostart, Cassi finds no LLM server after the next login.
 function Test-OllamaAutostart {
     $startup = [Environment]::GetFolderPath("Startup")
     $entry = Get-ChildItem -Path $startup -Filter "Ollama*" -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($entry) {
         Write-Log "Ollama startet bei der Anmeldung ($($entry.FullName))" "OK"
     } else {
-        Write-Log "Ollama steht nicht im Autostart ($startup) - nach einem Neustart erst Ollama starten, dann Flay" "WARN"
+        Write-Log "Ollama steht nicht im Autostart ($startup) - nach einem Neustart erst Ollama starten, dann Cassi" "WARN"
     }
 }
 
@@ -297,18 +297,18 @@ function Install-Python {
     try {
         if ((Invoke-Logged "uv" @("sync")) -ne 0) { throw "uv sync fehlgeschlagen." }
         Invoke-Logged "uv" @("run", "python", "--version") -Quiet | Out-Null
-        # What Python (and thus Flay's HTTP clients) see as proxies.
+        # What Python (and thus Cassi's HTTP clients) see as proxies.
         Invoke-Logged "uv" @("run", "python", "-c",
             "import urllib.request; print('Python-Proxies:', urllib.request.getproxies() or 'keine')") | Out-Null
         Invoke-Logged "uv" @("run", "python", "-c",
             "import torch; print('PyTorch', torch.__version__, '- CUDA:', torch.cuda.is_available())") | Out-Null
-        # The same connection Flay makes at startup (address from flay.yaml), with diagnosis.
-        $check = "from flay.config import load_settings; from flay import net; " +
+        # The same connection Cassi makes at startup (address from cassi.yaml), with diagnosis.
+        $check = "from cassi.config import load_settings; from cassi import net; " +
             "u = load_settings(None).llm.base_url; p = net.unreachable(u.rstrip('/') + '/models'); " +
             "print('LLM-Server aus Python erreichbar:', u) if p is None else print(net.llm_unreachable_message(u, p)); " +
             "raise SystemExit(p is not None)"
         if ((Invoke-Logged "uv" @("run", "python", "-c", $check)) -ne 0) {
-            throw "Flay erreicht den LLM-Server nicht (Diagnose oben)."
+            throw "Cassi erreicht den LLM-Server nicht (Diagnose oben)."
         }
     } finally {
         Pop-Location
@@ -317,20 +317,20 @@ function Install-Python {
 }
 
 function Install-Models {
-    Write-Log "Modelle laden (flay setup: Spracherkennung, Stimmen, LLM ueber Ollama)" "STEP"
+    Write-Log "Modelle laden (cassi setup: Spracherkennung, Stimmen, LLM ueber Ollama)" "STEP"
     Push-Location $Root
     try {
-        if ((Invoke-Logged "uv" @("run", "flay", "-v", "setup")) -ne 0) {
-            throw "flay setup fehlgeschlagen (Details oben und im Log)."
+        if ((Invoke-Logged "uv" @("run", "cassi", "-v", "setup")) -ne 0) {
+            throw "cassi setup fehlgeschlagen (Details oben und im Log)."
         }
-        Invoke-Logged "uv" @("run", "flay", "info") -Quiet | Out-Null
+        Invoke-Logged "uv" @("run", "cassi", "info") -Quiet | Out-Null
     } finally {
         Pop-Location
     }
     Write-Log "Modelle vollstaendig" "OK"
 }
 
-Write-Log "Flay-Setup gestartet, Log: $LogFile" "STEP"
+Write-Log "Cassi-Setup gestartet, Log: $LogFile" "STEP"
 try {
     Update-Path
     Write-Diagnostics
@@ -345,7 +345,7 @@ try {
     Write-Host "`nSetup fehlgeschlagen. Vollstaendiges Log: $LogFile" -ForegroundColor Red
     exit 1
 }
-Write-Host "`nFertig. Starten mit:  uv run flay run" -ForegroundColor Green
+Write-Host "`nFertig. Starten mit:  uv run cassi run" -ForegroundColor Green
 Write-Host "(In einem neuen Terminal, falls uv gerade erst installiert wurde.)"
 Write-Host "Log: $LogFile"
 exit 0

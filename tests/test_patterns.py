@@ -1,4 +1,4 @@
-"""One table for all fixed patterns (flay.intents): which tool a request is routed to
+"""One table for all fixed patterns (cassi.intents): which tool a request is routed to
 without asking the model. Overlaps between the patterns show up here first – the rows
 marked "früher falsch" once went to the wrong tool."""
 
@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import pytest
 
-from flay.intents import computer_intent, file_intent, tool_intent, web_intent
-from flay.tools.apps import App
+from cassi.intents import computer_intent, file_intent, tool_intent, web_intent
+from cassi.tools.apps import App
 
 APPS = [App(n) for n in ("Firefox", "Slack", "PhpStorm", "Terminal", "Spotify")]
 
@@ -57,7 +57,7 @@ def route(text: str) -> str | None:
         ("Starte die Tests", "phpstorm"),
         ("Was ist im Git geändert?", "phpstorm"),
         ("Öffne die letzte PDF aus Downloads", "find_file"),
-        # Flay's own settings vs. the computer's
+        # Cassi's own settings vs. the computer's
         ("Sprich langsamer", "adjust_settings"),
         ("Antworte ab jetzt kürzer", "adjust_settings"),
         ("Schau nicht mehr auf meinen Bildschirm", "adjust_settings"),
@@ -115,6 +115,6 @@ PROJECTS = [
     ],
 )  # fmt: skip
 def test_direct_arguments(tool: str, said: str, arguments: dict[str, object] | None) -> None:
-    from flay.direct import direct_arguments
+    from cassi.direct import direct_arguments
 
     assert direct_arguments(tool, said, PROJECTS, APPS) == arguments

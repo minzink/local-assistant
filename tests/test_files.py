@@ -5,12 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from flay.assistant import Assistant
-from flay.config import Settings
-from flay.intents import file_intent
-from flay.tools.base import ToolRegistry, ToolResult, speech
-from flay.tools.files import ReadFileTool, find_file, read_text, readable
-from flay.tools.phpstorm import Project
+from cassi.assistant import Assistant
+from cassi.config import Settings
+from cassi.intents import file_intent
+from cassi.tools.base import ToolRegistry, ToolResult, speech
+from cassi.tools.files import ReadFileTool, find_file, read_text, readable
+from cassi.tools.phpstorm import Project
 from tests.test_assistant import FakeOutput, FakeSource, FakeSTT, FakeTTS
 from tests.test_tools import PickingLLM
 from tests.test_web import PageTool, ScriptedLLM
@@ -23,7 +23,7 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     project = tmp_path / "code" / "flay"
     (project / "docs").mkdir(parents=True)
     (project / "node_modules" / "x").mkdir(parents=True)
-    (project / "README.md").write_text("# Flay\nInstall with uv sync.\n")
+    (project / "README.md").write_text("# Cassi\nInstall with uv sync.\n")
     (project / "docs" / "roadmap.md").write_text("# Roadmap\n## Phase 12\nWeb pages.\n")
     (project / ".ai-instruct").write_text("Rules.")
     (project / "src.py").write_text("print('training')")

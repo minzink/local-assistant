@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from flay.assistant import Assistant
-from flay.config import Settings
-from flay.core.language import Language
-from flay.llm.base import ToolSpec
-from flay.plans import describe, plan_intents, split_steps
-from flay.tools.base import ToolRegistry, ToolResult, speech
+from cassi.assistant import Assistant
+from cassi.config import Settings
+from cassi.core.language import Language
+from cassi.llm.base import ToolSpec
+from cassi.plans import describe, plan_intents, split_steps
+from cassi.tools.base import ToolRegistry, ToolResult, speech
 from tests.test_assistant import FakeOutput, FakeSTT, FakeTTS
 from tests.test_more_tools import RoutingLLM
 from tests.test_tools import FakeSource

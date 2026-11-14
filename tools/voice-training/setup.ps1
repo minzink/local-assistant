@@ -1,4 +1,4 @@
-# Flay-Stimme trainieren (Windows, NVIDIA): alles einrichten, nur aus dem Git-Repo.
+# Cassi-Stimme trainieren (Windows, NVIDIA): alles einrichten, nur aus dem Git-Repo.
 # Braucht den NVIDIA-Treiber und Internet; uv, Python, PyTorch usw. holt das Skript selbst.
 # Aufruf im Repo: powershell -ExecutionPolicy Bypass -File tools\voice-training\setup.ps1
 $ErrorActionPreference = "Stop"
@@ -25,7 +25,7 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
 }
 uv --version
 
-Step "Flay installieren (fuer den Datensatz: Qwen3-TTS, Whisper, Piper)"
+Step "Cassi installieren (fuer den Datensatz: Qwen3-TTS, Whisper, Piper)"
 Push-Location $Repo
 uv sync
 if ($LASTEXITCODE -ne 0) { Pop-Location; throw "uv sync fehlgeschlagen." }
@@ -49,7 +49,7 @@ uv pip install -p $Py "lightning>=2,<3" "tensorboard>=2,<3" "tensorboardX>=2,<3"
     "librosa<1" numba "onnxruntime>=1,<2" "pathvalidate>=3,<4" huggingface_hub
 if ($LASTEXITCODE -ne 0) { throw "Installation fehlgeschlagen." }
 
-Step "Anpassungen fuer Flay einspielen"
+Step "Anpassungen fuer Cassi einspielen"
 & $Py (Join-Path $Here "patch_piper.py") $Piper
 if ($LASTEXITCODE -ne 0) { throw "Anpassungen fehlgeschlagen." }
 

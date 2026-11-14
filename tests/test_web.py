@@ -5,15 +5,15 @@ from typing import Any
 import pytest
 from PIL import Image
 
-from flay.assistant import Assistant
-from flay.config import Settings
-from flay.core.messages import ImagePart, Message, Modality, Role, ToolCall
-from flay.intents import web_intent
-from flay.llm.base import LLMEvent, ModelCapabilities, TextDelta, ToolSpec
-from flay.tools import web
-from flay.tools.base import ToolRegistry, ToolResult, speech
-from flay.tools.screen import Window
-from flay.tools.web import find_url, last_url, same_screen, short
+from cassi.assistant import Assistant
+from cassi.config import Settings
+from cassi.core.messages import ImagePart, Message, Modality, Role, ToolCall
+from cassi.intents import web_intent
+from cassi.llm.base import LLMEvent, ModelCapabilities, TextDelta, ToolSpec
+from cassi.tools import web
+from cassi.tools.base import ToolRegistry, ToolResult, speech
+from cassi.tools.screen import Window
+from cassi.tools.web import find_url, last_url, same_screen, short
 from tests.test_assistant import FakeOutput, FakeSource, FakeSTT, FakeTTS
 
 
@@ -89,7 +89,7 @@ def test_web_intent(text: str, expected: str | None) -> None:
     ],
 )
 def test_handing_over_to_claude(text: str, expected: bool) -> None:
-    from flay.intents import claude_intent, to_claude
+    from cassi.intents import claude_intent, to_claude
 
     assert to_claude(text) is expected
     # Elsewhere "schick" stays with the model, which knows what "das Gleiche" was.
@@ -189,7 +189,7 @@ async def test_read_page_is_answered_by_the_model() -> None:
 
 async def test_link_from_the_clipboard(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(web, "clipboard_url", lambda: "https://example.org/a")
-    monkeypatch.setattr("flay.assistant.clipboard_url", lambda: "https://example.org/a")
+    monkeypatch.setattr("cassi.assistant.clipboard_url", lambda: "https://example.org/a")
     opener = PageTool("open_url", ToolResult("Opened.", say=speech("Offen.", "Open.")))
     assistant = web_assistant(SummaryLLM(), opener)
 
@@ -264,7 +264,7 @@ async def test_task_on_a_page_scrolls_clicks_and_goes_to_claude(
     async def look(max_size: int) -> ImagePart:
         return AFTER_CLICK
 
-    monkeypatch.setattr("flay.assistant.look_at_page", look)
+    monkeypatch.setattr("cassi.assistant.look_at_page", look)
     reader = Reader("read_webpage", ToolResult("Read it.", images=(SHOT,)))
     scroller = PageTool("scroll_screen", ToolResult("Scrolled.", images=(SHOT,)))
     clicker = PageTool("click_on_screen", ToolResult("Clicked."))
@@ -436,13 +436,13 @@ class TextReader(PageTool):
         return self.next_page
 
     async def load(self, url: str) -> Any:
-        from flay.tools.pages import Page
+        from cassi.tools.pages import Page
 
         return Page(url, url, f"Text of {url}. " * 40, (), "http")
 
 
 def docs_pages() -> tuple[Any, Any]:
-    from flay.tools.pages import Link, Page
+    from cassi.tools.pages import Link, Page
 
     start = Page(
         "https://docs.astral.sh/uv/",
@@ -501,7 +501,7 @@ async def test_task_on_a_text_page_follows_a_link_and_goes_to_claude() -> None:
 
 
 async def test_long_text_is_read_on_request() -> None:
-    from flay.tools.pages import Page
+    from cassi.tools.pages import Page
 
     lines = [f"## Abschnitt {i}\n" + "Zeile. " * 50 for i in range(40)]
     long = Page("https://x.org/", "X", "\n".join(lines), (), "http")
@@ -531,7 +531,7 @@ async def test_long_text_is_read_on_request() -> None:
     ],
 )
 def test_whole_page_requests_need_no_navigation(request_text: str, whole: bool) -> None:
-    from flay.browsing import about_whole_page
+    from cassi.browsing import about_whole_page
 
     assert about_whole_page(request_text) is whole
 
@@ -580,7 +580,7 @@ async def test_the_request_echoed_to_claude_is_dropped() -> None:
 
 
 def test_all_links_in_a_request_are_found() -> None:
-    from flay.tools.web import find_urls
+    from cassi.tools.web import find_urls
 
     assert find_urls("Vergleiche python punkt org und ruby-lang punkt org") == [
         "https://python.org",
@@ -609,7 +609,7 @@ async def test_pages_are_compared() -> None:
 
 
 async def test_the_page_is_searched_when_nothing_links_there() -> None:
-    from flay.tools.pages import Page, SearchForm
+    from cassi.tools.pages import Page, SearchForm
 
     docs = Page(
         "https://docs.python.org/3/",
@@ -638,7 +638,7 @@ async def test_the_page_is_searched_when_nothing_links_there() -> None:
 
 
 def test_windows_default_browser_programs() -> None:
-    from flay.tools.browser_uia import available, program_for
+    from cassi.tools.browser_uia import available, program_for
 
     assert program_for("ChromeHTML") == "chrome.exe"
     assert program_for("FirefoxURL-308046B0AF4A39CB") == "firefox.exe"
@@ -648,7 +648,7 @@ def test_windows_default_browser_programs() -> None:
 
 
 async def test_a_named_part_of_a_long_page_is_read_and_list_numbers_work() -> None:
-    from flay.tools.pages import Page
+    from cassi.tools.pages import Page
 
     lines = [f"## Part {i}\n" + "Text. " * 60 for i in range(30)]
     lines.append("## Inheritance\nclass B(A)\n" + "Inherit. " * 60)

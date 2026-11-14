@@ -2,12 +2,12 @@ from collections.abc import AsyncIterator, Sequence
 
 import pytest
 
-from flay.assistant import Assistant
-from flay.config import Settings
-from flay.core.messages import Message
-from flay.intents import wants_thinking
-from flay.llm.base import LLMEvent, ModelCapabilities, TextDelta, ToolSpec
-from flay.llm.openai_compatible import ThinkFilter
+from cassi.assistant import Assistant
+from cassi.config import Settings
+from cassi.core.messages import Message
+from cassi.intents import wants_thinking
+from cassi.llm.base import LLMEvent, ModelCapabilities, TextDelta, ToolSpec
+from cassi.llm.openai_compatible import ThinkFilter
 from tests.test_assistant import FakeOutput, FakeSource, FakeSTT, FakeTTS
 
 
@@ -96,9 +96,9 @@ async def test_normal_model_is_reloaded_after_a_thinking_answer() -> None:
     settings = Settings.model_validate(
         {"llm": {"thinking": {"enabled": True, "model": "qwen3-vl:8b-thinking"}}}
     )
-    flay = Assistant(settings, FakeSource(), FakeSTT("x"), llm, FakeTTS(), FakeOutput())
+    cassi = Assistant(settings, FakeSource(), FakeSTT("x"), llm, FakeTTS(), FakeOutput())
 
-    await flay.handle_text("Denk mal nach, wie wir das bauen.")
+    await cassi.handle_text("Denk mal nach, wie wir das bauen.")
     await asyncio.sleep(0)
 
     assert llm.warmed == 1

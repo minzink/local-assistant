@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Flay unter macOS einrichten: Programme (uv, Git LFS, Ollama), Python-Pakete, Modelle.
+# Cassi unter macOS einrichten: Programme (uv, Git LFS, Ollama), Python-Pakete, Modelle.
 # Kann beliebig oft ausgeführt werden; was schon da ist, wird übersprungen.
 #   scripts/setup.sh [--no-install] [--skip-models]
 # Jeder Lauf schreibt ein ausführliches Log nach logs/setup-<Zeitstempel>.log.
@@ -15,14 +15,14 @@ SKIP_MODELS=0
 for arg in "$@"; do
     case "$arg" in
         --no-install) NO_INSTALL=1 ;;   # fehlende Programme nicht per Homebrew installieren
-        --skip-models) SKIP_MODELS=1 ;; # 'flay setup' (Modelle laden) auslassen
+        --skip-models) SKIP_MODELS=1 ;; # 'cassi setup' (Modelle laden) auslassen
         -h | --help) sed -n '2,5p' "$0"; exit 0 ;;
         *) echo "Unbekannte Option: $arg" >&2; exit 2 ;;
     esac
 done
 export NO_COLOR=1 UV_NO_PROGRESS=1 PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
-# Everything (also the output of uv, brew, flay) goes to the screen and the log file.
+# Everything (also the output of uv, brew, cassi) goes to the screen and the log file.
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 ts() { date +%H:%M:%S; }
@@ -42,7 +42,7 @@ run() {
     [ "$code" -eq 0 ] || warn "Exit-Code $code: $*"
     return "$code"
 }
-# HTTP GET without any proxy, like Flay for local servers.
+# HTTP GET without any proxy, like Cassi for local servers.
 get_direct() { curl --silent --fail --noproxy '*' --max-time "${2:-3}" "$1"; }
 
 diagnostics() {
@@ -54,12 +54,12 @@ diagnostics() {
     free_gb=$(df -g "$ROOT" | awk 'NR==2 {print $4}')
     info "Freier Speicher: ${free_gb} GB"
     [ "${free_gb:-0}" -ge 25 ] || warn "Weniger als 25 GB frei – Modelle brauchen ~15–20 GB"
-    [ "$(uname -m)" = "arm64" ] || warn "Kein Apple Silicon – Flay ist für M-Macs gedacht (MLX)"
+    [ "$(uname -m)" = "arm64" ] || warn "Kein Apple Silicon – Cassi ist für M-Macs gedacht (MLX)"
     for name in HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY http_proxy https_proxy no_proxy OLLAMA_HOST; do
         [ -n "${!name:-}" ] && info "Umgebung: $name=${!name}"
     done
     if scutil --proxy 2>/dev/null | grep -qE '(HTTP|HTTPS)Enable : 1'; then
-        warn "System-Proxy aktiv – Flay umgeht ihn für lokale Server:"
+        warn "System-Proxy aktiv – Cassi umgeht ihn für lokale Server:"
         scutil --proxy | grep -E 'Proxy|Port|Exceptions' | sed 's/^/        /'
     fi
 }
@@ -100,7 +100,7 @@ lfs() {
     fi
     run git -C "$ROOT" lfs install
     run git -C "$ROOT" lfs pull || warn "git lfs pull fehlgeschlagen"
-    local voice="$ROOT/src/flay/tts/voices/ramona.wav"
+    local voice="$ROOT/src/cassi/tts/voices/ramona.wav"
     if [ -f "$voice" ] && [ "$(wc -c <"$voice")" -lt 2048 ]; then
         warn "$voice ist nur ein LFS-Zeiger – Stimme fehlt"
     else
@@ -144,21 +144,21 @@ python_packages() {
     run uv sync || fail "uv sync fehlgeschlagen"
     run uv run python --version
     run uv run python -c "import urllib.request; print('Python-Proxies:', urllib.request.getproxies() or 'keine')"
-    # The same connection Flay makes at startup (address from flay.yaml), with diagnosis.
-    run uv run python -c "from flay.config import load_settings; from flay import net; u = load_settings(None).llm.base_url; p = net.unreachable(u.rstrip('/') + '/models'); print('LLM-Server aus Python erreichbar:', u) if p is None else print(net.llm_unreachable_message(u, p)); raise SystemExit(p is not None)" \
-        || fail "Flay erreicht den LLM-Server nicht (Diagnose oben)"
+    # The same connection Cassi makes at startup (address from cassi.yaml), with diagnosis.
+    run uv run python -c "from cassi.config import load_settings; from cassi import net; u = load_settings(None).llm.base_url; p = net.unreachable(u.rstrip('/') + '/models'); print('LLM-Server aus Python erreichbar:', u) if p is None else print(net.llm_unreachable_message(u, p)); raise SystemExit(p is not None)" \
+        || fail "Cassi erreicht den LLM-Server nicht (Diagnose oben)"
     ok "Python-Pakete installiert"
 }
 
 models() {
-    step "Modelle laden (flay setup: Spracherkennung, Stimmen, LLM über Ollama)"
+    step "Modelle laden (cassi setup: Spracherkennung, Stimmen, LLM über Ollama)"
     cd "$ROOT" || fail "$ROOT nicht gefunden"
-    run uv run flay -v setup || fail "flay setup fehlgeschlagen (Details oben)"
-    run uv run flay info >>"$LOG_FILE" 2>&1 # only into the log
+    run uv run cassi -v setup || fail "cassi setup fehlgeschlagen (Details oben)"
+    run uv run cassi info >>"$LOG_FILE" 2>&1 # only into the log
     ok "Modelle vollständig"
 }
 
-step "Flay-Setup gestartet, Log: $LOG_FILE"
+step "Cassi-Setup gestartet, Log: $LOG_FILE"
 diagnostics
 programs
 lfs
@@ -166,7 +166,7 @@ ollama_server
 python_packages
 if [ "$SKIP_MODELS" -eq 1 ]; then warn "Modelle übersprungen (--skip-models)"; else models; fi
 
-printf '\nFertig. Starten mit:  uv run flay run\n'
+printf '\nFertig. Starten mit:  uv run cassi run\n'
 printf 'Einmalig in Systemeinstellungen → Datenschutz & Sicherheit für das Terminal erlauben:\n'
 printf '  Mikrofon, Bedienungshilfen, Eingabeüberwachung (und Bildschirmaufnahme für Screenshots).\n'
 printf 'Log: %s\n' "$LOG_FILE"

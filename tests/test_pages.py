@@ -4,10 +4,10 @@ import pytest
 from aiohttp import web as aioweb
 from aiohttp.test_utils import TestServer
 
-from flay.tools import browser_text, pages
-from flay.tools import web as web_module
-from flay.tools.base import ToolResult
-from flay.tools.pages import (
+from cassi.tools import browser_text, pages
+from cassi.tools import web as web_module
+from cassi.tools.base import ToolResult
+from cassi.tools.pages import (
     Link,
     Page,
     SearchForm,
@@ -17,7 +17,7 @@ from flay.tools.pages import (
     ranked_links,
     sections,
 )
-from flay.tools.web import ReadWebpageTool
+from cassi.tools.web import ReadWebpageTool
 
 DOCS = (
     """<!doctype html><html><head><title>uv – Introduction</title>
@@ -262,7 +262,7 @@ def test_browser_text_is_unavailable_off_macos(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_long_link_texts_are_shortened() -> None:
-    from flay.tools.pages import short_label
+    from cassi.tools.pages import short_label
 
     card = "uv An extremely fast Python package manager, written in Rust, with many features"
     assert short_label(card) == "uv An extremely fast Python package manager, written in …"
@@ -313,7 +313,7 @@ async def test_tabs_opened_in_the_background_are_closed(
 def test_windows_has_every_browser_function() -> None:
     import inspect
 
-    from flay.tools import browser_uia
+    from cassi.tools import browser_uia
 
     for name in browser_text.PLATFORM_FUNCTIONS:
         mac, windows = getattr(browser_text, name), getattr(browser_uia, name)

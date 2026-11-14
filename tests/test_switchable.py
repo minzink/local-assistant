@@ -1,8 +1,8 @@
 import asyncio
 from collections.abc import AsyncIterator
 
-from flay.audio.base import AudioBuffer
-from flay.input.switchable import SwitchableSource
+from cassi.audio.base import AudioBuffer
+from cassi.input.switchable import SwitchableSource
 
 
 def buffer(marker: int) -> AudioBuffer:

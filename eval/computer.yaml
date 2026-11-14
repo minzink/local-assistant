@@ -1,4 +1,4 @@
-# Testsatz für `flay eval-computer`: operate_computer mit echten Klicks, nur harmlose Ziele.
+# Testsatz für `cassi eval-computer`: operate_computer mit echten Klicks, nur harmlose Ziele.
 # Die Fälle laufen der Reihe nach und bauen aufeinander auf. Am Ende räumt `cleanup` auf.
 #
 # check.front_app:     diese App ist danach vorn
@@ -15,8 +15,8 @@ darwin:
       check: {front_app: TextEdit}
     - goal: "Erstelle in TextEdit ein neues leeres Dokument"
       check: {front_app: TextEdit, title: [Ohne Titel, Untitled]}
-    - goal: "Schreib in das TextEdit-Dokument: Hallo von Flay"
-      check: {text: [Hallo von Flay]}
+    - goal: "Schreib in das TextEdit-Dokument: Hallo von Cassi"
+      check: {text: [Hallo von Cassi]}
     - goal: "Öffne die Systemeinstellungen"
       check: {front_app: [System Settings, Systemeinstellungen]}
     - goal: "Öffne in den Systemeinstellungen den Bereich Ton"
@@ -33,8 +33,8 @@ win32:
   cases:
     - goal: "Öffne den Editor"
       check: {front_app: Editor}
-    - goal: "Schreib in den Editor: Hallo von Flay"
-      check: {text: [Hallo von Flay]}
+    - goal: "Schreib in den Editor: Hallo von Cassi"
+      check: {text: [Hallo von Cassi]}
     - goal: "Öffne die Einstellungen"
       check: {front_app: Einstellungen}
     - goal: "Öffne in den Einstellungen den Bereich Sound"

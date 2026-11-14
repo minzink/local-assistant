@@ -4,14 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from flay.config import MemorySettings
-from flay.core.language import Language
-from flay.core.messages import Message, Role, TextPart
-from flay.llm.base import LLMEvent, ModelCapabilities, TextDelta, ToolSpec
-from flay.memory.base import Fact, ShortTermMemory
-from flay.memory.maintenance import parse_fact_changes
-from flay.memory.persistent import PersistentMemory
-from flay.memory.store import MemoryStore
+from cassi.config import MemorySettings
+from cassi.core.language import Language
+from cassi.core.messages import Message, Role, TextPart
+from cassi.llm.base import LLMEvent, ModelCapabilities, TextDelta, ToolSpec
+from cassi.memory.base import Fact, ShortTermMemory
+from cassi.memory.maintenance import parse_fact_changes
+from cassi.memory.persistent import PersistentMemory
+from cassi.memory.store import MemoryStore
 
 
 def user(text: str) -> Message:
@@ -264,7 +264,7 @@ def test_interrupted_flag_is_stored_and_old_databases_are_migrated(tmp_path: Pat
 
 
 def test_actions_are_stored_with_the_reply(tmp_path: Path) -> None:
-    from flay.core.messages import ToolCall, ToolOutcome
+    from cassi.core.messages import ToolCall, ToolOutcome
 
     store = MemoryStore(tmp_path / "m.sqlite3")
     action = ToolOutcome(ToolCall("x", "close_project", {"name": "flay"}), "Closed.", ok=True)

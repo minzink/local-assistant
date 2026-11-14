@@ -5,11 +5,11 @@ import pytest
 from aiohttp import WSServerHandshakeError
 from aiohttp.test_utils import TestClient, TestServer
 
-from flay.assistant import Assistant
-from flay.config import Settings
-from flay.core.messages import Message, Role
-from flay.memory.base import ShortTermMemory
-from flay.ui.server import WebUI
+from cassi.assistant import Assistant
+from cassi.config import Settings
+from cassi.core.messages import Message, Role
+from cassi.memory.base import ShortTermMemory
+from cassi.ui.server import WebUI
 from tests.test_assistant import FakeLLM, FakeOutput, FakeSource, FakeSTT, FakeTTS
 
 PORT = 8765
@@ -40,7 +40,7 @@ async def test_index_page(client: TestClient) -> None:
     response = await client.get("/")
 
     assert response.status == 200
-    assert "<title>Flay</title>" in await response.text()
+    assert "<title>Cassi</title>" in await response.text()
 
 
 @pytest.mark.parametrize("headers", [{}, {"Origin": "https://evil.example"}])
@@ -104,12 +104,12 @@ async def test_logs_are_streamed_and_replayed(
 ) -> None:
     import logging
 
-    # Without `flay run` (or an earlier test) setting it, INFO/DEBUG would be dropped.
+    # Without `cassi run` (or an earlier test) setting it, INFO/DEBUG would be dropped.
     caplog.set_level(logging.DEBUG, logger="flay")
     async with client.ws_connect("/ws", headers=ORIGIN) as ws:
         await ws.receive_json()
-        logging.getLogger("flay.tools.phpstorm").info("PhpStorm: Projekt „flay“ geöffnet")
-        logging.getLogger("flay.assistant").debug("Aufnahme 1.2s")
+        logging.getLogger("cassi.tools.phpstorm").info("PhpStorm: Projekt „flay“ geöffnet")
+        logging.getLogger("cassi.assistant").debug("Aufnahme 1.2s")
         live = [await ws.receive_json(), await ws.receive_json()]
 
     assert live[0] == {
@@ -132,7 +132,7 @@ async def test_logs_are_streamed_and_replayed(
 
 
 async def test_listening_mode_can_be_switched_from_the_ui() -> None:
-    from flay.input.switchable import SwitchableSource
+    from cassi.input.switchable import SwitchableSource
     from tests.test_switchable import QueueSource
 
     assistant = Assistant(
@@ -161,7 +161,7 @@ async def test_init_reports_no_listening_switch_for_plain_sources(client: TestCl
 
 
 async def test_wake_word_can_be_switched_from_the_ui() -> None:
-    from flay.input.switchable import SwitchableSource
+    from cassi.input.switchable import SwitchableSource
     from tests.test_switchable import QueueSource
 
     built: list[QueueSource] = []

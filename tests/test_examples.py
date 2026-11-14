@@ -6,15 +6,15 @@ from pathlib import Path
 
 import pytest
 
-from flay.assistant import Assistant
-from flay.config import MemorySettings, Settings
-from flay.core.messages import Message, Role, ToolCall
-from flay.llm.base import LLMEvent, ToolSpec
-from flay.memory.base import EXAMPLE, MISTAKE
-from flay.memory.persistent import PersistentMemory
-from flay.memory.store import MemoryStore
-from flay.prompt import format_examples
-from flay.tools.base import ToolRegistry
+from cassi.assistant import Assistant
+from cassi.config import MemorySettings, Settings
+from cassi.core.messages import Message, Role, ToolCall
+from cassi.llm.base import LLMEvent, ToolSpec
+from cassi.memory.base import EXAMPLE, MISTAKE
+from cassi.memory.persistent import PersistentMemory
+from cassi.memory.store import MemoryStore
+from cassi.prompt import format_examples
+from cassi.tools.base import ToolRegistry
 from tests.test_assistant import FakeOutput, FakeSource, FakeSTT, FakeTTS
 from tests.test_recall import Clock, ScriptedLLM, TopicEmbedder
 from tests.test_tools import PickingLLM, RoutingLLM, SayingCloseTool
@@ -88,7 +88,7 @@ async def test_rejected_action_is_kept_as_mistake_for_training_only(
 
 
 def test_examples_are_shown_with_the_action_they_meant() -> None:
-    from flay.memory.base import Fact
+    from cassi.memory.base import Fact
 
     example = Fact(
         1, "She K Command.", kind=EXAMPLE,
@@ -130,13 +130,13 @@ async def test_action_becomes_an_example_unless_the_next_request_objects(
 ) -> None:
     tool = SayingCloseTool()
     llm = EagerLLM("close_project", {"name": "component-symfony-kx-command"})
-    flay = assistant(memory, llm, tool)
+    cassi = assistant(memory, llm, tool)
 
-    await flay.handle_text("Mach KX Command zu.")
-    await flay.handle_text("Danke.")  # no objection: learned
+    await cassi.handle_text("Mach KX Command zu.")
+    await cassi.handle_text("Danke.")  # no objection: learned
     llm.acts_on_every_request = True
-    await flay.handle_text("Mach bitte KX Command zu.")
-    await flay.handle_text("Nein, falsch.")  # objection: not learned, kept as mistake
+    await cassi.handle_text("Mach bitte KX Command zu.")
+    await cassi.handle_text("Nein, falsch.")  # objection: not learned, kept as mistake
 
     learned = [f.text for f in memory._store.facts(kind=EXAMPLE)]
     assert learned == ["Mach KX Command zu."]
@@ -150,20 +150,20 @@ async def test_confirmed_request_is_carried_out_directly_next_time(
 ) -> None:
     tool = SayingCloseTool()
     llm = PickingLLM("close_project", {"name": "KEWO"})
-    flay = assistant(memory, llm, tool)
+    cassi = assistant(memory, llm, tool)
 
-    await flay.handle_text("Slie K X E V O")  # only roughly named: Flay asks first
-    assert flay.history[-1].text.startswith("Meinst du")
-    await flay.handle_text("Ja.")
+    await cassi.handle_text("Slie K X E V O")  # only roughly named: Cassi asks first
+    assert cassi.history[-1].text.startswith("Meinst du")
+    await cassi.handle_text("Ja.")
     assert tool.calls == [{"name": "project-symfony-kx-ewo"}]
 
     asked = len(llm.prompts)
-    await flay.handle_text("Slie K X E V O")
+    await cassi.handle_text("Slie K X E V O")
 
     # Known and confirmed: done at once, no model call, no question.
     assert len(tool.calls) == 2
     assert len(llm.prompts) == asked
-    assert flay.history[-1].text == "flay ist geschlossen."
+    assert cassi.history[-1].text == "flay ist geschlossen."
     await memory.close()
 
 
@@ -171,10 +171,10 @@ async def test_examples_reach_the_weighing_step(memory: PersistentMemory) -> Non
     memory.learn("Mach KX Command zu.", CLOSE)
     await asyncio.sleep(0.05)
     llm = RoutingLLM()
-    flay = assistant(memory, llm, SayingCloseTool())
+    cassi = assistant(memory, llm, SayingCloseTool())
 
     # Roughly named: the model fills in the call (an exact name would need none).
-    await flay.handle_text("Schließe das Projekt KX Komand.")
+    await cassi.handle_text("Schließe das Projekt KX Komand.")
 
     router_prompt = llm.prompts[0][0][0].text
     assert '"Mach KX Command zu." → close_project' in router_prompt
@@ -182,7 +182,7 @@ async def test_examples_reach_the_weighing_step(memory: PersistentMemory) -> Non
 
 
 def test_correction_wording() -> None:
-    from flay.intents import _CORRECTION
+    from cassi.intents import _CORRECTION
 
     assert _CORRECTION.search("Nein, das meinte ich nicht.")
     assert _CORRECTION.search("Falsch!")
@@ -191,21 +191,21 @@ def test_correction_wording() -> None:
 
 
 async def test_an_action_done_earlier_can_be_asked_for_again() -> None:
-    from flay.memory.base import ShortTermMemory
+    from cassi.memory.base import ShortTermMemory
 
     tool = SayingCloseTool()
     llm = EagerLLM("close_project", {"name": "flay"})
     llm.acts_on_every_request = True
-    flay = assistant(ShortTermMemory(), llm, tool)  # type: ignore[arg-type]
+    cassi = assistant(ShortTermMemory(), llm, tool)  # type: ignore[arg-type]
 
-    await flay.handle_text("Mach flay zu.")
-    await flay.handle_text("Mach flay zu.")
+    await cassi.handle_text("Mach flay zu.")
+    await cassi.handle_text("Mach flay zu.")
 
     assert tool.calls == [{"name": "flay"}, {"name": "flay"}]
 
 
 def test_stories_and_how_tos_get_no_command_examples() -> None:
-    from flay.intents import wants_examples
+    from cassi.intents import wants_examples
 
     assert wants_examples("She K Command.")
     assert wants_examples("Mach mal Moewe auf.")
@@ -222,9 +222,9 @@ async def test_a_story_does_not_act(memory: PersistentMemory) -> None:
     tool = SayingCloseTool()
     llm = EagerLLM("close_project", {"name": "component-symfony-kx-command"})
     llm.acts_on_every_request = True
-    flay = assistant(memory, llm, tool)
+    cassi = assistant(memory, llm, tool)
 
-    await flay.handle_text("Ich hab KX Command vorhin geschlossen, war eh fertig.")
+    await cassi.handle_text("Ich hab KX Command vorhin geschlossen, war eh fertig.")
 
     # The tools stay offered (constant prompt start), but the call is dropped.
     assert tool.calls == []

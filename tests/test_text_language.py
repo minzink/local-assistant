@@ -1,7 +1,7 @@
 import pytest
 
-from flay.core.language import Language
-from flay.core.text_language import detect_text_language
+from cassi.core.language import Language
+from cassi.core.text_language import detect_text_language
 
 
 @pytest.mark.parametrize(

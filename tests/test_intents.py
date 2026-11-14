@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from flay.intents import computer_intent, mentions_selection
-from flay.tools.apps import App
+from cassi.intents import computer_intent, mentions_selection
+from cassi.tools.apps import App
 
 APPS = [App("Firefox"), App("Slack"), App("Visual Studio Code"), App("PhpStorm")]
 PROJECTS = ["flay", "shop"]

@@ -1,6 +1,6 @@
 import pytest
 
-from flay.stt.vocabulary import Vocabulary, is_noise
+from cassi.stt.vocabulary import Vocabulary, is_noise
 
 PROJECTS = ["stadt-wolkenthal", "moewe", "project-symfony-kx-forms", "lib-react-kx-forms-app"]
 

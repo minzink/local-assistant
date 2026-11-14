@@ -1,6 +1,6 @@
 import pytest
 
-from flay.core.sentences import SentenceSplitter, clean_for_speech
+from cassi.core.sentences import SentenceSplitter, clean_for_speech
 
 
 def split(*deltas: str) -> list[str]:

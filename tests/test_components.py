@@ -2,16 +2,16 @@ import numpy as np
 import pytest
 from pynput import keyboard
 
-from flay.audio.base import AudioBuffer
-from flay.audio.microphone import to_pcm16
-from flay.bench import BenchResult, format_report
-from flay.core.language import Language
-from flay.core.messages import ImagePart, Message, Role, TextPart
-from flay.core.platform import Accelerator, HardwareProfile
-from flay.input.push_to_talk import parse_key
-from flay.llm.openai_compatible import to_api_message
-from flay.stt.factory import resolve_backend
-from flay.stt.whisper import pick_language, to_float32
+from cassi.audio.base import AudioBuffer
+from cassi.audio.microphone import to_pcm16
+from cassi.bench import BenchResult, format_report
+from cassi.core.language import Language
+from cassi.core.messages import ImagePart, Message, Role, TextPart
+from cassi.core.platform import Accelerator, HardwareProfile
+from cassi.input.push_to_talk import parse_key
+from cassi.llm.openai_compatible import to_api_message
+from cassi.stt.factory import resolve_backend
+from cassi.stt.whisper import pick_language, to_float32
 
 MAC = HardwareProfile("Darwin", "arm64", Accelerator.APPLE_SILICON)
 WINDOWS = HardwareProfile("Windows", "amd64", Accelerator.CUDA)
@@ -85,7 +85,7 @@ def test_bench_report() -> None:
 
 
 def test_tool_messages_are_converted() -> None:
-    from flay.core.messages import ToolCall
+    from cassi.core.messages import ToolCall
 
     call = Message(
         Role.ASSISTANT,
@@ -107,9 +107,9 @@ def test_tool_messages_are_converted() -> None:
 async def test_streamed_tool_call_fragments_are_assembled() -> None:
     from openai.types.chat import ChatCompletionChunk
 
-    from flay.core.messages import ToolCall
-    from flay.llm.base import ModelCapabilities, TextDelta, ToolSpec
-    from flay.llm.openai_compatible import OpenAICompatibleChat
+    from cassi.core.messages import ToolCall
+    from cassi.llm.base import ModelCapabilities, TextDelta, ToolSpec
+    from cassi.llm.openai_compatible import OpenAICompatibleChat
 
     def chunk(delta: dict[str, object]) -> ChatCompletionChunk:
         return ChatCompletionChunk.model_validate(

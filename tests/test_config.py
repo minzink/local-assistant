@@ -3,15 +3,15 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from flay.config import Settings, load_settings
-from flay.core.language import Language
-from flay.core.messages import Modality
+from cassi.config import Settings, load_settings
+from cassi.core.language import Language
+from cassi.core.messages import Modality
 
-EXAMPLE_CONFIG = Path(__file__).parent.parent / "flay.example.yaml"
+EXAMPLE_CONFIG = Path(__file__).parent.parent / "cassi.example.yaml"
 
 
 def test_defaults_without_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.delenv("FLAY_CONFIG", raising=False)
+    monkeypatch.delenv("CASSI_CONFIG", raising=False)
     monkeypatch.chdir(tmp_path)
 
     settings = load_settings()
@@ -28,7 +28,7 @@ def test_example_config_is_valid() -> None:
 
 
 def test_partial_override(tmp_path: Path) -> None:
-    config = tmp_path / "flay.yaml"
+    config = tmp_path / "cassi.yaml"
     config.write_text("llm:\n  model: phi4\n", encoding="utf-8")
 
     settings = load_settings(config)
@@ -40,7 +40,7 @@ def test_partial_override(tmp_path: Path) -> None:
 def test_env_var_selects_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     config = tmp_path / "custom.yaml"
     config.write_text("language:\n  default: en\n", encoding="utf-8")
-    monkeypatch.setenv("FLAY_CONFIG", str(config))
+    monkeypatch.setenv("CASSI_CONFIG", str(config))
 
     assert load_settings().language.default is Language.EN
 
@@ -53,10 +53,11 @@ def test_env_var_selects_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
         "tts:\n  voices:\n    de: de_DE-thorsten-medium\n",
         "input:\n  continuous:\n    end_silence_ms: 50\n",
         "llm:\n  modell: typo\n",
+        "input:\n  continuous:\n    wake_pattern: '(hey'\n",
     ],
 )
 def test_invalid_config_is_rejected(tmp_path: Path, yaml_text: str) -> None:
-    config = tmp_path / "flay.yaml"
+    config = tmp_path / "cassi.yaml"
     config.write_text(yaml_text, encoding="utf-8")
 
     with pytest.raises(ValidationError):
@@ -64,7 +65,7 @@ def test_invalid_config_is_rejected(tmp_path: Path, yaml_text: str) -> None:
 
 
 def test_multimodal_capabilities_from_config(tmp_path: Path) -> None:
-    config = tmp_path / "flay.yaml"
+    config = tmp_path / "cassi.yaml"
     config.write_text("llm:\n  input_modalities: [text, image]\n", encoding="utf-8")
 
     capabilities = load_settings(config).llm.capabilities
@@ -73,7 +74,7 @@ def test_multimodal_capabilities_from_config(tmp_path: Path) -> None:
 
 
 def test_api_key_is_masked_in_dump(tmp_path: Path) -> None:
-    config = tmp_path / "flay.yaml"
+    config = tmp_path / "cassi.yaml"
     config.write_text("llm:\n  api_key: geheim\n", encoding="utf-8")
 
     settings = load_settings(config)
@@ -84,7 +85,40 @@ def test_api_key_is_masked_in_dump(tmp_path: Path) -> None:
 
 
 def test_continuous_mode_is_allowed(tmp_path: Path) -> None:
-    config = tmp_path / "flay.yaml"
+    config = tmp_path / "cassi.yaml"
     config.write_text("input:\n  mode: continuous\n", encoding="utf-8")
 
     assert load_settings(config).input.mode == "continuous"
+
+
+def _data_dirs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple[Path, Path]:
+    from cassi import config
+
+    monkeypatch.setattr(config, "user_data_path", lambda name, appauthor=False: tmp_path / name)
+    return tmp_path / "flay", tmp_path / "cassi"
+
+
+def test_the_data_folder_from_before_the_rename_is_moved_once(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from cassi.config import default_data_dir, migrate_legacy_data_dir
+
+    legacy, folder = _data_dirs(monkeypatch, tmp_path)
+    legacy.mkdir()
+    (legacy / "memory.sqlite3").write_bytes(b"x")
+    assert default_data_dir() == folder
+    assert migrate_legacy_data_dir(folder)
+    assert (folder / "memory.sqlite3").read_bytes() == b"x" and not legacy.exists()
+    assert not migrate_legacy_data_dir(folder)
+
+
+def test_a_foreign_flay_folder_is_left_alone(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from cassi.config import migrate_legacy_data_dir
+
+    legacy, folder = _data_dirs(monkeypatch, tmp_path)
+    legacy.mkdir()  # the adapter's own folder: no memory of Cassi's in it
+    assert not migrate_legacy_data_dir(folder)
+    assert not migrate_legacy_data_dir(tmp_path / "elsewhere")
+    assert legacy.exists() and not folder.exists()

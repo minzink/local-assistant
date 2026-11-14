@@ -1,9 +1,9 @@
 import json
 from pathlib import Path
 
-from flay.config import Settings
-from flay.evaluation import _tool_specs
-from flay.training import Example, export, tool_call_text
+from cassi.config import Settings
+from cassi.evaluation import _tool_specs
+from cassi.training import Example, export, tool_call_text
 
 
 def test_tool_call_is_written_like_qwen_writes_it() -> None:

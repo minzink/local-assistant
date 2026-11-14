@@ -1,4 +1,4 @@
-# Beispiele für `flay eval --examples`: so wurden eigene Aufnahmen (eval/speech.yaml)
+# Beispiele für `cassi eval --examples`: so wurden eigene Aufnahmen (eval/speech.yaml)
 # von Whisper und Parakeet gehört, mit der gemeinten Aktion. Absichtlich andere Sätze als
 # in eval/cases.yaml, damit gemessen wird, ob das Modell aus Beispielen verallgemeinert.
 

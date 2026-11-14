@@ -1,5 +1,5 @@
-from flay.core.events import AssistantState
-from flay.ui.tray import STATE_COLORS, icon_image
+from cassi.core.events import AssistantState
+from cassi.ui.tray import STATE_COLORS, icon_image
 
 
 def test_icon_colors_follow_state() -> None:

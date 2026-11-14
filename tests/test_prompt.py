@@ -3,11 +3,11 @@ from datetime import datetime
 import pytest
 from pydantic import ValidationError
 
-from flay.config import PersonaSettings
-from flay.core.language import Language
-from flay.core.messages import Message, Role, TextPart
-from flay.memory.base import Fact, MemoryContext
-from flay.prompt import build_messages, system_prompt
+from cassi.config import PersonaSettings
+from cassi.core.language import Language
+from cassi.core.messages import Message, Role, TextPart
+from cassi.memory.base import Fact, MemoryContext
+from cassi.prompt import build_messages, system_prompt
 
 NOW = datetime(2026, 10, 24, 21, 30)
 
@@ -15,7 +15,7 @@ NOW = datetime(2026, 10, 24, 21, 30)
 def test_minimal_system_prompt() -> None:
     prompt = system_prompt(PersonaSettings(), MemoryContext(), Language.DE, NOW)
 
-    assert prompt.startswith("You are Flay")
+    assert prompt.startswith("You are Cassi")
     # The time is part of the user message, so the system prompt stays cacheable.
     assert "2026" not in prompt
     assert prompt.endswith("Always reply in German.")

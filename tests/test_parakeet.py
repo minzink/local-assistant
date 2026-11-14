@@ -1,13 +1,13 @@
 import numpy as np
 import pytest
 
-from flay.audio.base import AudioBuffer
-from flay.config import Settings
-from flay.core.language import Language
-from flay.core.platform import Accelerator, HardwareProfile
-from flay.offline import MissingModelError
-from flay.stt.factory import create_stt
-from flay.stt.parakeet import ParakeetSTT
+from cassi.audio.base import AudioBuffer
+from cassi.config import Settings
+from cassi.core.language import Language
+from cassi.core.platform import Accelerator, HardwareProfile
+from cassi.offline import MissingModelError
+from cassi.stt.factory import create_stt
+from cassi.stt.parakeet import ParakeetSTT
 
 AUDIO = AudioBuffer(pcm=bytes(32_000), sample_rate=16_000)
 
@@ -66,7 +66,7 @@ async def test_missing_model_points_to_setup(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setattr(onnx_asr, "load_model", fail)
 
-    with pytest.raises(MissingModelError, match="flay setup"):
+    with pytest.raises(MissingModelError, match="cassi setup"):
         await ParakeetSTT(Language.DE).transcribe(AUDIO)
 
 

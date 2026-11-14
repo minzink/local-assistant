@@ -1,5 +1,5 @@
-# Testsatz für `flay eval`: Äußerungen so, wie die Spracherkennung sie geliefert hat (inkl.
-# Fehlern), und was Flay daraufhin tun soll. Viele stammen aus echten Gesprächen.
+# Testsatz für `cassi eval`: Äußerungen so, wie die Spracherkennung sie geliefert hat (inkl.
+# Fehlern), und was Cassi daraufhin tun soll. Viele stammen aus echten Gesprächen.
 #
 # expect.tool:     erwartetes Werkzeug, eine Liste erlaubter Werkzeuge oder "none"
 # expect.project:  Projekt(e), auf die das Projekt-Argument zeigen darf (über den gleichen
@@ -8,7 +8,7 @@
 #                  der Adresse stehen muss
 # expect.then:     Werkzeug, das nach dem ersten außerdem aufgerufen werden muss
 # expect.never:    Werkzeuge, die in der Runde gar nicht aufgerufen werden dürfen
-# history:         vorherige Runden (user/assistant), für Nachfragen; actions: was Flay in
+# history:         vorherige Runden (user/assistant), für Nachfragen; actions: was Cassi in
 #                  der Runde ausgeführt hat (tool, arguments)
 
 state:
@@ -216,7 +216,7 @@ cases:
   - say: "Ich hab KX Command vorhin geschlossen, war eh fertig."
     expect: {tool: none}
 
-  # Aus einem Gespräch am 2026-11-09: Flay öffnete Seiten nur, ohne etwas dazu zu sagen, und
+  # Aus einem Gespräch am 2026-11-09: Cassi öffnete Seiten nur, ohne etwas dazu zu sagen, und
   # wollte bei „kopiere die Ticket-Beschreibung in Claude“ ein Projekt öffnen
   - say: "öffne Google.com und sag mir, was du siehst."
     expect: {tool: read_webpage, contains: [google.com]}

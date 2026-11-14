@@ -2,14 +2,14 @@ from pathlib import Path
 
 import pytest
 
-from flay.config import MemorySettings, Settings
-from flay.core.language import Language
-from flay.core.messages import Message, Role
-from flay.memory.base import Fact
-from flay.memory.persistent import PersistentMemory
-from flay.memory.store import MemoryStore
-from flay.tools.factory import create_tools
-from flay.tools.memory import ForgetTool, RememberTool, match_facts
+from cassi.config import MemorySettings, Settings
+from cassi.core.language import Language
+from cassi.core.messages import Message, Role
+from cassi.memory.base import Fact
+from cassi.memory.persistent import PersistentMemory
+from cassi.memory.store import MemoryStore
+from cassi.tools.factory import create_tools
+from cassi.tools.memory import ForgetTool, RememberTool, match_facts
 from tests.test_memory import ScriptedLLM
 
 FACTS = [
@@ -105,7 +105,7 @@ def test_factory_adds_memory_tools_only_with_persistent_memory(
     ],
 )
 def test_tool_intent(text: str, expected: str | None) -> None:
-    from flay.intents import tool_intent
+    from cassi.intents import tool_intent
 
     assert tool_intent(text) == expected
 

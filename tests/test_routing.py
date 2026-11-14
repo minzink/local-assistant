@@ -1,13 +1,13 @@
 from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
-from flay import routing
-from flay.assistant import Assistant
-from flay.config import Settings
-from flay.core.language import Language
-from flay.core.messages import Message
-from flay.llm.base import LLMEvent, ModelCapabilities, TextDelta, ToolSpec
-from flay.tools.base import ToolRegistry
+from cassi import routing
+from cassi.assistant import Assistant
+from cassi.config import Settings
+from cassi.core.language import Language
+from cassi.core.messages import Message
+from cassi.llm.base import LLMEvent, ModelCapabilities, TextDelta, ToolSpec
+from cassi.tools.base import ToolRegistry
 from tests.test_assistant import FakeOutput, FakeSource, FakeSTT, FakeTTS
 from tests.test_tools import SayingCloseTool
 

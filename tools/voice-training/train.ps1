@@ -1,4 +1,4 @@
-# Flay: Piper-Stimme "Ramona" (ein Modell fuer Deutsch und Englisch) trainieren.
+# Cassi: Piper-Stimme "Ramona" (ein Modell fuer Deutsch und Englisch) trainieren.
 # Startet vom Kristin-Checkpoint (weiblich, gemeinfrei). Zwischenstaende landen in runs\.
 #   tools\voice-training\train.ps1                     # 2000 Epochen (Empfehlung der Piper-Doku fuer < 5 h Audio)
 #   tools\voice-training\train.ps1 -Epochs 1000        # kuerzer
@@ -8,14 +8,14 @@ param(
     [int]$BatchSize = 16,
     [int]$SegmentSize = 8192,
     [switch]$Resume,
-    # Name der Stimme, z.B. flay-mia fuer die eigene; ergibt <Name>-medium.onnx
-    [string]$Name = "flay-ramona"
+    # Name der Stimme, z.B. cassi-mia fuer die eigene; ergibt <Name>-medium.onnx
+    [string]$Name = "cassi-ramona"
 )
 $ErrorActionPreference = "Stop"
 $Root = Join-Path $PSScriptRoot "work"
 # Ramona keeps its folders; any other voice gets its own (dataset-own from -Recorded).
-$Suffix = if ($Name -eq "flay-ramona") { "" } else { "-$Name" }
-$Dataset = if ($Name -eq "flay-ramona") { "dataset" } else { "dataset-own" }
+$Suffix = if ($Name -eq "cassi-ramona") { "" } else { "-$Name" }
+$Dataset = if ($Name -eq "cassi-ramona") { "dataset" } else { "dataset-own" }
 $Py = Join-Path $Root "train-venv\Scripts\python.exe"
 $env:PYTHONPATH = Join-Path $Root "piper1-gpl\src"
 New-Item -ItemType Directory -Force (Join-Path $Root "output") | Out-Null

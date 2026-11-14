@@ -4,13 +4,13 @@ from collections.abc import AsyncIterator, Sequence
 
 import numpy as np
 
-from flay.assistant import Assistant
-from flay.audio.base import AudioBuffer
-from flay.config import Settings
-from flay.core.language import Language
-from flay.core.messages import Message, Role
-from flay.llm.base import LLMEvent, ModelCapabilities, TextDelta, ToolSpec
-from flay.stt.base import Transcript
+from cassi.assistant import Assistant
+from cassi.audio.base import AudioBuffer
+from cassi.config import Settings
+from cassi.core.language import Language
+from cassi.core.messages import Message, Role
+from cassi.llm.base import LLMEvent, ModelCapabilities, TextDelta, ToolSpec
+from cassi.stt.base import Transcript
 
 # One second of a quiet 440 Hz tone (about -27 dBFS), loud enough to count as speech.
 _TONE = (np.sin(np.arange(16_000) * 2 * np.pi * 440 / 16_000) * 2_000).astype("<i2")
@@ -300,7 +300,7 @@ async def test_vad_trimmed_audio_is_transcribed() -> None:
 
 
 async def test_memory_is_paused_during_turn_and_receives_exchange() -> None:
-    from flay.memory.base import MemoryContext
+    from cassi.memory.base import MemoryContext
 
     events: list[str] = []
 
@@ -350,7 +350,7 @@ def collect(assistant: Assistant) -> list[object]:
 
 
 async def test_typed_text_is_answered_without_stt() -> None:
-    from flay.core.events import AssistantMessage, UserMessage
+    from cassi.core.events import AssistantMessage, UserMessage
 
     stt, llm, tts = FakeSTT("unbenutzt"), FakeLLM("Paris."), FakeTTS()
     assistant = make_assistant(stt, llm, tts, FakeOutput())
@@ -403,7 +403,7 @@ async def test_muted_speaker_answers_as_text_only() -> None:
 
 
 async def test_muting_speaker_mid_reply_keeps_generating_text() -> None:
-    from flay.core.events import AssistantMessage
+    from cassi.core.events import AssistantMessage
 
     first_audio = asyncio.Event()
 
@@ -445,7 +445,7 @@ async def test_muting_speaker_mid_reply_keeps_generating_text() -> None:
 
 
 async def test_muted_microphone_drops_utterances_and_ignores_key() -> None:
-    from flay.core.events import StateChanged
+    from cassi.core.events import StateChanged
 
     stt, output = FakeSTT("Hallo"), FakeOutput()
     assistant = Assistant(Settings(), FakeSource(ONE_SECOND), stt, FakeLLM("Hi"), FakeTTS(), output)
@@ -461,7 +461,7 @@ async def test_muted_microphone_drops_utterances_and_ignores_key() -> None:
 
 
 async def test_states_during_voice_turn() -> None:
-    from flay.core.events import AssistantState, StateChanged
+    from cassi.core.events import AssistantState, StateChanged
 
     assistant = make_assistant(FakeSTT("Hallo"), FakeLLM("Hi."), FakeTTS(), FakeOutput())
     events = collect(assistant)
@@ -666,7 +666,7 @@ async def test_filler_plays_on_its_own_while_speech_is_still_recognized() -> Non
 
 
 async def test_lone_noise_word_is_dropped_while_listening_continuously() -> None:
-    from flay.stt.vocabulary import Vocabulary
+    from cassi.stt.vocabulary import Vocabulary
 
     class Continuous(FakeSource):
         continuous = True
@@ -689,7 +689,7 @@ async def test_lone_noise_word_is_dropped_while_listening_continuously() -> None
 
 
 async def test_transcript_is_corrected_before_answering() -> None:
-    from flay.stt.vocabulary import Vocabulary
+    from cassi.stt.vocabulary import Vocabulary
 
     llm = FakeLLM("Okay.")
     assistant = Assistant(
@@ -743,8 +743,8 @@ async def test_slow_computer_state_does_not_hold_up_the_answer() -> None:
 async def test_interrupting_while_the_filler_hands_over_cancels_the_turn() -> None:
     import time as clock
 
-    from flay.config import FillerSettings
-    from flay.filler import FillerVoice, TurnFiller
+    from cassi.config import FillerSettings
+    from cassi.filler import FillerVoice, TurnFiller
 
     class SlowOutput(FakeOutput):
         async def play(self, chunks: AsyncIterator[AudioBuffer]) -> bool:
@@ -767,7 +767,7 @@ async def test_interrupting_while_the_filler_hands_over_cancels_the_turn() -> No
 
 
 async def test_recalled_memories_reach_the_model() -> None:
-    from flay.memory.base import Fact, ShortTermMemory
+    from cassi.memory.base import Fact, ShortTermMemory
 
     class RecallingMemory(ShortTermMemory):
         async def recall(self, query: str) -> tuple[Fact, ...]:
@@ -790,7 +790,7 @@ async def test_recalled_memories_reach_the_model() -> None:
 
 
 async def test_slow_memory_search_does_not_hold_up_the_answer() -> None:
-    from flay.memory.base import Fact, ShortTermMemory
+    from cassi.memory.base import Fact, ShortTermMemory
 
     class SlowMemory(ShortTermMemory):
         async def recall(self, query: str) -> tuple[Fact, ...]:

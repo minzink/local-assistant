@@ -4,16 +4,16 @@ from pathlib import Path
 
 import pytest
 
-from flay import autostart
+from cassi import autostart
 
 
 def test_launch_agent_runs_flay_in_background(tmp_path: Path) -> None:
-    plist = plistlib.loads(autostart.launch_agent(tmp_path / "flay.yaml", tmp_path / "flay.log"))
+    plist = plistlib.loads(autostart.launch_agent(tmp_path / "cassi.yaml", tmp_path / "cassi.log"))
 
     assert plist["Label"] == autostart.LABEL
     assert plist["ProgramArguments"][-2:] == ["run", "--background"]
     assert plist["RunAtLoad"] is True
-    assert plist["EnvironmentVariables"]["FLAY_CONFIG"] == str((tmp_path / "flay.yaml").resolve())
+    assert plist["EnvironmentVariables"]["CASSI_CONFIG"] == str((tmp_path / "cassi.yaml").resolve())
     assert "/opt/homebrew/bin" in plist["EnvironmentVariables"]["PATH"]
 
 

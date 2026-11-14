@@ -3,10 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from flay.audio.vad import SileroVAD
-from flay.core.language import Language
-from flay.offline import MissingModelError, enforce_offline, is_local_url
-from flay.tts.piper import PiperTTS
+from cassi.audio.vad import SileroVAD
+from cassi.core.language import Language
+from cassi.offline import MissingModelError, enforce_offline, is_local_url
+from cassi.tts.piper import PiperTTS
 
 
 @pytest.mark.parametrize(
@@ -38,9 +38,9 @@ def test_missing_voice_and_vad_are_not_downloaded(tmp_path: Path) -> None:
     tts = PiperTTS({Language.DE: "de_DE-thorsten-medium"}, tmp_path / "voices")
     vad = SileroVAD(tmp_path / "models")
 
-    with pytest.raises(MissingModelError, match="flay setup"):
+    with pytest.raises(MissingModelError, match="cassi setup"):
         tts.load()
-    with pytest.raises(MissingModelError, match="flay setup"):
+    with pytest.raises(MissingModelError, match="cassi setup"):
         vad.load()
     assert not (tmp_path / "voices").exists() or not any((tmp_path / "voices").iterdir())
     assert not (tmp_path / "models").exists()

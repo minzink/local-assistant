@@ -4,14 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from flay.config import MemorySettings
-from flay.core.messages import ToolCall
-from flay.memory.base import VERB
-from flay.memory.persistent import PersistentMemory
-from flay.memory.store import MemoryStore
-from flay.tools.base import ToolRegistry
-from flay.tools.phpstorm import Project, match_projects
-from flay.verbs import candidates, learned_verb
+from cassi.config import MemorySettings
+from cassi.core.messages import ToolCall
+from cassi.memory.base import VERB
+from cassi.memory.persistent import PersistentMemory
+from cassi.memory.store import MemoryStore
+from cassi.tools.base import ToolRegistry
+from cassi.tools.phpstorm import Project, match_projects
+from cassi.verbs import candidates, learned_verb
 from tests.test_examples import EagerLLM
 from tests.test_recall import Clock, ScriptedLLM, TopicEmbedder
 from tests.test_tools import SayingCloseTool
@@ -40,7 +40,7 @@ def test_spelled_names_find_the_project_that_fits_best() -> None:
     assert best("K K P F B") == ["project-symfony-kx-kpfb"]  # not kx-kpf
     assert best("K K P F") == ["project-symfony-kx-kpf"]  # the X swallowed; not irm-kpf
     assert best("K NVS") == ["project-symfony-kx-nvs"]
-    # Really ambiguous stays ambiguous: Flay asks.
+    # Really ambiguous stays ambiguous: Cassi asks.
     assert len(best("KPF")) == 3
     assert len(best("KX Forms")) == 2
 
@@ -73,8 +73,8 @@ def test_split_verbs_are_learned_with_their_particle() -> None:
 
 
 def assistant(memory: PersistentMemory, llm: EagerLLM, tool: SayingCloseTool):  # type: ignore[no-untyped-def]
-    from flay.assistant import Assistant
-    from flay.config import Settings
+    from cassi.assistant import Assistant
+    from cassi.config import Settings
     from tests.test_assistant import FakeOutput, FakeSource, FakeSTT, FakeTTS
 
     return Assistant(
@@ -88,16 +88,16 @@ async def test_a_learned_verb_works_for_every_project(memory: PersistentMemory) 
     assert memory.verb("she") == "close_project"
     tool = SayingCloseTool()
     llm = EagerLLM("close_project", {"name": "K NVS"})
-    flay = assistant(memory, llm, tool)
+    cassi = assistant(memory, llm, tool)
 
-    await flay.handle_text("She K NVS")
+    await cassi.handle_text("She K NVS")
 
     # Recognized as a close request without the model guessing; routed written out.
     assert llm.prompts[0][1][0].name == "close_project"
     assert "Schließe k nvs" in llm.prompts[0][0][-1].text
-    assert tool.calls or flay.history[-1].text.startswith("Meinst du")
+    assert tool.calls or cassi.history[-1].text.startswith("Meinst du")
     # Not a verb without a project after it.
-    assert flay._learned_verb("She said hello") is None
+    assert cassi._learned_verb("She said hello") is None
     await memory.close()
 
 
@@ -114,11 +114,11 @@ async def test_a_contradicted_verb_is_forgotten(memory: PersistentMemory) -> Non
 
 async def test_mach_zu_and_mach_auf_are_different_verbs(memory: PersistentMemory) -> None:
     memory.learn("Mach KX Command zu.", ToolCall("x", "close_project", {"name": "KX Command"}))
-    flay = assistant(memory, EagerLLM("close_project", {"name": "K NVS"}), SayingCloseTool())
+    cassi = assistant(memory, EagerLLM("close_project", {"name": "K NVS"}), SayingCloseTool())
 
-    assert flay._learned_verb("Mach K NVS zu") == ("close_project", "Schließe k nvs")
+    assert cassi._learned_verb("Mach K NVS zu") == ("close_project", "Schließe k nvs")
     # "mach … auf" was never learned, and "mach" alone is no verb.
-    assert flay._learned_verb("Mach K NVS auf") is None
+    assert cassi._learned_verb("Mach K NVS auf") is None
     assert memory.verb("mach") is None
     await memory.close()
 
@@ -131,8 +131,8 @@ class SelectiveLLM(EagerLLM):
         self.understood = understood
 
     async def stream(self, messages, tools=()):  # type: ignore[no-untyped-def,override]
-        from flay.core.messages import Role
-        from flay.llm.base import TextDelta
+        from cassi.core.messages import Role
+        from cassi.llm.base import TextDelta
 
         self.prompts.append((list(messages), list(tools)))
         last = messages[-1]
@@ -146,11 +146,11 @@ async def test_a_request_not_understood_is_learned_with_the_retry(
     memory: PersistentMemory,
 ) -> None:
     tool = SayingCloseTool()
-    flay = assistant(memory, SelectiveLLM("Schließe"), tool)  # type: ignore[arg-type]
+    cassi = assistant(memory, SelectiveLLM("Schließe"), tool)  # type: ignore[arg-type]
 
-    await flay.handle_text("Pli flay")  # not understood: Flay asks back
-    await flay.handle_text("Schließe flay")  # said again, clearly: done
-    await flay.handle_text("Danke.")
+    await cassi.handle_text("Pli flay")  # not understood: Flay asks back
+    await cassi.handle_text("Schließe flay")  # said again, clearly: done
+    await cassi.handle_text("Danke.")
 
     assert tool.calls == [{"name": "flay"}]
     learned = sorted(f.text for f in memory._store.facts(kind="example"))
@@ -160,11 +160,11 @@ async def test_a_request_not_understood_is_learned_with_the_retry(
 
 
 async def test_a_contradicted_retry_teaches_nothing(memory: PersistentMemory) -> None:
-    flay = assistant(memory, SelectiveLLM("Schließe"), SayingCloseTool())  # type: ignore[arg-type]
+    cassi = assistant(memory, SelectiveLLM("Schließe"), SayingCloseTool())  # type: ignore[arg-type]
 
-    await flay.handle_text("Pli flay")
-    await flay.handle_text("Schließe flay")
-    await flay.handle_text("Nein, falsch.")
+    await cassi.handle_text("Pli flay")
+    await cassi.handle_text("Schließe flay")
+    await cassi.handle_text("Nein, falsch.")
 
     assert memory._store.facts(kind="example") == []
     assert memory.verb("pli") is None
@@ -172,11 +172,11 @@ async def test_a_contradicted_retry_teaches_nothing(memory: PersistentMemory) ->
 
 
 async def test_an_unrelated_request_before_is_not_learned(memory: PersistentMemory) -> None:
-    flay = assistant(memory, SelectiveLLM("Schließe"), SayingCloseTool())  # type: ignore[arg-type]
+    cassi = assistant(memory, SelectiveLLM("Schließe"), SayingCloseTool())  # type: ignore[arg-type]
 
-    await flay.handle_text("Wie geht es dir?")  # no project: not the same request
-    await flay.handle_text("Schließe flay")
-    await flay.handle_text("Danke.")
+    await cassi.handle_text("Wie geht es dir?")  # no project: not the same request
+    await cassi.handle_text("Schließe flay")
+    await cassi.handle_text("Danke.")
 
     assert [f.text for f in memory._store.facts(kind="example")] == ["Schließe flay"]
     await memory.close()

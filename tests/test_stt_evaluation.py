@@ -3,12 +3,12 @@ from typing import Any
 
 import pytest
 
-from flay.audio.base import AudioBuffer
-from flay.core.language import Language
-from flay.stt.base import Transcript
-from flay.stt.canary import CanarySTT
-from flay.stt.vocabulary import Vocabulary
-from flay.stt_evaluation import (
+from cassi.audio.base import AudioBuffer
+from cassi.core.language import Language
+from cassi.stt.base import Transcript
+from cassi.stt.canary import CanarySTT
+from cassi.stt.vocabulary import Vocabulary
+from cassi.stt_evaluation import (
     DEFAULT_SENTENCES,
     Sentence,
     evaluate_stt,
@@ -131,7 +131,7 @@ def test_vocabulary_prompt_lists_terms_and_projects() -> None:
 
 
 async def test_voxtral_reads_the_language_from_the_text() -> None:
-    from flay.stt.voxtral import VoxtralSTT
+    from cassi.stt.voxtral import VoxtralSTT
 
     class Result:
         def __init__(self, text: str) -> None:

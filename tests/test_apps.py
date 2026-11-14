@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from flay.tools.apps import (
+from cassi.tools.apps import (
     App,
     ControlWindowTool,
     Desktop,
@@ -10,7 +10,7 @@ from flay.tools.apps import (
     named_app,
     target_region,
 )
-from flay.tools.screen import Region, Window
+from cassi.tools.screen import Region, Window
 
 APPS = [
     App("Firefox", Path("/Applications/Firefox.app")),

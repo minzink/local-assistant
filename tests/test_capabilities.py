@@ -12,9 +12,9 @@ from typing import Any
 
 import pytest
 
-from flay.classify import classify
-from flay.config import Settings
-from flay.core.events import (
+from cassi.classify import classify
+from cassi.config import Settings
+from cassi.core.events import (
     AssistantMessage,
     AssistantState,
     StateChanged,
@@ -22,23 +22,23 @@ from flay.core.events import (
     TurnProfiled,
     UserMessage,
 )
-from flay.core.language import Language
-from flay.core.messages import ImagePart, Message, ToolCall
-from flay.history import TurnLog, eval_cases, read, stats
-from flay.intents import may_be_computer_task, mentions_clipboard
-from flay.llm.base import ModelCapabilities, TextDelta, ToolSpec
-from flay.notifications import ClaudeState, ClaudeWatcher
-from flay.plans import plan_intents, split_steps
-from flay.routines import Routines
-from flay.tools import screen
-from flay.tools.appointments import Appointment, CalendarAccessError, CalendarTool, span
-from flay.tools.base import ToolRegistry, ToolResult
-from flay.tools.claude_code import AnswerClaudeTool, read_question
-from flay.tools.computer import Observation, OperateComputerTool, Solutions
-from flay.tools.keyboard import dictated, parse_keys
-from flay.tools.ocr import TextBox, describe, find_text
-from flay.tools.preferences import AdjustSettingsTool, Preferences
-from flay.verbs import heard_verb, phonetic_code
+from cassi.core.language import Language
+from cassi.core.messages import ImagePart, Message, ToolCall
+from cassi.history import TurnLog, eval_cases, read, stats
+from cassi.intents import may_be_computer_task, mentions_clipboard
+from cassi.llm.base import ModelCapabilities, TextDelta, ToolSpec
+from cassi.notifications import ClaudeState, ClaudeWatcher
+from cassi.plans import plan_intents, split_steps
+from cassi.routines import Routines
+from cassi.tools import screen
+from cassi.tools.appointments import Appointment, CalendarAccessError, CalendarTool, span
+from cassi.tools.base import ToolRegistry, ToolResult
+from cassi.tools.claude_code import AnswerClaudeTool, read_question
+from cassi.tools.computer import Observation, OperateComputerTool, Solutions
+from cassi.tools.keyboard import dictated, parse_keys
+from cassi.tools.ocr import TextBox, describe, find_text
+from cassi.tools.preferences import AdjustSettingsTool, Preferences
+from cassi.verbs import heard_verb, phonetic_code
 from tests.test_assistant import FakeOutput, FakeSTT, FakeTTS
 from tests.test_more_tools import Recorder, RoutingLLM
 from tests.test_tools import FakeSource
@@ -174,7 +174,7 @@ def test_find_text_exact_then_close() -> None:
 async def test_click_falls_back_to_ocr_before_the_vision_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from flay.tools import pointer
+    from cassi.tools import pointer
 
     clicked: list[Any] = []
     monkeypatch.setattr(pointer, "accessibility_allowed", lambda prompt=False: True)
@@ -401,7 +401,7 @@ async def test_unknown_voice_lists_the_known_ones(tmp_path: Path) -> None:
 
 
 async def test_short_answers_reach_the_system_prompt(tmp_path: Path) -> None:
-    from flay.assistant import Assistant
+    from cassi.assistant import Assistant
     from tests.test_assistant import FakeLLM
 
     preferences = Preferences(length="short", path=None)
@@ -468,7 +468,7 @@ ASKING = """
 
 
 def test_read_question() -> None:
-    question = read_question(ASKING, "flay", "flay-claude-flay")
+    question = read_question(ASKING, "flay", "cassi-claude-flay")
     assert question is not None
     assert question.question == "Do you want to make this edit to app.py?"
     assert (question.key_for("yes"), question.key_for("always"), question.key_for("no")) == (
@@ -496,11 +496,11 @@ class FakeTmux:
 async def test_answer_claude_presses_the_option() -> None:
     tmux = FakeTmux(ASKING)
     tool = AnswerClaudeTool(tmux)  # type: ignore[arg-type]
-    tool.asked(read_question(ASKING, "flay", "flay-claude-flay"), "flay")
+    tool.asked(read_question(ASKING, "flay", "cassi-claude-flay"), "flay")
 
     result = await tool.run({"answer": "always"})
 
-    assert result.ok and tmux.pressed == [("flay-claude-flay", "2")]
+    assert result.ok and tmux.pressed == [("cassi-claude-flay", "2")]
     assert tool.waiting == {}
 
 
@@ -525,7 +525,7 @@ def test_watcher_reads_out_the_question_and_tells_the_tool() -> None:
 
 
 async def test_yes_answers_claude_when_it_waits() -> None:
-    from flay.assistant import Assistant
+    from cassi.assistant import Assistant
 
     tmux = FakeTmux(ASKING)
     answer = AnswerClaudeTool(tmux)  # type: ignore[arg-type]
@@ -543,7 +543,7 @@ async def test_yes_answers_claude_when_it_waits() -> None:
 
 
 async def test_claude_brief_carries_the_conversation() -> None:
-    from flay.assistant import Assistant
+    from cassi.assistant import Assistant
 
     send = Recording("send_to_claude", ToolResult("typed", say={Language.DE: "Steht drin."}))
     llm = RoutingLLM({"instruction": "Behebe den Fehler"})
@@ -586,7 +586,7 @@ def test_routines_define_run_forget(tmp_path: Path) -> None:
 
 
 async def test_a_routine_runs_as_a_plan(tmp_path: Path) -> None:
-    from flay.assistant import Assistant
+    from cassi.assistant import Assistant
 
     routines = Routines(tmp_path / "routines.json")
     keyboard = Recording("use_keyboard", ToolResult("ok", say={Language.DE: "Gespeichert."}))
@@ -598,7 +598,7 @@ async def test_a_routine_runs_as_a_plan(tmp_path: Path) -> None:
 
     await assistant.handle_text("Merk dir als Sichern: Speichern")
     await assistant.handle_text("Sichern")
-    assert assistant.awaiting_answer  # typing reaches far: Flay asks first
+    assert assistant.awaiting_answer  # typing reaches far: Cassi asks first
     await assistant.handle_text("Ja")
 
     assert "Ich habe mir Sichern gemerkt." in tts.spoken[0][0]
@@ -609,8 +609,8 @@ async def test_a_routine_runs_as_a_plan(tmp_path: Path) -> None:
 
 
 async def test_clipboard_goes_with_the_request(monkeypatch: pytest.MonkeyPatch) -> None:
-    from flay import assistant as module
-    from flay.assistant import Assistant
+    from cassi import assistant as module
+    from cassi.assistant import Assistant
     from tests.test_assistant import FakeLLM
 
     monkeypatch.setattr(module, "clipboard_text", lambda: "Bonjour tout le monde")
@@ -626,7 +626,7 @@ async def test_clipboard_goes_with_the_request(monkeypatch: pytest.MonkeyPatch) 
 
 
 async def test_screenshot_step_is_read_for_the_next_step() -> None:
-    from flay.assistant import Assistant
+    from cassi.assistant import Assistant
 
     shot = Recording(
         "look_at_screen",
@@ -714,8 +714,8 @@ def test_turn_log_drops_old_entries(tmp_path: Path) -> None:
     ],
 )
 def test_computer_intents_of_this_phase(said: str, tool: str | None) -> None:
-    from flay.intents import computer_intent
-    from flay.tools.apps import App
+    from cassi.intents import computer_intent
+    from cassi.tools.apps import App
 
     assert computer_intent(said, [App("Slack"), App("Firefox")]) == tool
 
@@ -746,7 +746,7 @@ def test_turn_log_notices_a_request_failing_again(tmp_path: Path) -> None:
 def test_settle_waits_until_the_screen_is_still(monkeypatch: pytest.MonkeyPatch) -> None:
     from PIL import Image
 
-    from flay.tools import pointer
+    from cassi.tools import pointer
 
     monkeypatch.setattr(pointer, "SETTLE_EVERY", 0)
     blank, half, full = (Image.new("L", (10, 10), v) for v in (0, 0, 255))
@@ -778,7 +778,7 @@ async def test_solutions_found_by_meaning(tmp_path: Path) -> None:
 
 
 async def test_short_sentences_are_synthesized_once() -> None:
-    from flay.tts.cache import CachedTTS
+    from cassi.tts.cache import CachedTTS
 
     inner = FakeTTS()
     tts = CachedTTS(inner)  # type: ignore[arg-type]
@@ -812,7 +812,7 @@ async def test_computer_does_not_repeat_a_move() -> None:
 
 
 def test_click_label_from_what_the_model_wrote() -> None:
-    from flay.tools.computer import _label
+    from cassi.tools.computer import _label
 
     assert _label("Sound (button) or Ton (button) in System Settings menu.") == "Sound"
     assert _label("Search Everywhere (button)") == "Search Everywhere"
@@ -820,7 +820,7 @@ def test_click_label_from_what_the_model_wrote() -> None:
 
 
 def test_german_app_names() -> None:
-    from flay.tools.apps import App, match_app, windows_of
+    from cassi.tools.apps import App, match_app, windows_of
 
     settings = App("System Settings")
     assert match_app("Systemeinstellungen", [App("Firefox"), settings]) == settings
@@ -829,7 +829,7 @@ def test_german_app_names() -> None:
 
 
 def test_perf_stats_sum_up_profiles() -> None:
-    from flay.history import perf_stats
+    from cassi.history import perf_stats
 
     text = "\n".join(perf_stats([PROFILE, PROFILE]))
     assert "first_audio" in text and "1.10 s" in text
@@ -837,7 +837,7 @@ def test_perf_stats_sum_up_profiles() -> None:
 
 
 async def test_a_turn_is_profiled(monkeypatch: pytest.MonkeyPatch) -> None:
-    from flay.assistant import Assistant
+    from cassi.assistant import Assistant
     from tests.test_assistant import FakeLLM
 
     assistant = Assistant(
@@ -858,7 +858,7 @@ async def test_a_turn_is_profiled(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 async def test_a_claimed_action_after_a_story_is_not_carried_out() -> None:
-    from flay.assistant import Assistant
+    from cassi.assistant import Assistant
     from tests.test_assistant import FakeLLM
 
     closing = Recording("close_project", ToolResult("closed", say={Language.DE: "Zu."}))

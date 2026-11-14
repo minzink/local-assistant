@@ -1,6 +1,6 @@
 import numpy as np
 
-from flay.audio.vad import speech_bounds
+from cassi.audio.vad import speech_bounds
 
 
 def test_speech_bounds() -> None:

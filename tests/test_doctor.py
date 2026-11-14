@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from flay import doctor
-from flay.config import Settings
-from flay.doctor import Check, Level
+from cassi import doctor
+from cassi.config import Settings
+from cassi.doctor import Check, Level
 
 
 def test_older() -> None:
@@ -12,8 +12,8 @@ def test_older() -> None:
 
 
 def test_check_line_with_fix() -> None:
-    line = Check(Level.FAIL, "LLM", "fehlt", "flay setup").line()
-    assert line == "  ✗ LLM: fehlt\n      → flay setup"
+    line = Check(Level.FAIL, "LLM", "fehlt", "cassi setup").line()
+    assert line == "  ✗ LLM: fehlt\n      → cassi setup"
 
 
 def test_run_reports_failures_and_survives_broken_checks(monkeypatch) -> None:  # type: ignore[no-untyped-def]

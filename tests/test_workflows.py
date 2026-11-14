@@ -3,14 +3,14 @@ from typing import Any
 
 import pytest
 
-from flay.intents import tool_intent
-from flay.tools import workflows
-from flay.tools.pointer import Element
-from flay.tools.screen import Window
-from flay.tools.workflows import Recorder, Step, Store, WorkflowTool, locate, play, risky_steps
+from cassi.intents import tool_intent
+from cassi.tools import workflows
+from cassi.tools.pointer import Element
+from cassi.tools.screen import Window
+from cassi.tools.workflows import Recorder, Step, Store, WorkflowTool, locate, play, risky_steps
 
 PHPSTORM = Window(1, "PhpStorm", "flay – assistant.py", (0, 25, 1000, 800))
-FLAY = Window(2, "Firefox", "Flay", (1100, 0, 400, 300))
+CASSI = Window(2, "Firefox", "Flay", (1100, 0, 400, 300))
 
 
 class Key:
@@ -26,7 +26,7 @@ def screen(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     elements = {
         (500.0, 40.0): Element("Git", "AXMenuBarItem", (480, 30, 40, 20), "PhpStorm"),
     }
-    monkeypatch.setattr(workflows, "list_windows", lambda: [FLAY, PHPSTORM])
+    monkeypatch.setattr(workflows, "list_windows", lambda: [CASSI, PHPSTORM])
     monkeypatch.setattr(workflows, "element_at", lambda point: elements.get(point))
     monkeypatch.setattr(workflows, "click", lambda p, b: done["clicks"].append((p, b)))
     monkeypatch.setattr(workflows, "press_keys", lambda keys: done["keys"].append(keys))
@@ -44,7 +44,7 @@ def test_recording_keeps_clicks_shortcuts_and_special_keys_not_typing(
 
     recorder._on_click(500, 40, "Button.left", True)
     recorder._on_click(500, 40, "Button.left", False)
-    recorder._on_click(1200, 100, "Button.left", True)  # Flay's own window
+    recorder._on_click(1200, 100, "Button.left", True)  # Cassi's own window
     recorder._on_click(250, 425, "Button.right", True)  # no label: by position
     for key in (Key(char="g"), Key(char="e"), Key("alt_r")):  # typing, the talk key
         recorder._on_press(key)

@@ -1,7 +1,7 @@
 # Windows-Test: Checkliste
 
 Alles hier ist für Windows gebaut, aber noch nicht auf einem echten Windows-Rechner gelaufen.
-Bei jedem Fehler steht der Grund im Log (`flay run -v`, Web-UI → Debug). Flay fällt bei
+Bei jedem Fehler steht der Grund im Log (`cassi run -v`, Web-UI → Debug). Cassi fällt bei
 Fehlern auf den bisherigen Weg zurück (Bildmodell, Zwischenablage), es sollte also nichts
 abstürzen – aber langsamer oder ungenauer sein.
 
@@ -10,13 +10,13 @@ abstürzen – aber langsamer oder ungenauer sein.
 ```
 git pull
 uv sync
-uv run flay doctor
+uv run cassi doctor
 ```
 
-- [ ] `flay doctor` zeigt keine ✗. Besonders ansehen: Grafikspeicher (alles auf der GPU?),
+- [ ] `cassi doctor` zeigt keine ✗. Besonders ansehen: Grafikspeicher (alles auf der GPU?),
       Kontext (8192?), Texterkennung (verfügbar?), Kalender.
-- [ ] `uv run flay eval` – Ergebnis notieren (Mac: 99 %, Median 1,66 s) und die JSON-Datei
-      aus `%LOCALAPPDATA%\flay\eval` aufheben.
+- [ ] `uv run cassi eval` – Ergebnis notieren (Mac: 99 %, Median 1,66 s) und die JSON-Datei
+      aus `%LOCALAPPDATA%\cassi\eval` aufheben.
 
 ## 1. Fenster und Apps (`control_window`)
 
@@ -33,7 +33,7 @@ uv run flay doctor
       – falls „Texterkennung nicht verfügbar“: Einstellungen → Zeit und Sprache → Sprache →
       Deutsch → Optionen → „Optische Zeichenerkennung“ installieren
 - [ ] „Klick auf das Glocken-Symbol“ (ohne Beschriftung) → nummerierte Kandidaten
-- [ ] Nach einem Klick ins Leere sagt Flay „…aber es hat sich nichts sichtbar getan“
+- [ ] Nach einem Klick ins Leere sagt Cassi „…aber es hat sich nichts sichtbar getan“
 
 ## 3. Tastatur, System
 
@@ -47,30 +47,30 @@ uv run flay doctor
 - [ ] „Öffne im Editor ein neues Dokument“ – Züge im Log ansehen (`Rechner bedienen 1: …`)
 - [ ] „Stell in den Einstellungen den dunklen Modus ein“ – wie viele Züge, wie lange?
 - [ ] „Sag mir Bescheid, wenn ‚Fertig‘ auf dem Bildschirm steht“ – dann irgendwo „Fertig“
-      anzeigen lassen; Flay meldet sich innerhalb von ~3 s
-- [ ] `uv run flay eval-computer` (siehe README) – Erfolgsquote und Züge notieren
+      anzeigen lassen; Cassi meldet sich innerhalb von ~3 s
+- [ ] `uv run cassi eval-computer` (siehe README) – Erfolgsquote und Züge notieren
 
 ## 5. Kalender (klassisches Outlook)
 
 - [ ] „Was steht heute an?“ – Outlook muss installiert sein (das neue Outlook hat keine
-      COM-Schnittstelle: dann sagt Flay, es kann den Kalender nicht lesen)
+      COM-Schnittstelle: dann sagt Cassi, es kann den Kalender nicht lesen)
 - [ ] „Hab ich morgen Termine?“, „Wann ist mein nächster Termin?“
 
 ## 6. Datenschutz
 
-- [ ] KeePass oder 1Password öffnen, „Was siehst du auf meinem Bildschirm?“ → Flay lehnt ab
+- [ ] KeePass oder 1Password öffnen, „Was siehst du auf meinem Bildschirm?“ → Cassi lehnt ab
 - [ ] InPrivate-Fenster in Edge öffnen → ebenso
 - [ ] „Schau nicht mehr auf meinen Bildschirm“ → Screenshot wird abgelehnt; „Du darfst wieder
       auf den Bildschirm schauen“
 - [ ] Tray-Menü: „Verstanden: …“, „Geantwortet: …“, Schalter „Bildschirm nicht ansehen“
-- [ ] `uv run flay history`, `uv run flay stats`
+- [ ] `uv run cassi history`, `uv run cassi stats`
 
 ## 7. Sprache und Stimme
 
 - [ ] „Sprich langsamer“ (Piper: sofort), „Andere Stimme“ (wechselt zwischen installierten
-      Piper-Stimmen), „Antworte kürzer“ – nach `flay run` neu starten: bleibt so
+      Piper-Stimmen), „Antworte kürzer“ – nach `cassi run` neu starten: bleibt so
 
 ## Rückmeldung
 
-Für jeden ✗: was gesagt wurde, was passiert ist, der Abschnitt aus dem Log. `flay history
+Für jeden ✗: was gesagt wurde, was passiert ist, der Abschnitt aus dem Log. `cassi history
 --failed` listet die fehlgeschlagenen Anfragen.

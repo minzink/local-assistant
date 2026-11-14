@@ -1,7 +1,7 @@
 import pytest
 
-from flay.core.messages import ImagePart, Message, Modality, Role, TextPart
-from flay.llm.base import ModelCapabilities, UnsupportedModalityError
+from cassi.core.messages import ImagePart, Message, Modality, Role, TextPart
+from cassi.llm.base import ModelCapabilities, UnsupportedModalityError
 
 
 def test_text_message() -> None:

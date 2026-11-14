@@ -8,15 +8,15 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from flay.config import Settings
-from flay.core.language import Language
-from flay.notifications import Announcements, ClaudeState, ClaudeWatcher, Timers, claude_state
-from flay.tools.commands import Command, Outcome, RunCommandTool, summary
-from flay.tools.finder import FindFileTool, search
-from flay.tools.ide import IdeTool, best_file, file_patterns
-from flay.tools.keyboard import KeyboardTool, describe_selection
-from flay.tools.system import SystemTool
-from flay.tools.timers import TimerTool, due_time
+from cassi.config import Settings
+from cassi.core.language import Language
+from cassi.notifications import Announcements, ClaudeState, ClaudeWatcher, Timers, claude_state
+from cassi.tools.commands import Command, Outcome, RunCommandTool, summary
+from cassi.tools.finder import FindFileTool, search
+from cassi.tools.ide import IdeTool, best_file, file_patterns
+from cassi.tools.keyboard import KeyboardTool, describe_selection
+from cassi.tools.system import SystemTool
+from cassi.tools.timers import TimerTool, due_time
 from tests.test_assistant import FakeLLM, FakeOutput, FakeSTT, FakeTTS, make_assistant
 
 NOW = datetime(2026, 11, 13, 14, 0, tzinfo=timezone(timedelta(hours=1)))
@@ -192,7 +192,7 @@ def test_command_summary() -> None:
 
 
 def test_run_command_needs_commands_in_the_config() -> None:
-    from flay.tools.factory import create_tools
+    from cassi.tools.factory import create_tools
 
     assert "run_command" not in create_tools(Settings())
     settings = Settings.model_validate({"tools": {"commands": {"tests": {"command": "true"}}}})
@@ -308,14 +308,14 @@ class RoutingLLM:
 
     @property
     def capabilities(self) -> Any:
-        from flay.core.messages import Modality
-        from flay.llm.base import ModelCapabilities
+        from cassi.core.messages import Modality
+        from cassi.llm.base import ModelCapabilities
 
         return ModelCapabilities(frozenset({Modality.TEXT, Modality.IMAGE}))
 
     async def stream(self, messages: Any, tools: Any = ()) -> Any:
-        from flay.core.messages import ToolCall
-        from flay.llm.base import TextDelta
+        from cassi.core.messages import ToolCall
+        from cassi.llm.base import TextDelta
 
         self.offered.append([t.name for t in tools])
         if len(tools) == 1:
@@ -325,9 +325,9 @@ class RoutingLLM:
 
 
 async def test_open_firefox_goes_to_the_app_tool_without_a_screenshot() -> None:
-    from flay.assistant import Assistant
-    from flay.tools.apps import ControlWindowTool
-    from flay.tools.base import ToolRegistry
+    from cassi.assistant import Assistant
+    from cassi.tools.apps import ControlWindowTool
+    from cassi.tools.base import ToolRegistry
     from tests.test_apps import FakeDesktop
     from tests.test_tools import FakeScreenTool, FakeSource
 
@@ -344,7 +344,7 @@ async def test_open_firefox_goes_to_the_app_tool_without_a_screenshot() -> None:
 
     await assistant.handle_text("Schieb Firefox auf den linken Monitor")
 
-    assert llm.offered == []  # app, verb and monitor are clear: no model (flay.direct)
+    assert llm.offered == []  # app, verb and monitor are clear: no model (cassi.direct)
     assert screen.calls == []  # "Monitor" is no reason to look at the screen here
     assert any(call[0] == "frame" for call in desktop.calls)
     assert tts.spoken[-1][0] == "Firefox ist jetzt auf Monitor 2."

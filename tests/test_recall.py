@@ -5,16 +5,16 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from flay.config import MemorySettings, PersonaSettings, RecallSettings
-from flay.core.language import Language
-from flay.core.messages import Message, Role
-from flay.llm.base import LLMEvent, ModelCapabilities, TextDelta, ToolSpec
-from flay.memory.base import Fact, MemoryContext
-from flay.memory.embeddings import normalize
-from flay.memory.persistent import PersistentMemory
-from flay.memory.recall import Recall, keyword_query
-from flay.memory.store import MemoryStore
-from flay.prompt import build_messages
+from cassi.config import MemorySettings, PersonaSettings, RecallSettings
+from cassi.core.language import Language
+from cassi.core.messages import Message, Role
+from cassi.llm.base import LLMEvent, ModelCapabilities, TextDelta, ToolSpec
+from cassi.memory.base import Fact, MemoryContext
+from cassi.memory.embeddings import normalize
+from cassi.memory.persistent import PersistentMemory
+from cassi.memory.recall import Recall, keyword_query
+from cassi.memory.store import MemoryStore
+from cassi.prompt import build_messages
 
 # Meaning as a few hand-made dimensions: words of one topic share a dimension.
 TOPICS = {
@@ -231,7 +231,7 @@ async def test_rules_are_important_and_always_in_the_prompt(tmp_path: Path) -> N
 async def test_memories_carry_when_they_were_written_and_episodes_are_minor(
     tmp_path: Path,
 ) -> None:
-    from flay.memory.base import MINOR
+    from cassi.memory.base import MINOR
 
     store = MemoryStore(tmp_path / "m.sqlite3")
     clock = Clock()
@@ -255,7 +255,7 @@ async def test_memories_carry_when_they_were_written_and_episodes_are_minor(
 async def test_extraction_keeps_the_importance_the_model_gives(tmp_path: Path) -> None:
     store = MemoryStore(tmp_path / "m.sqlite3")
     reply = (
-        '{"add": [{"text": "Flay soll Claude nie anweisen, etwas zu committen.", '
+        '{"add": [{"text": "Cassi soll Claude nie anweisen, etwas zu committen.", '
         '"importance": "high"}, {"text": "Mia nutzt PhpStorm.", "importance": "normal"}, '
         '{"text": "Die README wurde heute nicht angepasst.", "importance": "low"}], "remove": []}'
     )
@@ -268,15 +268,15 @@ async def test_extraction_keeps_the_importance_the_model_gives(tmp_path: Path) -
     await memory.maintain()
 
     assert [(f.text, f.importance) for f in store.facts()] == [
-        ("Flay soll Claude nie anweisen, etwas zu committen.", 3),
+        ("Cassi soll Claude nie anweisen, etwas zu committen.", 3),
         ("Mia nutzt PhpStorm.", 2),
         ("Die README wurde heute nicht angepasst.", 1),
     ]
 
 
 def test_memory_list_shows_date_kind_and_importance() -> None:
-    from flay.cli import _memory_line
-    from flay.memory.base import IMPORTANT
+    from cassi.cli import _memory_line
+    from cassi.memory.base import IMPORTANT
 
     line = _memory_line(
         Fact(

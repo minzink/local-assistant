@@ -4,11 +4,11 @@ from typing import Any
 
 import pytest
 
-from flay.config import Settings
-from flay.core.messages import Message, ToolCall
-from flay.evaluation import DEFAULT_CASES, _judge, load_cases, run_case
-from flay.llm.base import LLMEvent, ModelCapabilities, TextDelta, ToolSpec
-from flay.tools.phpstorm import Project
+from cassi.config import Settings
+from cassi.core.messages import Message, ToolCall
+from cassi.evaluation import DEFAULT_CASES, _judge, load_cases, run_case
+from cassi.llm.base import LLMEvent, ModelCapabilities, TextDelta, ToolSpec
+from cassi.tools.phpstorm import Project
 
 PROJECTS = [
     Project(name, Path("/") / name)
@@ -90,7 +90,7 @@ async def test_run_case_goes_through_the_assistant_with_simulated_tools() -> Non
     result = await run_case(Settings(), OpeningLLM(), case, state)
 
     assert result.ok, result.problem
-    # Named exactly: filled in without the model (flay.direct), as the project is spelled.
+    # Named exactly: filled in without the model (cassi.direct), as the project is spelled.
     assert result.tools == [{"tool": "open_project", "name": "moewe"}]
     assert result.reply == "Erledigt."
     assert result.first_tool is not None
@@ -106,7 +106,7 @@ async def test_run_case_goes_through_the_assistant_with_simulated_tools() -> Non
     ],
 )
 def test_answer_must_appear_as_a_whole_word(reply: str, ok: bool) -> None:
-    from flay.evaluation import _judge_answer
+    from cassi.evaluation import _judge_answer
 
     expect = {"answer": ["C", "5"]}
 
@@ -114,8 +114,8 @@ def test_answer_must_appear_as_a_whole_word(reply: str, ok: bool) -> None:
 
 
 async def test_history_actions_reach_the_conversation() -> None:
-    from flay.config import Settings
-    from flay.evaluation import run_case
+    from cassi.config import Settings
+    from cassi.evaluation import run_case
     from tests.test_tools import RoutingLLM
 
     llm = RoutingLLM()
