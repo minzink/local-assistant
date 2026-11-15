@@ -205,6 +205,10 @@ PhpStorm-Terminal übergeben.
 - `manage.py` + `ui/static/manage.html` – Verwaltung im Browser (`cassi manage`): Tabs als
   Daten (`Tab`, `Section`, `Row`, `Action`, `Option`), Seite zeigt nur Text (kein HTML aus
   Tabs). Nur 127.0.0.1, Schlüssel im URL-Fragment, Aktionen nur von der eigenen Herkunft.
+  Eine Verwaltung je Programm (`instance_file` in Cassis Ordner, mit Versionsstempel); ältere
+  und übrig gebliebene werden beim Start beendet – nur Prozesse, die `maintenance.
+  is_manage_command` streng als `<programm> manage` erkennt; Tests dürfen nie echte Prozesse
+  beenden (`tests/conftest.py`). Ohne offenes Fenster endet sie nach `IDLE_SECONDS`.
   Neue Wartungsfunktionen hier als `Action` ergänzen; die Installer (`install.command`,
   `install.cmd`/`install.ps1`) bleiben dünne Hüllen um `scripts/setup.*`.
 - `updates.py` – laufendes Cassi wechselt zu einer neueren installierten Version (Version/Commit

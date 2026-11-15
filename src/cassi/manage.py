@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 import re
 import secrets
 import shutil
@@ -24,6 +25,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import webbrowser
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -351,6 +353,11 @@ def builtin_tabs(
         out(f"Geöffnet: {folder}" if ok else "Noch keine Sicherungen")
         return ok
 
+    def stop_others(out: Output, _: Mapping[str, Any]) -> bool:
+        if not end_others(app, out):
+            out("Keine weiteren Verwaltungen.")
+        return True
+
     title = app.title
     return [
         Tab("overview", "Übersicht", overview),
@@ -361,7 +368,23 @@ def builtin_tabs(
                 Section(
                     "Wartung",
                     text="Reparieren ist immer sicher: Es prüft alles und ergänzt nur, was fehlt.",
-                )
+                ),
+                Section(
+                    "Verwaltung",
+                    [
+                        Row("Diese", f"Prozess {os.getpid()}"),
+                        Row(
+                            "Weitere",
+                            f"{len(others)} – „Andere Verwaltungen beenden“"
+                            if (others := maintenance.other_manage_processes(app.name))
+                            else "keine",
+                            "warn" if others else "ok",
+                        ),
+                    ],
+                    "Es läuft immer nur eine: Ein neuer Aufruf öffnet sie oder ersetzt eine "
+                    "ältere Version. Ist kein Fenster mehr offen, beendet sie sich nach etwa "
+                    f"{IDLE_SECONDS // 60} Minuten; sofort: „Verwaltung beenden“ oben.",
+                ),
             ],
             [
                 Action("doctor", "Diagnose", "Prüft GPU, Ollama, Modelle und Kontext.", doctor),
@@ -388,6 +411,12 @@ def builtin_tabs(
                 ),
                 Action("autostart-off", "Autostart aus", "Entfernt den Autostart.", autostart_off),
                 Action("data", "Datenordner öffnen", "Gedächtnis, Aufnahmen, Stimmen.", open_data),
+                Action(
+                    "others",
+                    "Andere Verwaltungen beenden",
+                    f"Beendet weitere laufende {title}-Verwaltungen (z.B. ältere Versionen).",
+                    stop_others,
+                ),
                 Action("logs", "Setup-Logs öffnen", "Protokolle der Installation.", open_logs),
             ],
         ),
@@ -557,6 +586,8 @@ class ManageServer:
         self.token = token or secrets.token_urlsafe(24)
         self.port = port
         self.jobs: dict[str, Job] = {}
+        self.last_seen = time.monotonic()
+        self.visited = False
         # Files chosen on the page (an export to import), by id until an action takes them.
         self.uploads: dict[str, Path] = {}
         self._upload_dir = Path(tempfile.mkdtemp(prefix="cassi-manage-"))
@@ -587,6 +618,9 @@ class ManageServer:
         if request.path.startswith("/api/"):
             if not secrets.compare_digest(request.headers.get("X-Cassi-Token", ""), self.token):
                 raise web.HTTPForbidden(text="token")
+            # An open page asks every few seconds (status in the header): it is still open.
+            self.last_seen = time.monotonic()
+            self.visited = True
             if request.method != "GET" and request.headers.get("Origin") not in self.origins():
                 raise web.HTTPForbidden(text="origin")
         response: web.StreamResponse = await handler(request)
@@ -767,13 +801,22 @@ def tabs_for(
 # running one instead of starting another. Its address lives here, readable only by the user.
 
 
-def instance_file(app: App, settings: Settings) -> Path:
-    return settings.data_dir / f"manage-{app.name}.json"
+# One management UI per program, wherever its data folder is: a second `manage` (tray, install
+# script, terminal) opens the running one – unless that one runs older code, which it ends.
+# Its address lives in Cassi's folder, readable only by the user (the token allows actions).
+IDLE_SECONDS = 180  # no page polled for so long: no window open any more – the server ends
+FIRST_VISIT_SECONDS = 600  # until the page is opened the first time
 
 
-def running_instance(path: Path) -> str | None:
-    """The address of the management UI recorded in ``path`` if it still answers; a stale
-    record (crashed, killed) is removed."""
+def instance_file(app: App) -> Path:
+    from cassi.config import default_data_dir
+
+    return default_data_dir() / "run" / f"manage-{app.name}.json"
+
+
+def read_instance(path: Path) -> dict[str, Any] | None:
+    """The record of a management UI that still answers; a stale one (crashed, killed) is
+    removed."""
     import json
     import urllib.request
 
@@ -790,7 +833,7 @@ def running_instance(path: Path) -> str | None:
     try:
         with DIRECT.open(request, timeout=1.5) as response:
             if response.status == 200:
-                return f"http://{HOST}:{port}/#token={token}"
+                return {**data, "url": f"http://{HOST}:{port}/#token={token}"}
     except OSError:
         pass
     with contextlib.suppress(OSError):
@@ -798,12 +841,53 @@ def running_instance(path: Path) -> str | None:
     return None
 
 
-def remember_instance(path: Path, server: ManageServer) -> None:
+def running_instance(path: Path) -> str | None:
+    """The address of the recorded management UI, if it still answers."""
+    record = read_instance(path)
+    return str(record["url"]) if record else None
+
+
+def ask_to_quit(record: dict[str, Any], wait: float = 5.0) -> bool:
+    """Ask a running management UI to end (its own quit, as its page would)."""
+    import time
+    import urllib.request
+
+    from cassi.net import DIRECT
+
+    port, token = int(record["port"]), str(record["token"])
+    request = urllib.request.Request(
+        f"http://{HOST}:{port}/api/quit",
+        data=b"{}",
+        method="POST",
+        headers={"X-Cassi-Token": token, "Origin": f"http://{HOST}:{port}"},
+    )
+    try:
+        with DIRECT.open(request, timeout=2):
+            pass
+    except OSError:
+        return False
+    end = time.monotonic() + wait
+    while time.monotonic() < end:
+        try:
+            with DIRECT.open(f"http://{HOST}:{port}/", timeout=0.5):
+                pass
+        except OSError:
+            return True
+        time.sleep(0.2)
+    return False
+
+
+def remember_instance(path: Path, server: ManageServer, fingerprint: str = "") -> None:
     import json
     import os
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    record = {"port": server.port, "token": server.token, "pid": os.getpid()}
+    record = {
+        "port": server.port,
+        "token": server.token,
+        "pid": os.getpid(),
+        "fingerprint": fingerprint,
+    }
     # Created readable for the user only: the token allows to repair or uninstall.
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as file:
@@ -821,6 +905,32 @@ def forget_instance(path: Path, server: ManageServer) -> None:
         pass
 
 
+def end_others(app: App, out: Output) -> int:
+    """End this program's other management UIs (leftovers of older versions); the count."""
+    ended = 0
+    for pid, _ in maintenance.other_manage_processes(app.name):
+        if maintenance.stop_process(pid, timeout=5):
+            out(f"✓ Ältere Verwaltung beendet (Prozess {pid})")
+            ended += 1
+        else:
+            out(f"✗ Verwaltung (Prozess {pid}) ließ sich nicht beenden")
+    return ended
+
+
+async def _close_when_unused(server: ManageServer) -> None:
+    """End the server once no page has asked anything for a while: its window was closed."""
+    import time
+
+    while not server.stopped.is_set():
+        await asyncio.sleep(15)
+        idle = time.monotonic() - server.last_seen
+        limit = IDLE_SECONDS if server.visited else FIRST_VISIT_SECONDS
+        busy = any(not job.done for job in server.jobs.values())
+        if idle > limit and not busy:
+            log.info("Kein Fenster der Verwaltung mehr offen – beendet")
+            server.stopped.set()
+
+
 async def serve(
     app: App,
     settings: Settings,
@@ -829,14 +939,22 @@ async def serve(
     open_browser: bool = True,
     port: int = 0,
 ) -> int:
-    record = instance_file(app, settings)
-    running = await asyncio.to_thread(running_instance, record)
-    if running is not None:
-        print(f"{app.title}-Verwaltung läuft schon: {running}", flush=True)
+    from cassi import updates
+
+    record = instance_file(app)
+    fingerprint = (await asyncio.to_thread(updates.installed, app)).fingerprint
+    existing = await asyncio.to_thread(read_instance, record)
+    if existing is not None and existing.get("fingerprint") == fingerprint:
+        print(f"{app.title}-Verwaltung läuft schon: {existing['url']}", flush=True)
         if open_browser:
             with contextlib.suppress(Exception):
-                webbrowser.open(running)
+                webbrowser.open(str(existing["url"]))
         return 0
+    if existing is not None:
+        print("Eine ältere Version der Verwaltung läuft – sie wird beendet.", flush=True)
+        await asyncio.to_thread(ask_to_quit, existing)
+    # Older ones without a record (from before it was kept here) – never two at once.
+    await asyncio.to_thread(end_others, app, lambda line: print(line, flush=True))
     holder: list[ManageServer] = []
 
     def current() -> Settings:
@@ -849,15 +967,21 @@ async def serve(
     server = ManageServer(app, tabs, port, launcher=Launcher(app, settings, config))
     holder.append(server)
     await server.start()
-    remember_instance(record, server)
+    remember_instance(record, server, fingerprint)
+    closer = asyncio.create_task(_close_when_unused(server))
     print(f"{app.title}-Verwaltung: {server.url}", flush=True)
-    print("Beenden mit Strg+C oder „Schließen“ auf der Seite.", flush=True)
+    print(
+        "Beenden mit Strg+C oder „Verwaltung beenden“ auf der Seite; ohne offenes Fenster "
+        f"beendet sie sich nach etwa {IDLE_SECONDS // 60} Minuten.",
+        flush=True,
+    )
     if open_browser:
         with contextlib.suppress(Exception):
             webbrowser.open(server.url)
     try:
         await server.stopped.wait()
     finally:
+        closer.cancel()
         forget_instance(record, server)
         await server.stop()
     return 0

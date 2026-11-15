@@ -927,5 +927,10 @@ LLM-Server, semantische Suche im Gedächtnis, Windows-Tests.
   `resolve_model`, sonst Kontext-Variante neu bzw. Basismodell), wechselt dauerhaft, wiederholt
   einmal, Hinweis im Chat; die Verwaltung lädt Konfiguration und Adapter bei jeder Aktion neu
 - [ ] Dasselbe für die Nebenmodelle (Gedächtnis-Suche, Ortung, Denken), bisher nur das Hauptmodell
+- [x] Keine alten Verwaltungen mehr (Anlass: mehrere liefen tagelang, eine mit veraltetem
+  Modellnamen): Adresse an festem Ort mit Versionsstempel – gleiche Version wird geöffnet, ältere
+  ersetzt, übrig gebliebene Verwaltungen werden beim Start beendet (streng am Befehl erkannt);
+  ohne offenes Fenster endet sie nach ~3 Minuten; „Verwaltung beenden“ und „Andere Verwaltungen
+  beenden“ in der UI
 - [ ] Installer auf einem frischen Windows-Rechner ausprobieren (bisher nur macOS)
 - [ ] Programmordner beim Deinstallieren mit entfernen (nach dem Beenden, per Hilfsskript)

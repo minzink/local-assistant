@@ -16,6 +16,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -460,3 +461,81 @@ def process_gone(pid: int) -> bool:
     except (OSError, subprocess.SubprocessError):
         return False
     return not state or state.startswith("Z")
+
+
+# Management UIs ------------------------------------------------------------------------
+
+
+def _processes() -> list[tuple[int, int, str]]:
+    """(pid, parent pid, command line) of the user's processes."""
+    try:
+        if sys.platform == "win32":
+            query = (
+                "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,"
+                "CommandLine | ConvertTo-Json -Compress"
+            )
+            output = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", query],
+                capture_output=True,
+                text=True,
+                timeout=20,
+            ).stdout
+            import json
+
+            rows = json.loads(output or "[]")
+            rows = rows if isinstance(rows, list) else [rows]
+            return [
+                (int(r["ProcessId"]), int(r["ParentProcessId"] or 0), r.get("CommandLine") or "")
+                for r in rows
+            ]
+        output = subprocess.run(
+            ["ps", "-eo", "pid=,ppid=,command="], capture_output=True, text=True, timeout=10
+        ).stdout
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return []
+    found = []
+    for line in output.splitlines():
+        parts = line.split(None, 2)
+        if len(parts) == 3 and parts[0].isdigit() and parts[1].isdigit():
+            found.append((int(parts[0]), int(parts[1]), parts[2]))
+    return found
+
+
+_PYTHON = re.compile(r"^python(\d+(\.\d+)?)?(\.exe)?$", re.IGNORECASE)
+
+
+def is_manage_command(command: str, name: str) -> bool:
+    """Whether ``command`` is this program's management UI itself: ``<name> manage`` or
+    Python running ``<name>`` / ``-m <name>`` with the subcommand ``manage`` – strictly, so
+    no other program (a shell whose line merely mentions it) is ever taken for one. The uv
+    wrapper does not count: its Python child is the one to end, uv follows it."""
+    words = command.replace("\\", "/").split()
+    if not words:
+        return False
+    launchers = {name, f"{name}.exe", f"{name}.cmd"}
+    program = words[0].rsplit("/", 1)[-1]
+    if program.lower() in launchers:
+        rest = words[1:]
+    elif _PYTHON.match(program):
+        if len(words) > 2 and words[1] == "-m" and words[2] == name:
+            rest = words[3:]
+        elif len(words) > 1 and words[1].rsplit("/", 1)[-1].lower() in launchers:
+            rest = words[2:]
+        else:
+            return False
+    else:
+        return False
+    index = 0
+    while index < len(rest) and rest[index] in ("-c", "--config", "-v", "--verbose"):
+        index += 2 if rest[index] in ("-c", "--config") else 1
+    return index < len(rest) and rest[index] == "manage"
+
+
+def other_manage_processes(name: str) -> list[tuple[int, str]]:
+    """Running management UIs of this program besides this process."""
+    me, parent = os.getpid(), os.getppid()
+    return [
+        (pid, command)
+        for pid, ppid, command in _processes()
+        if pid not in (me, parent) and ppid != me and is_manage_command(command, name)
+    ]

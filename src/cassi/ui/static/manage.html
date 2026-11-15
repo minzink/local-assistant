@@ -96,7 +96,7 @@
     <button class="start" id="start" type="button">Starten</button>
     <button class="stop" id="stop" type="button" disabled>■ Beenden</button>
   </div>
-  <button id="close" type="button">Schließen</button>
+  <button id="close" type="button" title="Beendet die Verwaltung (sie schließt sich auch von selbst, wenn kein Fenster mehr offen ist)">Verwaltung beenden</button>
 </header>
 <div id="problem" role="alert"></div>
 <nav id="tabs" role="tablist"></nav>
@@ -386,7 +386,7 @@ document.getElementById("close").addEventListener("click", async () => {
   document.querySelector("nav").replaceChildren();
   document.getElementById("output").classList.remove("show");
   document.getElementById("content").replaceChildren(
-    el("p", { class: "closed" }, "Verwaltung geschlossen. Dieses Fenster kann zu."));
+    el("p", { class: "closed" }, "Verwaltung beendet. Dieses Fenster kann zu – neu öffnen mit „manage“ oder über das Menüleisten-Symbol."));
 });
 
 init().catch((error) => {

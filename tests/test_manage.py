@@ -245,7 +245,7 @@ async def test_a_second_manage_opens_the_running_one(
 
     program = App("flay", tmp_path, None)
     settings = Settings(data_dir=tmp_path / "data")
-    record = instance_file(program, settings)
+    record = instance_file(program)
     first = asyncio.create_task(serve(program, settings, [], None, open_browser=False))
     for _ in range(100):
         if record.exists():
@@ -352,3 +352,85 @@ def test_the_page_shows_the_configuration_as_it_is_now(tmp_path: Path) -> None:
     tabs = {t.id: t for t in tabs_for(program, at_start, [], None, lambda: None, broken)}
     (section,) = tabs["data"].sections()  # falls back to the configuration from the start
     assert {row.label: row.value for row in section.rows}["Datenordner"] == str(tmp_path / "old")
+
+
+async def test_an_older_version_is_replaced_not_reused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import json
+
+    from cassi import updates
+    from cassi.manage import instance_file, serve
+    from cassi.updates import Installed
+
+    program = App("flay", tmp_path, None)
+    settings = Settings(data_dir=tmp_path / "data")
+    record = instance_file(program)
+    monkeypatch.setattr(updates, "installed", lambda app: Installed("v1", "Flay v1"))
+    old = asyncio.create_task(serve(program, settings, [], None, open_browser=False))
+    for _ in range(100):
+        if record.exists():
+            break
+        await asyncio.sleep(0.02)
+    first = json.loads(record.read_text(encoding="utf-8"))
+
+    monkeypatch.setattr(updates, "installed", lambda app: Installed("v2", "Flay v2"))
+    new = asyncio.create_task(serve(program, settings, [], None, open_browser=False))
+    assert await asyncio.wait_for(old, 10) == 0  # the old one was asked to end
+    for _ in range(100):
+        if (
+            record.exists()
+            and json.loads(record.read_text(encoding="utf-8"))["port"] != first["port"]
+        ):
+            break
+        await asyncio.sleep(0.05)
+    second = json.loads(record.read_text(encoding="utf-8"))
+
+    assert second["fingerprint"] == "v2" and second["token"] != first["token"]
+    assert "ältere Version" in capsys.readouterr().out
+    from cassi.manage import ask_to_quit
+
+    assert await asyncio.to_thread(ask_to_quit, second)
+    assert await asyncio.wait_for(new, 10) == 0
+
+
+async def test_the_server_ends_when_no_window_is_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    import time
+
+    from cassi import manage
+
+    server = ManageServer(App("cassi", None, None), [], token=TOKEN)
+    server.visited = True
+    server.last_seen = time.monotonic() - manage.IDLE_SECONDS - 1
+    real_sleep = asyncio.sleep
+    monkeypatch.setattr(manage.asyncio, "sleep", lambda seconds: real_sleep(0))
+
+    await asyncio.wait_for(manage._close_when_unused(server), 2)
+
+    assert server.stopped.is_set()
+
+
+async def test_a_running_action_keeps_the_server_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    import time
+
+    from cassi import manage
+    from cassi.manage import Job
+
+    server = ManageServer(App("cassi", None, None), [], token=TOKEN)
+    server.visited = True
+    server.last_seen = time.monotonic() - manage.IDLE_SECONDS - 1
+    server.jobs["repair"] = Job()  # not done
+    real_sleep = asyncio.sleep
+    calls = 0
+
+    async def few(seconds: float) -> None:
+        nonlocal calls
+        calls += 1
+        if calls > 3:
+            server.jobs["repair"].done = True
+        await real_sleep(0)
+
+    monkeypatch.setattr(manage.asyncio, "sleep", few)
+    await asyncio.wait_for(manage._close_when_unused(server), 2)
+
+    assert calls > 3  # waited for the action before ending

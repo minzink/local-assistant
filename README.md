@@ -94,8 +94,12 @@ ist; ein anderes Programm auf dem Port bleibt unangetastet. Darunter:
 | Deinstallieren | entfernt Autostart und Befehl; auf Wunsch auch den Datenordner (Gedächtnis, Aufnahmen) und Cassis Modelle in Ollama. Den Programmordner löschst du danach selbst. |
 
 Es läuft immer nur eine Verwaltung je Programm: Ein weiterer Aufruf (Terminal, Tray-Menü,
-Installationsskript) öffnet die schon laufende im Browser, statt eine neue zu starten (Adresse in
-`<Datenordner>/manage-cassi.json`, nur für dich lesbar). Adapter wie
+Installationsskript) öffnet die schon laufende im Browser. Läuft dort noch eine ältere Version,
+wird sie beendet und die neue gestartet; ebenso übrig gebliebene Verwaltungen alter Versionen
+(Adresse in Cassis Ordner unter `run/manage-<programm>.json`, nur für dich lesbar). Ist kein
+Fenster mehr offen, beendet sich die Verwaltung nach etwa 3 Minuten von selbst (nie während
+einer Aktion); sofort beenden: **„Verwaltung beenden“** oben auf der Seite. Unter „Wartung“
+zeigt sie weitere laufende Verwaltungen an und beendet sie auf Knopfdruck. Adapter wie
 [Flay](https://github.com/minzink/flay) fügen eigene Tabs hinzu. Unter Windows
 laufen Reparieren und Updaten in einem eigenen Fenster, weil Windows Dateien eines laufenden
 Programms nicht ersetzen kann; die Verwaltung schließt sich dafür. Dasselbe ohne Browser:

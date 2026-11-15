@@ -195,3 +195,22 @@ def test_the_process_on_a_port_is_found_and_ended() -> None:
     finally:
         child.kill()
         child.wait()
+
+
+@pytest.mark.parametrize(
+    ("command", "is_manage"),
+    [
+        ("/x/flay/.venv/bin/flay manage", True),
+        ("/opt/Python -m flay manage --no-browser", True),
+        ("/opt/Python -m flay -c /x/cassi.yaml manage", True),
+        ("/x/Python.app/Contents/MacOS/Python /x/flay/.venv/bin/flay manage", True),
+        ("C:\\x\\flay\\.venv\\Scripts\\flay.exe manage", True),
+        ("uv run --quiet flay manage", False),  # the wrapper: its Python child is ended
+        ("/x/bin/cassi manage", False),  # another program's
+        ("/x/.venv/bin/flay run", False),
+        ("/bin/zsh -c cd x && flay manage", False),  # a shell merely mentioning it
+        ("vim manage.py", False),
+    ],
+)
+def test_only_the_programs_own_management_ui_counts(command: str, is_manage: bool) -> None:
+    assert maintenance.is_manage_command(command, "flay") is is_manage
