@@ -922,5 +922,10 @@ LLM-Server, semantische Suche im Gedächtnis, Windows-Tests.
   Messlauf mit dem echten Gespräch: 11 Floskeln → 0 (mit Flays Wiederholungsstrafe im Modelfile)
 - [ ] Dieselbe Wiederholungsstrafe für Cassis eigenes Modell (`repeat_last_n` geht nur über das
   Modell bzw. Ollamas Optionen, nicht über die OpenAI-Schnittstelle)
+- [x] Fehlendes Modell ersetzen statt abbrechen (Anlass: „Jetzt dazulernen“ mit Flays altem
+  Modellnamen → 404): der Client fragt bei „not found“ nach dem Ersatz (Adapter-Hook
+  `resolve_model`, sonst Kontext-Variante neu bzw. Basismodell), wechselt dauerhaft, wiederholt
+  einmal, Hinweis im Chat; die Verwaltung lädt Konfiguration und Adapter bei jeder Aktion neu
+- [ ] Dasselbe für die Nebenmodelle (Gedächtnis-Suche, Ortung, Denken), bisher nur das Hauptmodell
 - [ ] Installer auf einem frischen Windows-Rechner ausprobieren (bisher nur macOS)
 - [ ] Programmordner beim Deinstallieren mit entfernen (nach dem Beenden, per Hilfsskript)

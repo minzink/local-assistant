@@ -21,6 +21,9 @@ hooks are called by the CLI:
 - ``turn_note`` for every request while Cassi runs: a short note that goes with the user's
   message (like the time and what is open on the screen), e.g. a mood that changes over the
   day. Not into the system prompt: that stays the same, so the server reuses its work.
+- ``resolve_model`` when the server does not know the model Cassi uses (deleted, or replaced
+  by a newer one, e.g. Flay's after its Modelfile changed): the name to use instead (created
+  if need be, without download), or None if the model is none of the adapter's.
 - ``run`` in the background while Cassi runs (``Running``: the language model, finished
   conversations, waiting until Cassi is idle, replacing the system prompt) – e.g. Flay
   learning about its relationship with the user. Errors are logged, never stop Cassi.
@@ -86,6 +89,9 @@ class Adapter:
         return []
 
     def turn_note(self, settings: Settings, now: datetime) -> str | None:
+        return None
+
+    def resolve_model(self, settings: Settings, missing: str) -> str | None:
         return None
 
     async def run(self, running: Running) -> None:

@@ -192,7 +192,9 @@ PhpStorm-Terminal übergeben.
   bereitstellen, Download nur in `cassi setup`), `manage_tabs` (eigene Tabs in der
   Verwaltung), `uninstall`, `turn_note` (Notiz je Anfrage, geht wie der Bildschirmzustand
   mit der Nachricht, nicht in den System-Prompt) und `run` (Hintergrundarbeit mit `Running`:
-  Modell, Episoden, `wait_until_idle`, `set_system_prompt`). Cassi muss ohne Adapter unverändert laufen; Hooks sind eine
+  Modell, Episoden, `wait_until_idle`, `set_system_prompt`) und `resolve_model` (Ersatz für ein
+  Modell, das der Server nicht kennt; `cli.replacement_model`, genutzt vom LLM-Client über
+  `resolve_missing`). Nie ein beliebiges anderes Modell wählen. Cassi muss ohne Adapter unverändert laufen; Hooks sind eine
   öffentliche Schnittstelle – Änderungen daran mit Flay abstimmen.
 - `app.py` – welches Programm läuft (`cassi` oder ein Adapter-Befehl wie `flay`, den
   `cli.main(prog=…)` setzt), sein uv-Projekt und Cassis Quellordner mit `scripts/`.

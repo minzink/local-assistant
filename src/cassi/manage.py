@@ -110,13 +110,27 @@ def builtin_tabs(
     adapters: Sequence[Adapter],
     config: Path | None,
     quit_soon: Callable[[], None],
+    current: Callable[[], Settings] | None = None,
 ) -> list[Tab]:
+    """``current``: the configuration as it is now – the management UI runs for hours, and
+    cassi.yaml or an adapter's model may change meanwhile (else ``settings`` as at start)."""
+
+    def now() -> Settings:
+        if current is None:
+            return settings
+        try:
+            return current()
+        except Exception:  # an invalid cassi.yaml must not break the page
+            log.warning("Konfiguration nicht neu ladbar – nutze die vom Start", exc_info=True)
+            return settings
+
     from cassi import autostart
     from cassi.config import resolve_config_path
 
     options = _command_args(config)
 
     def overview() -> list[Section]:
+        settings = now()
         from cassi.llm import ollama
 
         shim = maintenance.shim_path(app)
@@ -225,6 +239,7 @@ def builtin_tabs(
         return maintenance.run_process(app.command(*options, "autostart", "off"), out)
 
     def open_data(out: Output, _: Mapping[str, Any]) -> bool:
+        settings = now()
         ok = maintenance.open_folder(settings.data_dir)
         out(f"Geöffnet: {settings.data_dir}" if ok else "Der Datenordner existiert noch nicht")
         return ok
@@ -236,6 +251,7 @@ def builtin_tabs(
         return ok
 
     def remove(out: Output, chosen: Mapping[str, Any]) -> bool:
+        settings = now()
         return maintenance.uninstall(
             app,
             settings,
@@ -246,6 +262,7 @@ def builtin_tabs(
         )
 
     def uninstall_info() -> list[Section]:
+        settings = now()
         data = settings.data_dir
         size = maintenance.human_size(maintenance.folder_size(data)) if data.exists() else "leer"
         return [
@@ -266,6 +283,7 @@ def builtin_tabs(
         ]
 
     def data_info() -> list[Section]:
+        settings = now()
         from cassi import transfer
 
         folder = settings.data_dir
@@ -301,6 +319,7 @@ def builtin_tabs(
         ]
 
     def export_data(out: Output, chosen: Mapping[str, Any]) -> bool:
+        settings = now()
         from cassi import transfer
 
         target = transfer.default_target(app)
@@ -311,6 +330,7 @@ def builtin_tabs(
         return True
 
     def import_data(out: Output, chosen: Mapping[str, Any]) -> bool:
+        settings = now()
         from cassi import transfer
 
         if Launcher(app, settings, config).running():
@@ -325,6 +345,7 @@ def builtin_tabs(
         return True
 
     def open_backups(out: Output, _: Mapping[str, Any]) -> bool:
+        settings = now()
         folder = settings.data_dir / "backups"
         ok = maintenance.open_folder(folder)
         out(f"Geöffnet: {folder}" if ok else "Noch keine Sicherungen")
@@ -728,8 +749,9 @@ def tabs_for(
     adapters: Sequence[Adapter],
     config: Path | None,
     quit_soon: Callable[[], None],
+    current: Callable[[], Settings] | None = None,
 ) -> list[Tab]:
-    tabs = builtin_tabs(app, settings, adapters, config, quit_soon)
+    tabs = builtin_tabs(app, settings, adapters, config, quit_soon, current)
     for adapter in adapters:
         try:
             extra = adapter.manage_tabs(settings)
@@ -816,7 +838,14 @@ async def serve(
                 webbrowser.open(running)
         return 0
     holder: list[ManageServer] = []
-    tabs = tabs_for(app, settings, adapters, config, lambda: holder[0].quit_soon())
+
+    def current() -> Settings:
+        from cassi.adapters import configure
+        from cassi.config import load_settings
+
+        return configure(adapters, load_settings(config))
+
+    tabs = tabs_for(app, settings, adapters, config, lambda: holder[0].quit_soon(), current)
     server = ManageServer(app, tabs, port, launcher=Launcher(app, settings, config))
     holder.append(server)
     await server.start()

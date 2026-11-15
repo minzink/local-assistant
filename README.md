@@ -128,6 +128,12 @@ uv run cassi install-command   # Befehl cassi in ~/.local/bin
 `qwen3-embedding:0.6b`, mit genug Speicher auch `qwen3-vl:4b-instruct` fürs Klicken).
 </details>
 
+**Modell nicht gefunden?** Kennt der Server das Modell nicht mehr (gelöscht, oder durch ein
+neueres ersetzt), fragt Cassi, welches es stattdessen ist – zuerst die Adapter (Flay: das Modell
+aus dem aktuellen Modelfile, bei Bedarf neu angelegt), sonst legt es seine Kontext-Variante neu
+an bzw. nimmt das Basismodell – wechselt dauerhaft darauf, wiederholt die Anfrage und sagt es im
+Chat. Ein beliebiges anderes Modell nimmt es nie; fehlt auch das Basismodell, hilft `cassi setup`.
+
 **Etwas klappt nicht oder ist langsam?** `uv run cassi doctor` prüft GPU, Ollama, Kontext,
 Grafikspeicher, Stimme, Mikrofon, Berechtigungen, PhpStorm und tmux und nennt zu jedem
 Problem die Abhilfe.
@@ -671,6 +677,7 @@ Cassi ruft zwei Hooks auf:
 | `prepare(settings, download)` | vor `run`, `eval`, `bench`, `eval-computer` (`download=False`) und in `cassi setup` (`download=True`) | Modelle bereitstellen; nur in `setup` darf heruntergeladen werden |
 | `manage_tabs(settings)` | beim Öffnen der Verwaltung (`cassi manage`) | eigene Tabs: Infos (`Section`, `Row`) und Aktionen (`Action`, mit Ausgabe auf der Seite) aus `cassi.manage` – als Daten, ohne HTML |
 | `uninstall(settings, models)` | beim Deinstallieren | entfernen, was der Adapter außerhalb seines Ordners angelegt hat (mit `models`: auch seine Modelle) |
+| `resolve_model(settings, missing)` | wenn der Server das Modell nicht (mehr) kennt | welches Modell es stattdessen ist (bei Bedarf ohne Download angelegt) – z.B. Flays neues nach einer Modelfile-Änderung; `None`, wenn es keins des Adapters ist |
 | `run(running)` | im Hintergrund, solange Cassi läuft | eigene Arbeit mit dem Sprachmodell (`running.llm`), abgeschlossenen Gesprächen (`running.episodes`), `wait_until_idle` und `set_system_prompt` – z.B. lernt Flay so über die Zusammenarbeit; Fehler werden geloggt, stoppen Cassi nie |
 | `turn_note(settings, now)` | bei jeder Anfrage, während Cassi läuft | eine kurze Notiz, die mit der Nachricht geht (wie Uhrzeit und offene Fenster), z.B. Flays Stimmung der Stunde – nicht in den System-Prompt, der bleibt für den Server-Cache gleich |
 

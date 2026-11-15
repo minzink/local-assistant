@@ -331,3 +331,24 @@ async def test_an_export_is_imported_through_the_page(
     assert state["ok"], state["lines"]
     assert (tmp_path / "new" / "memory.sqlite3").exists()
     assert not server.uploads  # the uploaded file was used up
+
+
+def test_the_page_shows_the_configuration_as_it_is_now(tmp_path: Path) -> None:
+    program = App("cassi", tmp_path, None)
+    at_start = Settings(data_dir=tmp_path / "old")
+    changed = {"settings": Settings(data_dir=tmp_path / "new")}
+
+    tabs = {
+        tab.id: tab
+        for tab in tabs_for(program, at_start, [], None, lambda: None, lambda: changed["settings"])
+    }
+    (section,) = tabs["data"].sections()
+
+    assert {row.label: row.value for row in section.rows}["Datenordner"] == str(tmp_path / "new")
+
+    def broken() -> Settings:
+        raise ValueError("cassi.yaml kaputt")
+
+    tabs = {t.id: t for t in tabs_for(program, at_start, [], None, lambda: None, broken)}
+    (section,) = tabs["data"].sections()  # falls back to the configuration from the start
+    assert {row.label: row.value for row in section.rows}["Datenordner"] == str(tmp_path / "old")

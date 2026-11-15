@@ -6,14 +6,16 @@ servers only changes ``base_url`` and ``model``.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
+import logging
 import time
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, cast
 
-from openai import AsyncOpenAI, DefaultAsyncHttpxClient
+from openai import AsyncOpenAI, DefaultAsyncHttpxClient, NotFoundError
 from openai.types.chat import ChatCompletionMessageParam
 
 from cassi import perf
@@ -22,6 +24,8 @@ from cassi.llm import budget
 from cassi.llm.base import LLMEvent, ModelCapabilities, TextDelta, ThinkingOptions, ToolSpec
 from cassi.llm.gate import synthesis
 from cassi.net import trust_env
+
+log = logging.getLogger(__name__)
 
 # Local servers ignore the key, but the client requires one.
 PLACEHOLDER_API_KEY = "not-needed"
@@ -118,6 +122,28 @@ class OpenAICompatibleChat:
         self._max_tokens = max_tokens
         self._extra_body = extra_body or None
         self._thinking = thinking
+        # Which model it is instead, when the server does not know ours (deleted, or replaced
+        # by a new one – Flay's after its Modelfile changed); None: no idea.
+        self.resolve_missing: Callable[[str], str | None] | None = None
+
+    @property
+    def model(self) -> str:
+        return self._model
+
+    async def _create(self, model: str, **request: Any) -> Any:
+        """``chat.completions.create``; if the server does not know the main model, ask
+        which one it is now, switch to it for good and try once more."""
+        try:
+            return await self._client.chat.completions.create(model=model, **request)
+        except NotFoundError as exc:
+            if model != self._model or self.resolve_missing is None:
+                raise
+            replacement = await asyncio.to_thread(self.resolve_missing, model)
+            if not replacement or replacement == model:
+                raise
+            log.warning("Modell %s fehlt (%s) – nutze %s", model, exc.status_code, replacement)
+            self._model = replacement
+            return await self._client.chat.completions.create(model=replacement, **request)
 
     @property
     def capabilities(self) -> ModelCapabilities:
@@ -147,8 +173,8 @@ class OpenAICompatibleChat:
         extra: dict[str, Any] = {"tools": api_tools} if tools else {}
         await synthesis.wait()  # see cassi.llm.gate
         with perf.request("warm"):
-            await self._client.chat.completions.create(
-                model=self._model,
+            await self._create(
+                self._model,
                 messages=self._messages(messages, api_tools, 1),
                 max_tokens=1,
                 extra_body=self._extra_body,
@@ -163,8 +189,8 @@ class OpenAICompatibleChat:
         _waited(start)
         sent = time.perf_counter()
         with perf.request(perf.purpose()):
-            response = await self._client.chat.completions.create(
-                model=self._model,
+            response = await self._create(
+                self._model,
                 messages=self._messages(messages, max_tokens=self._max_tokens),
                 # Deterministic: the same request should always be routed the same way.
                 temperature=0,
@@ -210,8 +236,8 @@ class OpenAICompatibleChat:
         sent = time.perf_counter()
         # Counted as running while it streams (cassi.perf: the cache guard waits).
         with perf.request(perf.purpose()):
-            response = await self._client.chat.completions.create(
-                model=model,
+            response = await self._create(
+                model,
                 messages=self._messages(messages, api_tools, max_tokens),
                 temperature=self._temperature,
                 max_tokens=max_tokens,

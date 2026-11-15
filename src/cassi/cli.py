@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -1080,6 +1081,8 @@ async def _run(
     if tray is not None:
         tray.attach(assistant)
     notices = _watch_for_updates(settings, assistant, background)
+    if hasattr(llm, "resolve_missing"):
+        llm.resolve_missing = _model_finder(settings, adapters, assistant)
     background += _run_adapters(settings, adapters, assistant, llm, memory)
     if switched_from:
         notices.append(
@@ -1114,6 +1117,56 @@ async def _run(
             memory_ready.cancel()
         await memory.close()
     return 0
+
+
+def replacement_model(settings: Settings, adapters: Sequence[Adapter], missing: str) -> str | None:
+    """The model to use when the server does not know ``missing``: an adapter's answer
+    (Flay: the model its Modelfile makes now), else – with Ollama – Cassi's context variant
+    made again or its base model. Never just any other model."""
+    from cassi.llm import ollama
+
+    for adapter in adapters:
+        try:
+            found = adapter.resolve_model(settings, missing)
+        except Exception:
+            log.warning("Adapter %s: Modell nicht ermittelt", adapter.name, exc_info=True)
+            continue
+        if found and found != missing:
+            return found
+    url = settings.llm.base_url
+    if not ollama.is_ollama(url):
+        return None
+    base = re.sub(r"-ctx\d+k$", "", missing)
+    if base not in ollama.models(url):
+        return None
+    found = ollama.main_model(url, base)  # makes the context variant again if it is needed
+    return found if found != missing else None
+
+
+def _model_finder(
+    settings: Settings, adapters: Sequence[Adapter], assistant: Assistant
+) -> Callable[[str], str | None]:
+    """The client's ``resolve_missing``: runs in a worker thread, says in the chat what
+    changed (through the event loop – the event bus is not thread-safe)."""
+    from cassi.app import current
+    from cassi.core.events import Notice
+
+    loop = asyncio.get_running_loop()
+
+    def find(missing: str) -> str | None:
+        found = replacement_model(settings, adapters, missing)
+        if found:
+            text = f"Modell {missing} fehlt – {assistant.name} nutzt jetzt {found}."
+            loop.call_soon_threadsafe(assistant.events.publish, Notice(text))
+        else:
+            log.error(
+                "Modell %s fehlt und kein Ersatz bekannt – '%s setup' ausführen",
+                missing,
+                current().name,
+            )
+        return found
+
+    return find
 
 
 def _run_adapters(
