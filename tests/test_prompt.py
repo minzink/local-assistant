@@ -78,3 +78,25 @@ def test_interruptions_are_marked_in_the_next_user_message() -> None:
     # The reply that never started is left out; the next message says so.
     assert messages[3].text.startswith("(I interrupted you before you answered.) Nein, ich")
     assert len(messages) == 4
+
+
+def test_older_replies_reach_the_model_with_their_first_sentence_only() -> None:
+    from cassi.prompt import condense_older
+
+    def reply(text: str) -> Message:
+        return Message.from_text(Role.ASSISTANT, text)
+
+    history = [
+        Message.from_text(Role.USER, "Eins"),
+        reply("Erste Antwort. Sag Bescheid, wenn du was brauchst."),
+        Message.from_text(Role.USER, "Zwei"),
+        reply("Zweite Antwort. Ich bin hier."),
+        Message.from_text(Role.USER, "Drei"),
+        reply("Dritte Antwort. Was ist dran?"),
+    ]
+
+    texts = [m.text for m in condense_older(history, verbatim=2)]
+
+    assert texts[1] == "Erste Antwort."  # its stock ending is no template any more
+    assert texts[3:] == ["Zweite Antwort. Ich bin hier.", "Drei", "Dritte Antwort. Was ist dran?"]
+    assert [m.text for m in condense_older(history, None)] == [m.text for m in history]

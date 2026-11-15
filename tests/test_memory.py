@@ -318,3 +318,13 @@ def test_short_term_memory_starts_over_too() -> None:
     memory.new_session()
 
     assert memory.context().recent == ()
+
+
+def test_finished_conversations_are_listed_since_a_point_in_time(store: MemoryStore) -> None:
+    clock = Clock()
+    memory = make_memory(store, ScriptedLLM(), clock)
+    store.set_episode(1, "Conversation on 14.11.: renamed Flay.", 100.0)
+    store.set_episode(2, "Conversation on 15.11.: built export.", 200.0)
+
+    assert memory.episodes(150.0) == [(200.0, "Conversation on 15.11.: built export.")]
+    assert len(memory.episodes(0.0)) == 2

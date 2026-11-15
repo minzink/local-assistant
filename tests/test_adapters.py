@@ -108,3 +108,89 @@ def test_llm_commands_prepare_without_download(
     config.write_text(f"data_dir: {tmp_path}\n")
     assert cli.main(["--config", str(config), "bench"]) == 0
     assert adapter.prepared == [False] and used == ["personal"]
+
+
+async def test_adapter_notes_go_with_every_request() -> None:
+    from datetime import datetime
+
+    from cassi.cli import _turn_state
+
+    class Moody(Adapter):
+        name = "moody"
+
+        def turn_note(self, settings: Settings, now: datetime) -> str | None:
+            return "Your mood now: calm."
+
+    class Broken(Adapter):
+        name = "broken"
+
+        def turn_note(self, settings: Settings, now: datetime) -> str | None:
+            raise RuntimeError("kaputt")
+
+    class Computer:
+        async def describe(self) -> str | None:
+            return "Front window: PhpStorm."
+
+    state = _turn_state(Settings(), Computer(), [Moody(), Broken(), Adapter()])
+
+    assert state is not None
+    assert await state() == "Front window: PhpStorm. Your mood now: calm."
+    assert _turn_state(Settings(), None, [Adapter()]) is None  # nothing to add
+
+
+async def test_adapters_run_in_the_background_and_errors_never_stop_cassi() -> None:
+    import asyncio
+
+    from cassi.adapters import Running
+    from cassi.cli import _run_adapters
+    from cassi.memory.base import ShortTermMemory
+
+    seen: list[Running] = []
+
+    class Learning(Adapter):
+        name = "learning"
+
+        async def run(self, running: Running) -> None:
+            seen.append(running)
+
+    class Failing(Adapter):
+        name = "failing"
+
+        async def run(self, running: Running) -> None:
+            raise RuntimeError("kaputt")
+
+    prompts: list[str] = []
+
+    class FakeAssistant:
+        async def wait_until_idle(self) -> None:
+            return None
+
+        def set_system_prompt(self, text: str) -> None:
+            prompts.append(text)
+
+    tasks = _run_adapters(
+        Settings(),
+        [Learning(), Failing(), Adapter()],
+        FakeAssistant(),
+        object(),
+        ShortTermMemory(),  # type: ignore[arg-type]
+    )
+    await asyncio.gather(*tasks)
+
+    assert len(tasks) == 2  # the plain Adapter has nothing to run
+    assert seen[0].episodes(0.0) == []  # no persistent memory: no conversations
+    seen[0].set_system_prompt("Neu.")
+    assert prompts == ["Neu."]
+
+
+def test_the_system_prompt_can_change_while_running() -> None:
+    from cassi.assistant import Assistant
+    from tests.test_assistant import FakeLLM, FakeOutput, FakeSource, FakeSTT, FakeTTS
+
+    assistant = Assistant(
+        Settings(), FakeSource(), FakeSTT("x"), FakeLLM("A."), FakeTTS(), FakeOutput()
+    )
+
+    assistant.set_system_prompt("You are Flay. We work on Cassi together.")
+
+    assert assistant._persona.system_prompt.startswith("You are Flay. We work on Cassi")

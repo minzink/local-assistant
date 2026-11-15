@@ -16,6 +16,7 @@ from cassi.core.messages import Message, ToolCall
 from cassi.llm.base import ChatModel
 from cassi.memory import maintenance
 from cassi.memory.base import (
+    EPISODE,
     EXAMPLE,
     FACT,
     IMPORTANCE_NAMES,
@@ -88,6 +89,14 @@ class PersistentMemory:
 
     def new_session(self) -> None:
         self._store.start_session()
+
+    def episodes(self, since: float) -> list[tuple[float, str]]:
+        """Summaries of finished conversations written after ``since``, oldest first."""
+        return [
+            (fact.created_at, fact.text)
+            for fact in self._store.facts(kind=EPISODE)
+            if fact.created_at > since
+        ]
 
     def switch_to(self, identity: str) -> str | None:
         """Who talks now (name and model). If someone else talked last – Flay, then Cassi, or

@@ -3,6 +3,7 @@ import contextlib
 from collections.abc import AsyncIterator, Sequence
 
 import numpy as np
+import pytest
 
 from cassi.assistant import Assistant
 from cassi.audio.base import AudioBuffer
@@ -805,3 +806,26 @@ async def test_slow_memory_search_does_not_hold_up_the_answer() -> None:
     await asyncio.wait_for(assistant.handle_text("Hallo"), timeout=2)
 
     assert "zu spät" not in llm.prompts[0][-1].text
+
+
+async def test_a_repeated_sentence_is_noticed_but_still_said(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    import logging
+
+    caplog.set_level(logging.INFO, logger="cassi")
+    reply = (
+        "Alles klar – ich bin hier. Es ist spät, aber ich bleibe wach, solange du brauchst. "
+        "Was ist dran?"
+    )
+    tts = FakeTTS()
+    assistant = make_assistant(FakeSTT("Sag mal was."), FakeLLM(reply), tts, FakeOutput())
+
+    await assistant.handle(ONE_SECOND)
+    tts.spoken.clear()
+    await assistant.handle(ONE_SECOND)
+
+    # Nothing the assistant says is cut; the repetition is only logged, to be measured.
+    assert any("Es ist spät" in text for text, _ in tts.spoken)
+    assert assistant.history[-1].text == reply
+    assert "Wiederholung erkannt" in caplog.text

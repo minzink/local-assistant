@@ -18,6 +18,12 @@ hooks are called by the CLI:
   described as data (``cassi.manage.Tab``) – no HTML.
 - ``uninstall`` when the user uninstalls: remove what the adapter created outside its folder
   (``models``: its models too). Returns lines to show.
+- ``turn_note`` for every request while Cassi runs: a short note that goes with the user's
+  message (like the time and what is open on the screen), e.g. a mood that changes over the
+  day. Not into the system prompt: that stays the same, so the server reuses its work.
+- ``run`` in the background while Cassi runs (``Running``: the language model, finished
+  conversations, waiting until Cassi is idle, replacing the system prompt) – e.g. Flay
+  learning about its relationship with the user. Errors are logged, never stop Cassi.
 
 ``adapters`` in the config chooses which installed adapters are used (default: all).
 """
@@ -25,12 +31,16 @@ hooks are called by the CLI:
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass
 from importlib.metadata import entry_points
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from cassi.config import Settings
+    from cassi.llm.base import ChatModel
     from cassi.manage import Tab
 
 log = logging.getLogger(__name__)
@@ -40,6 +50,22 @@ GROUP = "cassi.adapters"
 
 class AdapterError(RuntimeError):
     """An adapter cannot do its part; the message says what to do (German, for the user)."""
+
+
+@dataclass(frozen=True)
+class Running:
+    """What an adapter's ``run`` may use while Cassi runs."""
+
+    settings: Settings
+    # The conversation model; one request at a time on local servers – use it when idle.
+    llm: ChatModel
+    # Summaries of finished conversations after a point in time: (written at, text), oldest
+    # first. Empty without persistent memory.
+    episodes: Callable[[float], list[tuple[float, str]]]
+    # Until no answer is being given or spoken.
+    wait_until_idle: Callable[[], Awaitable[None]]
+    # Replace the system prompt from the next request on (e.g. after learning something).
+    set_system_prompt: Callable[[str], None]
 
 
 class Adapter:
@@ -58,6 +84,12 @@ class Adapter:
 
     def uninstall(self, settings: Settings, models: bool) -> list[str]:
         return []
+
+    def turn_note(self, settings: Settings, now: datetime) -> str | None:
+        return None
+
+    async def run(self, running: Running) -> None:
+        return None
 
 
 def installed() -> dict[str, Callable[[], Callable[[], Adapter]]]:

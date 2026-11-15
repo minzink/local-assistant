@@ -100,6 +100,7 @@ from cassi.llm.gate import synthesis
 from cassi.memory.base import Fact, Memory, ShortTermMemory
 from cassi.planning import Planner
 from cassi.prompt import LANGUAGE_NAMES, build_messages, format_examples
+from cassi.repetition import RepeatGuard
 from cassi.routines import Routines
 from cassi.stt.base import SpeechToText, Transcript
 from cassi.stt.vocabulary import Vocabulary, is_noise
@@ -257,6 +258,8 @@ class Assistant:
         # An action waiting for the user's yes ("Meinst du …?"), since when, and the
         # request it came from.
         self._pending: tuple[ToolCall, float, str] | None = None
+        # The replies before this turn, read once per turn in _answer (cassi.repetition).
+        self._earlier_replies: list[str] = []
         # Until when an utterance without "Hey Cassi" counts (after a bare "Hey Cassi").
         self._wake_follow_up = 0.0
         # This turn's request, and actions of the last turn that become examples unless
@@ -344,10 +347,17 @@ class Assistant:
             restart()
         self.events.publish(WakeWordChanged(enabled))
 
+    def set_system_prompt(self, text: str) -> None:
+        """From the next request on (an adapter learned something, see Adapter.run)."""
+        persona = self._settings.persona.model_copy(update={"system_prompt": text})
+        self._settings = self._settings.model_copy(update={"persona": persona})
+        log.info("System-Prompt aktualisiert (%d Zeichen)", len(text))
+
     def new_session(self, reason: str = "") -> None:
         """Start a new conversation: what was said leaves the context (learned facts stay),
         and a question that waited for "yes" is dropped – a "yes" now must not run it."""
         self._memory.new_session()
+        self._earlier_replies = []
         self._pending = None
         self._planner.pending = None
         self._wake_follow_up = 0.0
@@ -548,6 +558,7 @@ class Assistant:
             language,
             self._now(),
             tools=bool(self._tools),
+            verbatim_replies=self._settings.memory.verbatim_replies,
         )
         try:
             await warm(messages, self._conversation_specs)
@@ -737,8 +748,11 @@ class Assistant:
         self._actions = []
         self._settle_examples(text)
         self._request = text
-        earlier = [m.text for m in self.history if m.role is Role.USER][-2:]
+        history = self.history
+        earlier = [m.text for m in history if m.role is Role.USER][-2:]
         self._heard = " ".join([*earlier, text])
+        # For the repetition guard of the reply (one read of the memory per turn).
+        self._earlier_replies = [m.text for m in history if m.role is Role.ASSISTANT]
         # Classifying an unusual computer request costs the model ~0.4 s: it runs while the
         # computer's state is read (PhpStorm, Claude sessions).
         classifying = self._turn_task(self._classified(text)) if self._may_classify(text) else None
@@ -962,6 +976,10 @@ class Assistant:
         voiced = False
 
         splitter = SentenceSplitter()
+        # Small models copy their own earlier replies word for word. Only noticed and logged
+        # (cassi.repetition) – nothing Cassi says is cut; the prompt and the history keep
+        # the model from it.
+        guard = RepeatGuard(self._earlier_replies)
 
         def emit(text: str, check_claims: bool = False, new_round: bool = False) -> None:
             if new_round and parts and not parts[-1][-1:].isspace():
@@ -973,6 +991,8 @@ class Assistant:
 
         def speak(complete: Iterable[str], check_claims: bool = False) -> None:
             for sentence in complete:
+                if guard.repeated(sentence):
+                    log.info("Wiederholung erkannt (nur gemeldet): %s", sentence)
                 tool = claimed_tool(sentence) if check_claims else None
                 if tool is not None and tool in self._tools and tool not in (exclude or ()):
                     raise UnbackedClaimError(tool)
@@ -1092,6 +1112,7 @@ class Assistant:
                 language,
                 self._now(),
                 tools=bool(self._tools),
+                verbatim_replies=self._settings.memory.verbatim_replies,
                 state=state,
                 memories=memories,
                 examples=examples,
@@ -1824,6 +1845,7 @@ class Assistant:
             language,
             self._now(),
             tools=bool(self._tools),
+            verbatim_replies=self._settings.memory.verbatim_replies,
             state=state,
         )
         brief = await self._claude_context(language) if name == "send_to_claude" else ""

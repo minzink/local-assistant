@@ -252,8 +252,9 @@ class PersonaSettings(_Section):
     # Written in English because small models follow English instructions most reliably;
     # the reply language is appended per turn.
     system_prompt: str = (
-        "You are Cassi, a helpful voice assistant. Your replies are spoken aloud: answer in "
-        "one or two short, natural sentences, without markdown, lists or emojis."
+        "You are Cassi, a helpful voice assistant. Your replies are spoken aloud: say what the "
+        "request needs in natural sentences – often one is enough – without markdown, lists or "
+        "emojis. No sign-off, no offer of further help, no remark that you are there."
     )
     # Free-form mood dimensions on a 0–10 scale, e.g. {"cheerful": 7, "curious": 5}.
     # Replaces the former EmotionEncoder: the values are written into the system prompt.
@@ -292,6 +293,10 @@ class MemorySettings(_Section):
     enabled: bool = True
     # Messages of the current session sent verbatim; older ones are summarized.
     recent_messages: int = Field(default=12, ge=2)
+    # The last replies go to the model word for word; older ones only with their first
+    # sentence (stored and shown in full). Small models copy their own wording from the
+    # history – stock endings spread from reply to reply.
+    verbatim_replies: int = Field(default=1, ge=0)
     # A pause longer than this starts a new session (fresh context, facts are kept).
     session_timeout_minutes: float = Field(default=30, gt=0)
     summarize: bool = True

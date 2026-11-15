@@ -915,5 +915,12 @@ LLM-Server, semantische Suche im Gedächtnis, Windows-Tests.
   Zip mit Manifest, Gedächtnis per SQLite-Backup, Aufnahmen auf Wunsch, Sicherung vor dem
   Import, nur Exporte desselben Assistenten); `.gitignore` sperrt Datenbanken, eigene Modelle
   und Exporte; Downloads in `downloads_dir` (Adapter teilen sie)
+- [x] Keine Endlos-Floskeln (Anlass: Flay hängte „Es ist spät, aber ich bleibe wach …“ an jede
+  Antwort), an der Ursache statt durch Kürzen: Prompt ohne „1–3 Sätze“-Füllzwang, ohne
+  Abschlussangebote, Uhrzeit nur auf Nachfrage; ältere Antworten nur mit dem ersten Satz im
+  Kontext (`memory.verbatim_replies: 1`); Wiederholungen werden nur gemeldet (`repetition.py`).
+  Messlauf mit dem echten Gespräch: 11 Floskeln → 0 (mit Flays Wiederholungsstrafe im Modelfile)
+- [ ] Dieselbe Wiederholungsstrafe für Cassis eigenes Modell (`repeat_last_n` geht nur über das
+  Modell bzw. Ollamas Optionen, nicht über die OpenAI-Schnittstelle)
 - [ ] Installer auf einem frischen Windows-Rechner ausprobieren (bisher nur macOS)
 - [ ] Programmordner beim Deinstallieren mit entfernen (nach dem Beenden, per Hilfsskript)

@@ -190,7 +190,9 @@ PhpStorm-Terminal übergeben.
 - `adapters.py` – Hooks für Pakete, die Cassi einbinden und personalisieren (Entry-Point-Gruppe
   `cassi.adapters`, z. B. Flay): `configure` (Einstellungen, ohne I/O) und `prepare` (Modelle
   bereitstellen, Download nur in `cassi setup`), `manage_tabs` (eigene Tabs in der
-  Verwaltung) und `uninstall`. Cassi muss ohne Adapter unverändert laufen; Hooks sind eine
+  Verwaltung), `uninstall`, `turn_note` (Notiz je Anfrage, geht wie der Bildschirmzustand
+  mit der Nachricht, nicht in den System-Prompt) und `run` (Hintergrundarbeit mit `Running`:
+  Modell, Episoden, `wait_until_idle`, `set_system_prompt`). Cassi muss ohne Adapter unverändert laufen; Hooks sind eine
   öffentliche Schnittstelle – Änderungen daran mit Flay abstimmen.
 - `app.py` – welches Programm läuft (`cassi` oder ein Adapter-Befehl wie `flay`, den
   `cli.main(prog=…)` setzt), sein uv-Projekt und Cassis Quellordner mit `scripts/`.
@@ -212,5 +214,9 @@ PhpStorm-Terminal übergeben.
   Datenordner gespeichert wird, ist automatisch dabei; Downloads und Laufzeit-Dateien stehen in
   `SKIPPED_FOLDERS`/`_skipped`, große Aufnahmen in `RECORDINGS`. Neue Download-Ordner dort
   eintragen und über `settings.downloads` statt `settings.data_dir` ansprechen.
+- `repetition.py` – meldet Sätze, die schon in den letzten Antworten standen (nur Log, nichts
+  wird gekürzt). Gegen Wiederholungen wirkt die Ursache: `prompt.VARIETY`, kein Satzzahl-Zwang im
+  Persona-Prompt, `condense_older` (ältere Antworten nur mit dem ersten Satz im Kontext).
+  Kleine Modelle kopieren eigene Floskeln und Beispielsätze in Prompts gern wörtlich.
 - `offline.py` – erzwingt Offline-Betrieb (keine Hugging-Face-Downloads zur Laufzeit).
 - `autostart.py` – LaunchAgent (macOS) bzw. Autostart-Ordner (Windows).

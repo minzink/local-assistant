@@ -10,7 +10,8 @@ import subprocess
 import sys
 import time
 import webbrowser
-from collections.abc import Sequence
+from collections.abc import Callable, Coroutine, Sequence
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -763,10 +764,10 @@ LLM_STARTUP_WAIT = 45
 _SWITCH: list[str] = []
 
 
-def _start(settings: Settings) -> int:
+def _start(settings: Settings, adapters: Sequence[Adapter] = ()) -> int:
     """Run Cassi, with a menu bar / tray icon if enabled; then hand over to a newer version
     if one took over while it ran."""
-    code = _start_once(settings)
+    code = _start_once(settings, adapters)
     if _SWITCH:
         from cassi import app, updates
 
@@ -778,16 +779,16 @@ def _start(settings: Settings) -> int:
     return code
 
 
-def _without_tray(settings: Settings) -> int:
+def _without_tray(settings: Settings, adapters: Sequence[Adapter]) -> int:
     try:
-        return asyncio.run(_run(settings))
+        return asyncio.run(_run(settings, None, adapters))
     except asyncio.CancelledError:  # ended to switch to a newer version
         return 0
 
 
-def _start_once(settings: Settings) -> int:
+def _start_once(settings: Settings, adapters: Sequence[Adapter]) -> int:
     if not settings.ui.tray:
-        return _without_tray(settings)
+        return _without_tray(settings, adapters)
     try:
         from cassi.ui.tray import Tray
 
@@ -798,11 +799,13 @@ def _start_once(settings: Settings) -> int:
         )
     except Exception as exc:  # e.g. no graphical session
         log.warning("Menüleisten-Symbol nicht verfügbar (%s) – Cassi läuft ohne.", exc)
-        return _without_tray(settings)
-    return tray.run(lambda tray: _run(settings, tray))
+        return _without_tray(settings, adapters)
+    return tray.run(lambda tray: _run(settings, tray, adapters))
 
 
-async def _run(settings: Settings, tray: Tray | None = None) -> int:
+async def _run(
+    settings: Settings, tray: Tray | None = None, adapters: Sequence[Adapter] = ()
+) -> int:
     # Heavy imports (audio, ML) only when the assistant actually starts.
     from cassi import net
     from cassi.assistant import Assistant
@@ -1039,7 +1042,7 @@ async def _run(settings: Settings, tray: Tray | None = None) -> int:
         memory=memory,
         tools=tools,
         vocabulary=vocabulary,
-        state=state.describe if (state := create_state(settings)) else None,
+        state=_turn_state(settings, create_state(settings), adapters),
         projects=project_names,
         wake_word_available=wake is not None,
         preferences=preferences,
@@ -1077,6 +1080,7 @@ async def _run(settings: Settings, tray: Tray | None = None) -> int:
     if tray is not None:
         tray.attach(assistant)
     notices = _watch_for_updates(settings, assistant, background)
+    background += _run_adapters(settings, adapters, assistant, llm, memory)
     if switched_from:
         notices.append(
             f"Neues Gespräch: zuletzt sprach {switched_from}, jetzt {identity(settings)}. "
@@ -1110,6 +1114,62 @@ async def _run(settings: Settings, tray: Tray | None = None) -> int:
             memory_ready.cancel()
         await memory.close()
     return 0
+
+
+def _run_adapters(
+    settings: Settings,
+    adapters: Sequence[Adapter],
+    assistant: Assistant,
+    llm: ChatModel,
+    memory: Memory,
+) -> list[asyncio.Task[Any]]:
+    """Each adapter's ``run`` as a background task while Cassi runs."""
+    from cassi.adapters import Running
+    from cassi.memory.persistent import PersistentMemory
+
+    def episodes(since: float) -> list[tuple[float, str]]:
+        return memory.episodes(since) if isinstance(memory, PersistentMemory) else []
+
+    running = Running(
+        settings, llm, episodes, assistant.wait_until_idle, assistant.set_system_prompt
+    )
+
+    async def guarded(adapter: Adapter) -> None:
+        try:
+            await adapter.run(running)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("Adapter %s: Hintergrundarbeit abgebrochen", adapter.name)
+
+    return [
+        asyncio.create_task(guarded(adapter))
+        for adapter in adapters
+        if type(adapter).run is not Adapter.run
+    ]
+
+
+def _turn_state(
+    settings: Settings, computer: Any, adapters: Sequence[Adapter]
+) -> Callable[[], Coroutine[Any, Any, str | None]] | None:
+    """What goes with each request besides the time: what is open on the computer, and the
+    adapters' notes (``Adapter.turn_note``, e.g. Flay's mood of the hour)."""
+    noting = [a for a in adapters if type(a).turn_note is not Adapter.turn_note]
+    if computer is None and not noting:
+        return None
+
+    async def describe() -> str | None:
+        parts = [await computer.describe()] if computer is not None else []
+        now = datetime.now().astimezone()
+        for adapter in noting:
+            try:
+                parts.append(adapter.turn_note(settings, now))
+            except Exception:  # a broken adapter must not stop the answer
+                log.debug("Adapter %s: turn_note", adapter.name, exc_info=True)
+        text = " ".join(part for part in parts if part)
+        return text or None
+
+    return describe
 
 
 def identity(settings: Settings) -> str:
@@ -1500,7 +1560,7 @@ def main(argv: Sequence[str] | None = None, prog: str = "cassi") -> int:
             ui_updates["tray"] = False
         if ui_updates:
             settings = settings.model_copy(update={"ui": settings.ui.model_copy(update=ui_updates)})
-        return _start(settings)
+        return _start(settings, adapters)
     except KeyboardInterrupt:
         return 0
     except OpenAIError as exc:

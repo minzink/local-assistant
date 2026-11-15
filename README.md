@@ -671,6 +671,8 @@ Cassi ruft zwei Hooks auf:
 | `prepare(settings, download)` | vor `run`, `eval`, `bench`, `eval-computer` (`download=False`) und in `cassi setup` (`download=True`) | Modelle bereitstellen; nur in `setup` darf heruntergeladen werden |
 | `manage_tabs(settings)` | beim Öffnen der Verwaltung (`cassi manage`) | eigene Tabs: Infos (`Section`, `Row`) und Aktionen (`Action`, mit Ausgabe auf der Seite) aus `cassi.manage` – als Daten, ohne HTML |
 | `uninstall(settings, models)` | beim Deinstallieren | entfernen, was der Adapter außerhalb seines Ordners angelegt hat (mit `models`: auch seine Modelle) |
+| `run(running)` | im Hintergrund, solange Cassi läuft | eigene Arbeit mit dem Sprachmodell (`running.llm`), abgeschlossenen Gesprächen (`running.episodes`), `wait_until_idle` und `set_system_prompt` – z.B. lernt Flay so über die Zusammenarbeit; Fehler werden geloggt, stoppen Cassi nie |
+| `turn_note(settings, now)` | bei jeder Anfrage, während Cassi läuft | eine kurze Notiz, die mit der Nachricht geht (wie Uhrzeit und offene Fenster), z.B. Flays Stimmung der Stunde – nicht in den System-Prompt, der bleibt für den Server-Cache gleich |
 
 In `configure` ändert ein Adapter alles, was auch `cassi.yaml` einstellen kann – etwa
 `llm.model`, `persona` (der Name erscheint im Chat, im Tray-Menü und im Prompt) oder ein eigenes

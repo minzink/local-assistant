@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Sequence
 from dataclasses import replace
 from datetime import datetime
@@ -23,6 +24,16 @@ TOOL_INSTRUCTIONS = (
 )
 
 
+# Small models copy their own earlier replies ("Es ist spät, aber ich bleibe wach …" at the
+# end of every answer). The time goes with every request (see build_messages) – mentioned
+# unasked, it became such a phrase.
+VARIETY = (
+    "Vary your wording from reply to reply: never reuse a sentence or stock phrase from your "
+    "earlier replies, and do not end replies the same way. Mention the date or time only when "
+    "the request is about it."
+)
+
+
 def system_prompt(
     persona: PersonaSettings,
     memory: MemoryContext,
@@ -30,7 +41,7 @@ def system_prompt(
     now: datetime,
     tools: bool = False,
 ) -> str:
-    sections = [persona.system_prompt]
+    sections = [persona.system_prompt, VARIETY]
     if tools:
         sections.append(TOOL_INSTRUCTIONS)
     if persona.mood:
@@ -58,6 +69,7 @@ def build_messages(
     state: str | None = None,
     memories: Sequence[Fact] = (),
     examples: Sequence[Fact] = (),
+    verbatim_replies: int | None = None,
 ) -> list[Message]:
     # Small models follow the language of the conversation history over the system prompt
     # (llama3.2: 7/10 after a language switch). A hint in the new message itself fixes that
@@ -80,8 +92,31 @@ def build_messages(
     hinted = replace(user_message, parts=(*user_message.parts, TextPart(hint)))
     return [
         Message.from_text(Role.SYSTEM, system_prompt(persona, memory, language, now, tools)),
-        *mark_interruptions([*memory.recent, hinted]),
+        *mark_interruptions([*condense_older(memory.recent, verbatim_replies), hinted]),
     ]
+
+
+def first_sentence(text: str) -> str:
+    """The reply's first sentence – usually what it said; the rest is often a stock ending."""
+    match = re.search(r"[.!?…](?=\s)", text.strip())
+    return text.strip()[: match.end()] if match else text.strip()
+
+
+def condense_older(messages: Sequence[Message], verbatim: int | None) -> list[Message]:
+    """Replies older than the last ``verbatim`` ones with their first sentence only (None:
+    all word for word). Only what the model sees: the history keeps every reply in full."""
+    if verbatim is None:
+        return list(messages)
+    replies = [i for i, m in enumerate(messages) if m.role is Role.ASSISTANT]
+    older = set(replies[: max(len(replies) - verbatim, 0)])
+    condensed = []
+    for index, message in enumerate(messages):
+        if index in older and not message.interrupted and message.text:
+            short = first_sentence(message.text)
+            if short != message.text.strip():
+                message = replace(message, parts=(TextPart(short),))
+        condensed.append(message)
+    return condensed
 
 
 INTERRUPTED_ANSWER = "(I interrupted you there.) "
