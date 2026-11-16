@@ -25,7 +25,7 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from cassi.core.language import Language
 from cassi.llm.base import ToolSpec
@@ -520,10 +520,12 @@ class SendToClaudeTool:
         tmux = shutil.which("tmux")
         if not self._show_window or tmux is None or sys.platform == "win32":
             return False
-        from cassi.tools.ssh import launch, window_command
+        from cassi.tools.ssh import Terminal, launch, window_command
 
+        # Not type-checked on Windows (returned above), so no "type: ignore" here.
+        terminal = cast(Terminal, self._terminal)
         try:
-            await launch(window_command([tmux, "attach", "-t", session], session, self._terminal))  # type: ignore[arg-type]
+            await launch(window_command([tmux, "attach", "-t", session], session, terminal))
         except (OSError, RuntimeError, ValueError) as exc:
             log.info("Claude-Sitzung %s nicht im Terminal gezeigt: %s", session, exc)
             return False
