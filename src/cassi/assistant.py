@@ -47,7 +47,7 @@ from cassi.core.messages import (
 )
 from cassi.core.sentences import SentenceSplitter
 from cassi.core.text_language import detect_text_language
-from cassi.direct import direct_arguments
+from cassi.direct import direct_arguments, named_projects
 from cassi.filler import FillerVoice, TurnFiller
 from cassi.input.base import UtteranceSource
 from cassi.intents import (
@@ -95,7 +95,7 @@ from cassi.intents import (
     wants_thinking,
     web_intent,
 )
-from cassi.llm.base import ChatModel, StructuredChat, ToolSpec
+from cassi.llm.base import ChatModel, StructuredChat, TextDelta, ToolSpec
 from cassi.llm.gate import synthesis
 from cassi.memory.base import Fact, Memory, ShortTermMemory
 from cassi.planning import Planner
@@ -150,6 +150,29 @@ SILENCE_DBFS = -60.0
 STATE_TIMEOUT = 0.3
 # Tool round trips per turn, e.g. read a web page, scroll on, then type into Claude.
 MAX_TOOL_ROUNDS = 5
+# An instruction that still speaks *about* Claude or how it gets there.
+ABOUT_CLAUDE = re.compile(
+    r"\b(?:claude|claw|clod|klaud)\b|\bin die (?:text-?|eingabe-?|befehls-?)?zeile\b"
+    r"|^\s*(?:frag|frage|sag|sage|tell|ask)\b",
+    re.IGNORECASE,
+)
+# "Kopiere den Text 'X' in die Claude-Zeile …" – an order to put X there.
+_COPY_INTO_CLAUDE = re.compile(
+    r"^\s*(?:kopiere|füge|schreibe?|gib|copy|paste|type)\b[^'\"„“]*['\"„“](?P<text>.+?)['\"“”]"
+    r"[\s,–-]+(?:in|into|ein)\b.*(?:claude|claw|zeile|line)",
+    re.IGNORECASE,
+)
+# A remark about Claude in content passed on ("… für Claude Code nicht relevant").
+_REMARK_ON_CLAUDE = re.compile(
+    r"\b(?:für|for|an|to)\s+claude\b|\bclaude(?:\s+code)?\s+(?:kann|könnte|can|could|muss|"
+    r"soll|should)\b",
+    re.IGNORECASE,
+)
+_SENTENCE = re.compile(r"(?<=[.!?])\s+")
+# What a tool showed this turn that the user may want passed on.
+_SEEN_FOR_CLAUDE = frozenset({"look_at_screen"})
+# Calls whose instruction was already written as a task (web pages, files).
+_WRITTEN_FOR_CLAUDE = frozenset({"web-claude", "file-claude"})
 
 
 @dataclass
@@ -253,6 +276,8 @@ class Assistant:
         self._language = settings.language.default
         # Tools run in the current turn, remembered with the reply.
         self._actions: list[ToolOutcome] = []
+        # Screenshots taken this turn: what the user may want passed on to Claude.
+        self._turn_images: list[ImagePart] = []
         # What the user said in this turn and just before: project names must come from it.
         self._heard = ""
         # An action waiting for the user's yes ("Meinst du …?"), since when, and the
@@ -265,6 +290,7 @@ class Assistant:
         # This turn's request, and actions of the last turn that become examples unless
         # the user contradicts them now.
         self._request = ""
+        self._asked_for = ""
         self._to_learn: list[tuple[str, ToolCall]] = []
         # The last request if it led to no action, and when: "Sta flay" → "Was meinst du?"
         # → "Starte flay" – the first one meant the same and is learned with it.
@@ -746,11 +772,16 @@ class Assistant:
             (self._request, time.monotonic()) if self._request and not acted else None
         )
         self._actions = []
+        self._turn_images = []
         self._settle_examples(text)
         self._request = text
         history = self.history
         earlier = [m.text for m in history if m.role is Role.USER][-2:]
         self._heard = " ".join([*earlier, text])
+        # A "Ja" carries out the request before it (a plan, "Meinst du …?").
+        self._asked_for = (
+            earlier[-1] if earlier and len(text.split()) <= 6 and _YES.search(text) else text
+        )
         # For the repetition guard of the reply (one read of the memory per turn).
         self._earlier_replies = [m.text for m in history if m.role is Role.ASSISTANT]
         # Classifying an unusual computer request costs the model ~0.4 s: it runs while the
@@ -1870,22 +1901,27 @@ class Assistant:
             log.debug("Weiterleitung im Gespräch ohne %s (%s) – eigener Prompt", name, calls)
         return wanted
 
-    async def _claude_context(self, language: Language) -> str:
+    async def _claude_context(self, language: Language, lead: str = "") -> str:
         """How to write a task for Claude Code, with what Claude cannot know itself.
 
         Claude does not hear the conversation: "mach das wie eben besprochen" must arrive
         as the actual task – goal, place in the code, known errors, when it is done.
         """
         lines = [
-            "Turn the user's request into exactly one call of the tool 'send_to_claude'. The "
-            "instruction goes to Claude Code, an AI agent working in the project's code, which "
-            "does not hear this conversation. Write it so Claude can act on it alone: what to "
-            "do and why, where (file, class, function – if known from the request or the "
-            "context below), what is known (error messages, what the user saw, earlier "
-            "results), and how to tell it is done (expected behaviour, tests). Keep exactly "
-            "the user's intent; do not invent requirements or extra steps. One paragraph "
-            f"without line breaks, imperative, in {LANGUAGE_NAMES[language]}. If the user "
-            "dictates the wording, keep it word for word."
+            (lead or "Turn the user's request into exactly one call of the tool 'send_to_claude'.")
+            + " The instruction goes to Claude Code, an AI agent working in the project's "
+            "code, which does not hear this conversation. Write it so Claude can act on it "
+            "alone: what to do and why, where (file, class, function – if known from the "
+            "request or the context below), what is known (error messages, what the user "
+            "saw, earlier results), and how to tell it is done (expected behaviour, tests)."
+            " Keep exactly the user's intent; do not invent requirements or extra steps. "
+            f"One paragraph without line breaks, imperative, in {LANGUAGE_NAMES[language]}. "
+            "If the user "
+            "dictates the wording, keep it word for word. Write the task itself, not how it "
+            "gets to Claude: no 'Claude', 'sag', 'frag', 'in die Zeile' ('Frag Claude, warum "
+            "der Build fehlschlägt' becomes 'Finde heraus, warum der Build fehlschlägt, und "
+            "erkläre die Ursache.'). If the user wants text from the screen or a page passed "
+            "on, put that text in word for word – what is shown, not the request to copy it."
         ]
         recent = [m for m in self.history if m.role in (Role.USER, Role.ASSISTANT)][-4:]
         if recent:
@@ -1895,8 +1931,119 @@ class Assistant:
             lines.append(f"Conversation just before (for references like 'das'): {said}")
         editor = await asyncio.to_thread(_phpstorm_title)
         if editor:
-            lines.append(f"PhpStorm shows: {editor}")
+            # Only for "diese Datei" – otherwise the open file is named as the place of any task.
+            lines.append(
+                f"PhpStorm shows: {editor} (use it only if the user refers to what is open, "
+                "e.g. 'diese Datei', 'hier')"
+            )
         return "\n".join(lines)
+
+    async def _prepare_for_claude(self, call: ToolCall) -> ToolCall:
+        """The call as Claude should get it: in the project the user named, as a real task.
+
+        Multi-step requests ("Fasse die Roadmap in flay zusammen und gib es Claude") reach
+        the tool without a project – the user named it, so it is filled in. An instruction
+        that still talks *about* Claude ("Frag Claude, warum …", "kopiere das in die
+        Claw-Zeile") or should carry what was just seen on the screen is written once more
+        as the task itself.
+        """
+        arguments = dict(call.arguments)
+        if not arguments.get("project") and self._projects is not None:
+            named = named_projects(self._asked_for or self._request, self._projects())
+            if len(named) == 1:
+                log.info("Claude: Projekt %s aus der Anfrage übernommen", named[0])
+                arguments["project"] = named[0]
+        instruction = str(arguments.get("instruction") or "")
+        seen = [o.result for o in self._actions if o.ok and o.call.name in _SEEN_FOR_CLAUDE]
+        # Pages and files were already written as a task or as content – only talk about
+        # Claude ("Claude Code kann hier nichts tun") is taken out of them.
+        written = call.id in _WRITTEN_FOR_CLAUDE
+        if (
+            instruction
+            and ABOUT_CLAUDE.search(instruction)
+            or (instruction and not written and (seen or self._turn_images))
+        ):
+            arguments["instruction"] = await self._shape_instruction(
+                instruction, [] if written else seen, content=written
+            )
+        return ToolCall(call.id, call.name, arguments)
+
+    async def _shape_instruction(self, draft: str, seen: list[str], content: bool = False) -> str:
+        """``draft`` rewritten as the task itself, with what the screen showed.
+
+        Small models keep the user's words ("kopiere … in die Claude-Zeile") – a result that
+        still talks about Claude is pointed out to the model once more.
+        """
+        language = self._language
+        if content:
+            # A page or file passed on: its content stays, the task brief would turn it into
+            # an order ("Schick den Inhalt …").
+            system = (
+                "The text below is typed into a coding agent as it is. Repeat it with exactly "
+                "the same content and wording; leave out only remarks about Claude or Claude "
+                "Code, what it can or cannot do, or that no task is given. Answer with the "
+                "text only."
+            )
+            messages = [
+                Message.from_text(Role.SYSTEM, system),
+                Message.from_text(Role.USER, draft, language),
+            ]
+        else:
+            brief = await self._claude_context(
+                language,
+                lead="Write the instruction for Claude Code from the user's request and the "
+                "draft below. Answer with the instruction only. It is typed into Claude's "
+                "input line for you: never write 'kopiere … in die Claude-Zeile' – when the "
+                "user wants text copied there, the instruction is that text (as a task, if it "
+                "describes one).",
+            )
+            system = brief + "".join(f"\nShown this turn: {text[:2000]}" for text in seen)
+            prompt = f"User: {self._request}\nDraft: {draft}"
+            if self._turn_images:
+                prompt += "\nThe screenshot taken for this request follows."
+            messages = [
+                Message.from_text(Role.SYSTEM, system + self._rules()),
+                Message(Role.USER, (TextPart(prompt), *self._turn_images), language),
+            ]
+        shaped = draft
+        for _attempt in range(2):
+            try:
+                with perf.span("claude_shape"):
+                    parts = [
+                        event.text
+                        async for event in self._llm.stream(messages, [])
+                        if isinstance(event, TextDelta)
+                    ]
+            except Exception as exc:  # the draft is still a usable instruction
+                log.warning("Auftrag an Claude nicht umformuliert: %s", exc)
+                break
+            written = " ".join("".join(parts).split()).strip().strip('"„“')
+            if not written:
+                break
+            shaped = written
+            if not (about := ABOUT_CLAUDE.search(written)):
+                break
+            messages += [
+                Message.from_text(Role.ASSISTANT, written, language),
+                Message.from_text(
+                    Role.USER,
+                    f"This still says '{about.group()}' – Cassi types it into Claude itself. "
+                    "Write only the task (or the content), without mentioning Claude, the input "
+                    "line or copying.",
+                    language,
+                ),
+            ]
+        if content and ABOUT_CLAUDE.search(shaped):
+            # Still a remark like "Kein Inhalt für Claude zu verarbeiten": it is no part of
+            # the page, and Claude would only be confused by it.
+            kept = [part for part in _SENTENCE.split(shaped) if not _REMARK_ON_CLAUDE.search(part)]
+            shaped = " ".join(kept) or shaped
+        if (copied := _COPY_INTO_CLAUDE.match(shaped)) is not None:
+            # "Kopiere den Text 'X' in die Claude-Zeile": what goes in is X itself.
+            shaped = copied.group("text")
+        if shaped != draft:
+            log.info("Auftrag an Claude: „%s“ → „%s“", draft, shaped)
+        return shaped
 
     async def _run_tools(self, calls: list[ToolCall]) -> tuple[list[Message], list[ToolResult]]:
         """Execute tool calls; returns the result messages for the conversation."""
@@ -1908,6 +2055,7 @@ class Assistant:
             results.append(result)
             messages.append(Message(Role.TOOL, (TextPart(result.text),), tool_call_id=call.id))
             images.extend(result.images)
+        self._turn_images.extend(images)
         if images:
             tools = ", ".join(
                 dict.fromkeys(c.name for c, r in zip(calls, results, strict=True) if r.images)
@@ -1918,6 +2066,8 @@ class Assistant:
 
     async def _execute(self, call: ToolCall) -> ToolResult:
         call, refusal = self._check_project(call)
+        if refusal is None and call.name == "send_to_claude":
+            call = await self._prepare_for_claude(call)
         result = refusal or await self._tools.execute(call)
         if result.ok and call.name in LEARNABLE and call.id != CONFIRMED:
             # Becomes an example if the next request does not say it was wrong.

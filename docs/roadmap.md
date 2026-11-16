@@ -932,5 +932,22 @@ LLM-Server, semantische Suche im Gedächtnis, Windows-Tests.
   ersetzt, übrig gebliebene Verwaltungen werden beim Start beendet (streng am Befehl erkannt);
   ohne offenes Fenster endet sie nach ~3 Minuten; „Verwaltung beenden“ und „Andere Verwaltungen
   beenden“ in der UI
+- [x] Export-Ordner wählbar (z.B. externe Festplatte): System-Ordnerdialog in der Verwaltung,
+  `export_dir` in `cassi.yaml`, Wahl je Rechner (nie im Export); „Neuesten Export importieren“
+  und `cassi import --latest` aus diesem Ordner; nicht angeschlossene Festplatte wird gemeldet
+- [x] Claude-Aufträge zuverlässiger (Anlass: Test mit echtem Claude in tmux): Auftrag als
+  Aufgabe statt Bitte („Frag Claude, warum …“ → „Finde heraus, warum …“), mit Bildschirminhalt
+  (Screenshot geht ins Umformulieren, „kopiere 'X' in die Claude-Zeile“ → X), Bemerkungen über
+  Claude aus weitergegebenen Seiten entfernt; Projekt auch in mehrstufigen Bitten und nach „Ja“;
+  „Claw“/„Clod“/„Cloud Code“ → Claude, wo nur Claude passt; Hintergrund-Sitzung im
+  Terminalfenster mit Anleitung für die Vertrauensfrage; arbeitet Claude, wird trotzdem getippt
+  und gesagt, dass es nach Enter eingereiht wird. Eval prüft den Wortlaut (keine Meta-Wörter,
+  `claude_contains`, `claude_project`, simulierter Bildschirm mit Ticket); dabei gefunden und
+  behoben: Echo-Filter schnitt an „google.com“ ab, Flays Modell schrieb beim Weitergeben nur
+  „DONE“
+- [x] Programmieren ohne „Claude“: „Implementiere im Projekt flay …“, „Behebe den Bug …“, „Setz
+  das Ticket um“ gehen an Claude (`intents.coding_intent`: Programmierverb oder Alltagsverb +
+  Code-Begriff; Fragen, Erzähltes, Termine/Mails ausgenommen); Prompt und Werkzeugbeschreibung
+  sagen dem Modell, dass es nie selbst Code schreibt; 8 neue Eval-Fälle
 - [ ] Installer auf einem frischen Windows-Rechner ausprobieren (bisher nur macOS)
 - [ ] Programmordner beim Deinstallieren mit entfernen (nach dem Beenden, per Hilfsskript)

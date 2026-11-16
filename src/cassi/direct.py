@@ -43,11 +43,11 @@ def direct_arguments(
 
 def _project(text: str, projects: Sequence[str], apps: Sequence[App]) -> Arguments | None:
     """The one project the request names literally ("flay", "stadt wolkenthal")."""
-    named = _named(text, projects)
+    named = named_projects(text, projects)
     return {"name": named[0]} if len(named) == 1 else None
 
 
-def _named(text: str, projects: Sequence[str]) -> list[str]:
+def named_projects(text: str, projects: Sequence[str]) -> list[str]:
     """The projects the request names – [] if it names one only roughly next to another:
     "kx forms" is exactly project-symfony-kx-forms but roughly lib-react-kx-forms-app too,
     and Cassi asks which."""
@@ -58,7 +58,7 @@ def _named(text: str, projects: Sequence[str]) -> list[str]:
 
 
 def _claude_status(text: str, projects: Sequence[str], apps: Sequence[App]) -> Arguments | None:
-    named = _named(text, projects)
+    named = named_projects(text, projects)
     if len(named) > 1 or (not named and any(mention(p, text) for p in projects)):
         return None
     return {"project": named[0]} if named else {}
@@ -235,7 +235,7 @@ _PROBLEMS = re.compile(r"\b(?:fehler|probleme?|warnungen|errors?|problems?|warni
 
 
 def _ide(text: str, projects: Sequence[str], apps: Sequence[App]) -> Arguments | None:
-    named = _named(text, projects)
+    named = named_projects(text, projects)
     if len(named) > 1 or (not named and any(mention(p, text) for p in projects)):
         return None
     where = {"project": named[0]} if named else {}

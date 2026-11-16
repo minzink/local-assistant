@@ -259,7 +259,7 @@ Cassi kann auf deinem Rechner handeln – nur über die Werkzeuge in `tools.enab
 |---|---|---|
 | `open_project` | „Öffne das Projekt Stadt Wolkenthal“ | Sucht in PhpStorms zuletzt geöffneten Projekten und öffnet das passende per Toolbox-Starter |
 | `close_project` | „Schließe das Projekt Moewe“ | Schließt das passende, gerade geöffnete Projekt (über PhpStorms MCP-Server) |
-| `send_to_claude` | „Sag Claude, er soll Tests für den Login schreiben“ | Schreibt den Auftrag in Claudes Eingabezeile – **abschicken (Enter) tust du selbst** |
+| `send_to_claude` | „Sag Claude, er soll Tests für den Login schreiben“, auch ohne Claude: „Implementiere im Projekt flay einen Export-Button“, „Behebe den Bug im Login“ | Schreibt den Auftrag in Claudes Eingabezeile – **abschicken (Enter) tust du selbst** |
 | `claude_status` | „Ist Claude fertig?“ | Liest Claudes Terminal und fasst zusammen: arbeitet noch, fertig, wartet auf Erlaubnis |
 | `look_at_screen` | „Was siehst du auf meinem Bildschirm?“, „Schau dir das PhpStorm-Fenster an“, „Was ist auf dem zweiten Bildschirm?“ | Screenshot des Hauptbildschirms, des aktiven Fensters, einer App oder eines Monitors – verkleinert, an das lokale Modell |
 | `click_on_screen` | „Klick auf das Git-Menü“, „Rechtsklick auf UTF-8“, „Drück auf Speichern“ | Sucht das Element und klickt (links, rechts, doppelt) – siehe unten |
@@ -491,12 +491,18 @@ fragt Cassi nach. Die offenen Projekte kommen live von PhpStorm.
 Tipp: Trägst du in *Settings → Tools → Claude Code [Beta] → Claude command* `cassi claude`
 ein, startet auch der Claude-Button von PhpStorm Claude so, dass Cassi hineinschreiben kann.
 
-Ist ein genanntes Projekt in PhpStorm nicht geöffnet, startet Cassi Claude im Hintergrund;
-mit `cassi claude` im Terminal dieses Projekts hängst du dich an. Cassi sagt dir dann, für welches Projekt; mit `cassi claude` im
-PhpStorm-Terminal dieses Projekts hängst du dich an die Sitzung an und siehst den Auftrag.
-Fragt Claude beim ersten Start in einem Ordner, ob du ihm vertraust, tippt Cassi nichts (dort
-ist „No, exit“ vorausgewählt) und bittet dich, die Frage selbst zu beantworten.
-Abschalten mit `tools.claude.autostart: false`.
+Ist ein genanntes Projekt in PhpStorm nicht geöffnet, startet Cassi Claude im Hintergrund und
+**zeigt die Sitzung in einem neuen Terminalfenster** (macOS: Terminal bzw. iTerm nach
+`tools.ssh.terminal`, Linux: `x-terminal-emulator`) – du siehst den Auftrag und schickst ihn dort
+ab. Ohne Fenster (`tools.claude.show_window: false`) hängst du dich mit `cassi claude` im
+Terminal dieses Projekts an; Cassi sagt dir, für welches Projekt.
+Fragt Claude beim ersten Start in einem Ordner, ob du ihm vertraust, tippt Cassi nichts und sagt
+dir, wie du antwortest: „Yes, I trust this folder“ mit Pfeil runter, dann Enter – vorausgewählt
+ist „No, exit“, ein bloßes Enter beendet Claude. Abschalten mit `tools.claude.autostart: false`.
+
+**Claude arbeitet noch:** Cassi tippt den Auftrag trotzdem in die Eingabezeile und sagt dir,
+dass Claude gerade an etwas anderem arbeitet – schickst du ihn mit Enter ab, reiht Claude ihn
+hinter die laufende Aufgabe ein.
 
 Ohne tmux (Windows) oder ohne passendes Projekt legt Cassi den Auftrag in die Zwischenablage
 und holt PhpStorm nach vorn; du fügst ihn mit `Cmd/Ctrl+V` in Claude ein. Erzwingen lässt sich
@@ -509,6 +515,26 @@ bekannt), was schon bekannt ist (Fehlermeldungen, was du gesehen hast) und woran
 dass es fertig ist. „Mach das wie eben besprochen“ kommt als echte Aufgabe an. Cassi erfindet
 keine Anforderungen dazu; diktierst du den Wortlaut, bleibt er wörtlich. Entwickeln, Testen,
 Committen – alles, was Code betrifft, macht Claude; Cassi formuliert nur den Auftrag.
+
+**Programmieren, ohne Claude zu nennen:** „Implementiere im Projekt flay einen Export-Button“,
+„Behebe den Bug im Login“, „Schreib Tests für den Warenkorb“, „Schau dir den Screen an und setz
+das Ticket im Projekt flay um“ – Code schreibt immer Claude, Cassi gibt den Auftrag weiter.
+Erkannt wird das an Verben, die für sich Programmieren heißen (implementieren, programmieren,
+refaktorieren, umsetzen, debuggen), oder an Alltagsverben (bauen, schreiben, beheben, ergänzen
+…) zusammen mit etwas aus dem Code (Funktion, Bug, Test, Button, Endpoint, Readme, „im Projekt“
+…). Fragen („Warum schlägt der Test fehl?“, „Wie implementiere ich …?“), Erzähltes und
+Alltägliches („Erstelle einen Termin“, „Schreib eine Mail über den Bug“) bleiben Gespräch bzw.
+gehen an ihr eigenes Werkzeug.
+
+Der Auftrag ist die Aufgabe selbst, nicht deine Bitte an Cassi: aus „Frag Claude, warum der
+Build fehlschlägt“ wird „Finde heraus, warum der Build fehlschlägt, und erkläre die Ursache.“
+Spricht ein Entwurf noch über Claude („… in die Claude-Zeile“) oder soll er zeigen, was gerade
+auf dem Bildschirm zu sehen war („Schau dir den Screen an und kopiere die Ticketbeschreibung in
+Claude“), schreibt das Modell ihn noch einmal – mit dem Screenshot, und bei „kopiere“ kommt
+genau der Text in die Zeile. Das Projekt, das du nennst, gilt auch in mehrstufigen Bitten
+(„Fasse die Roadmap im Projekt flay zusammen und gib es Claude“) und nach einem „Ja“ auf eine
+Rückfrage. Falsch Erkanntes wie „Claw“, „Clod“ oder „Cloud Code“ korrigiert Cassi dort zu
+„Claude“, wo nur Claude passt („die Claw-Zeile“, „in den Claw“, „Sag Clod …“).
 
 **Freigaben per Sprache:** Wartet Claude (mit `cassi claude` gestartet) auf eine Freigabe, liest
 Cassi die Frage vor: „Claude in flay fragt: Do you want to make this edit to app.py? Sag ja,
@@ -552,7 +578,15 @@ Mitnehmen oder sichern: `cassi export [Datei] [--recordings]` und `cassi import 
 Tab „Daten“ der Verwaltung. Ein Export ist eine Zip-Datei; er enthält keine Downloads (die lädt
 `cassi setup` neu), Aufnahmen nur mit `--recordings`. Ein Import nimmt nur Exporte desselben
 Assistenten an (Flays Gedächtnis ist nicht Cassis), sichert vorher die bisherigen Daten nach
-`backups/` und geht nur, wenn der Assistent nicht läuft. Heruntergeladene Modelle liegen in
+`backups/` und geht nur, wenn der Assistent nicht läuft.
+
+**Auf einen anderen Rechner, z.B. per externer Festplatte:** In der Verwaltung (Tab „Daten“)
+mit **„Export-Ordner wählen …“** den Ordner auf der Festplatte wählen (der normale Ordner-Dialog
+des Systems) und exportieren; auf dem anderen Rechner denselben Ordner wählen und **„Neuesten
+Export importieren“**. Die Wahl gilt je Rechner und Programm (in Cassis Ordner unter `run/`, nie
+im Export); ohne Wahl gilt `export_dir` aus `cassi.yaml`, sonst der Download-Ordner. Ist die
+Festplatte nicht angeschlossen, sagt die Verwaltung das. Auf der Kommandozeile: `cassi export`
+(in den Export-Ordner) und `cassi import --latest`. Heruntergeladene Modelle liegen in
 `downloads_dir` (Standard: der Datenordner); ein Adapter mit eigenem Datenordner teilt sie.
 
 - **Persona:** `persona.system_prompt` und `persona.mood` (frei benannte Stimmungen von 0–10,
@@ -752,7 +786,10 @@ Erkennungsmuster (Testtabelle `tests/test_patterns.py`), `cassi.planning` Pläne
 und normale Gesprächssätze) durch Cassi – mit Weiterleitung, Prompt und Werkzeug-Schleife wie im
 Betrieb, aber mit simulierten Werkzeugen: auf dem Rechner passiert nichts. Gemessen werden die
 Trefferquote (richtiges Werkzeug, richtiges Projekt; bei Gesprächssätzen keine Aktion) und die
-Zeit bis zum Werkzeug-Aufruf bzw. zur ersten Antwort. Ergebnisse landen als JSON im
+Zeit bis zum Werkzeug-Aufruf bzw. zur ersten Antwort. Aufträge an Claude werden auch inhaltlich
+geprüft: keiner darf über Claude reden („Frag Claude, …“, „in die Claude-Zeile“), und
+`claude_contains` / `claude_project` prüfen Inhalt und Projekt auch dann, wenn der Auftrag erst
+ein späterer Schritt ist (Bildschirm, Webseite, Datei). Ergebnisse landen als JSON im
 Datenordner unter `eval/`.
 
 ```sh

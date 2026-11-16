@@ -359,6 +359,9 @@ class ClaudeToolSettings(_Section):
     # No session for the named project: start Claude in a background tmux session and type
     # there. Without a project name Cassi asks which project is meant.
     autostart: bool = True
+    # A session nobody sees (PhpStorm not there or the project not open in it) is shown in a
+    # terminal window of its own (tools.ssh.terminal), so the instruction can be checked.
+    show_window: bool = True
 
 
 class ScreenToolSettings(_Section):
@@ -519,6 +522,10 @@ class Settings(_Section):
     # data_dir. An adapter with its own data_dir (Flay) points here to Cassi's, so nothing
     # is downloaded twice.
     downloads_dir: Path | None = None
+    # Where `cassi export` (and the management UI) puts exports, e.g. an external drive to carry
+    # them to another computer. None: the downloads folder. A folder chosen in the management
+    # UI wins (it is kept per computer).
+    export_dir: Path | None = None
     # Installed adapters to use (packages that personalize Cassi, e.g. "flay"); None = all
     # installed ones, [] = none. See cassi.adapters.
     adapters: list[str] | None = None

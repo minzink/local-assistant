@@ -153,7 +153,13 @@ PhpStorm-Terminal übergeben.
   - `phpstorm.py` / `phpstorm_mcp.py` – Projekte öffnen (Launcher, immer neues Fenster) und
     schließen (PhpStorms eingebauter MCP-Server auf 127.0.0.1).
   - `claude_code.py` – Aufträge in Claude Code tippen (tmux-Sitzungen `cassi-claude-<projekt>`
-    aus `cassi claude`), Status lesen, Claude bei Bedarf starten; Zwischenablage als Notlösung.
+    aus `cassi claude`), Status lesen, Claude bei Bedarf starten (Hintergrund-Sitzung im
+    Terminalfenster, `ssh.window_command`); arbeitet Claude („esc to interrupt“), wird trotzdem
+    getippt und der Nutzer erfährt, dass es nach Enter eingereiht wird; Zwischenablage als
+    Notlösung. Den Auftrag selbst bereitet `Assistant._prepare_for_claude` vor: Projekt aus der
+    Anfrage (auch nach „Ja“), Umformulieren, wenn er über Claude redet oder Bildschirminhalt
+    tragen soll (`ABOUT_CLAUDE`, auch Maßstab der Eval). Programmier-Bitten ohne „Claude“
+    erkennt `intents.coding_intent` – Code schreibt nie Cassi selbst.
   - `screen.py` – Screenshot von Bildschirm, Monitor oder einzelnem Fenster; `Shot` kennt
     den aufgenommenen Bereich in Bildschirmpunkten (`to_screen` für Qwen-VL-Punkte 0–1000).
   - `pointer.py` – `click_on_screen` und `scroll_screen`: erst macOS-Bedienungshilfen
@@ -220,6 +226,8 @@ PhpStorm-Terminal übergeben.
   Datenordner gespeichert wird, ist automatisch dabei; Downloads und Laufzeit-Dateien stehen in
   `SKIPPED_FOLDERS`/`_skipped`, große Aufnahmen in `RECORDINGS`. Neue Download-Ordner dort
   eintragen und über `settings.downloads` statt `settings.data_dir` ansprechen.
+  Export-Ordner: `transfer.export_folder` (gewählt in der Verwaltung → `run/export-<programm>.json`,
+  sonst `export_dir`, sonst Downloads); `run/` gehört dem Rechner und wird nie exportiert.
 - `repetition.py` – meldet Sätze, die schon in den letzten Antworten standen (nur Log, nichts
   wird gekürzt). Gegen Wiederholungen wirkt die Ursache: `prompt.VARIETY`, kein Satzzahl-Zwang im
   Persona-Prompt, `condense_older` (ältere Antworten nur mit dem ersten Satz im Kontext).

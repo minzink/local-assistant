@@ -20,7 +20,10 @@ TOOL_INSTRUCTIONS = (
     "You can act on the user's computer with the provided tools. When the user asks for such "
     "an action, call the tool right away – do not ask for confirmation first; anything risky "
     "is confirmed by the user elsewhere (e.g. pressing Enter in Claude). Never claim to have "
-    "done something without calling the tool, and afterwards say briefly what you did."
+    "done something without calling the tool, and afterwards say briefly what you did. Code "
+    "is written by Claude Code: when the user wants code written, changed, fixed or tested, "
+    'call send_to_claude instead of writing code yourself. A question about code ("Warum '
+    "schlägt der Test fehl?\") is no order: answer it or look at Claude's status."
 )
 
 

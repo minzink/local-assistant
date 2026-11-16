@@ -96,3 +96,57 @@ def test_a_foreign_file_is_no_export(tmp_path: Path) -> None:
 
     with pytest.raises(TransferError, match="Keine Export-Datei"):
         transfer.read_manifest(other)
+
+
+def test_the_export_folder_can_be_chosen_per_computer(tmp_path: Path) -> None:
+    app = App("flay", None, None)
+    drive = tmp_path / "Volumes" / "Stick"
+    drive.mkdir(parents=True)
+    from_yaml = tmp_path / "yaml-folder"
+    settings = Settings(data_dir=tmp_path / "data", export_dir=from_yaml)
+
+    assert transfer.export_folder(app, settings) == from_yaml  # cassi.yaml
+    transfer.choose_folder(app, drive)
+    assert transfer.export_folder(app, settings) == drive  # chosen in the UI wins
+    transfer.choose_folder(app, None)
+    assert transfer.export_folder(app, settings) == from_yaml
+    # Cassi's choice is its own.
+    transfer.choose_folder(App("cassi", None, None), drive)
+    assert transfer.chosen_folder(app) is None
+
+
+def test_the_choice_stays_on_this_computer(tmp_path: Path) -> None:
+    data = tmp_path / "data"
+    (data / "run").mkdir(parents=True)
+    (data / "run" / "export-cassi.json").write_text('{"folder": "/Volumes/Stick"}')
+
+    assert not [f for f in transfer.personal_files(data) if str(f).startswith("run")]
+
+
+def test_a_missing_drive_is_named(tmp_path: Path) -> None:
+    problem = transfer.check_folder(tmp_path / "Volumes" / "weg")
+
+    assert problem is not None and "Festplatte" in problem
+    assert transfer.check_folder(tmp_path) is None
+
+
+def test_carried_on_a_drive_to_another_computer(tmp_path: Path) -> None:
+    app = App("flay", None, None)
+    drive = tmp_path / "Stick"
+    drive.mkdir()
+    here = tmp_path / "here"
+    fill(here)
+    transfer.choose_folder(app, drive)
+
+    first = transfer.default_target(app, Settings(data_dir=here))
+    transfer.export(app, Settings(data_dir=here), first)
+    newer = drive / "flay-export-2999-01-01-000000.zip"
+    transfer.export(app, Settings(data_dir=here), newer)
+    (drive / "cassi-export-2999-12-31-000000.zip").write_bytes(b"not flay's")
+
+    exports = transfer.exports_in(app, drive)
+    assert exports == [newer, first]  # newest first, only Flay's
+
+    there = tmp_path / "there"
+    transfer.import_(app, Settings(data_dir=there), exports[0], print)
+    assert (there / "memory.sqlite3").exists()

@@ -83,6 +83,8 @@ def create_tools(
                         name, recent_projects(config.phpstorm.config_dir)
                     ),
                     phpstorm=phpstorm() if config.phpstorm.use_mcp else None,
+                    show_window=config.claude.show_window,
+                    terminal=config.ssh.terminal,
                 )
             )
         elif name == "close_project":

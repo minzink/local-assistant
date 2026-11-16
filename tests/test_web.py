@@ -332,7 +332,7 @@ async def test_steps_are_limited() -> None:
 async def test_nothing_written_sends_nothing_to_claude() -> None:
     reader = PageTool("read_webpage", ToolResult("Read it.", images=(SHOT,)))
     claude = PageTool("send_to_claude", ToolResult("Typed."))
-    llm = ScriptedLLM("")  # no actions on the page offered: it only writes
+    llm = ScriptedLLM("", "")  # it only writes – nothing, also when asked again
     assistant, _ = page_assistant(llm, reader, claude)
 
     await assistant.handle_text("Gib Claude die Installationsschritte von example punkt org")
@@ -690,3 +690,21 @@ async def test_an_echo_is_dropped_after_a_second_try_too() -> None:
     await assistant.handle_text("Fasse docs punkt astral punkt sh zusammen und gib es Claude")
 
     assert claude.calls[0]["instruction"].startswith("uv ist ein Paketmanager.")
+
+
+@pytest.mark.parametrize(
+    ("written", "kept"),
+    [
+        (
+            "Übergib Claude folgende Links von google.com: Gmail, Bilder.",
+            "Gmail, Bilder.",
+        ),
+        ("Schick Claude die Schritte. Installiere uv.", "Installiere uv."),
+        ("Claude soll google.com nachbauen. Baue die Seite.", "Baue die Seite."),
+        ("Installiere uv mit pip.", "Installiere uv mit pip."),
+    ],
+)
+def test_the_echoed_request_is_cut_off_at_its_real_end(written: str, kept: str) -> None:
+    from cassi.browsing import _clean
+
+    assert _clean(written, for_claude=True) == kept

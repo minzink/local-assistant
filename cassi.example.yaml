@@ -87,6 +87,7 @@ tools:
   claude:
     transport: auto      # auto = in `cassi claude`-Sitzung (tmux) tippen, sonst Zwischenablage
     autostart: true      # keine Sitzung? Claude im Hintergrund starten (anhängen: `cassi claude`)
+    show_window: true    # die Hintergrund-Sitzung in einem Terminalfenster zeigen (nicht Windows)
   screen:
     monitor: 1           # 1 = Hauptbildschirm, 0 = alle
     max_size: 1280       # Screenshot wird auf diese Kantenlänge verkleinert
@@ -163,3 +164,5 @@ memory:
 # sichern mit `cassi export` / `cassi import` (oder Tab „Daten“ in `cassi manage`).
 # data_dir: ~/Library/Application Support/cassi   # Windows: %LOCALAPPDATA%\cassi
 # downloads_dir: null   # heruntergeladene Modelle (Stimmen, VAD …); null = im data_dir
+# export_dir: /Volumes/Stick/cassi   # Ziel für `cassi export`, z.B. eine externe Festplatte;
+#                                    # null = Download-Ordner; in der Verwaltung wählbar

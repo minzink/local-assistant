@@ -690,19 +690,35 @@ def _transfer(settings: Settings, args: argparse.Namespace) -> int:
 
     program = app.current()
     if args.command == "export":
-        target = args.file or transfer.default_target(program)
+        if args.file is None and (
+            problem := transfer.check_folder(transfer.export_folder(program, settings))
+        ):
+            print(problem)
+            return 1
+        target = args.file or transfer.default_target(program, settings)
         done = transfer.export(program, settings, target, recordings=args.recordings)
         print(f"{done.files} Dateien ({human_size(done.size)}) exportiert: {target}")
         return 0
+    source = args.file
+    if source is None:
+        if not args.latest:
+            print("Export-Datei angeben – oder --latest für den neuesten im Export-Ordner.")
+            return 2
+        folder = transfer.export_folder(program, settings)
+        exports = transfer.exports_in(program, folder)
+        if not exports:
+            print(transfer.check_folder(folder) or f"Kein {program.title}-Export in {folder}")
+            return 1
+        source = exports[0]
     if Launcher(program, settings, args.config).running():
         print(f"{program.title} läuft – erst beenden, dann importieren.")
         return 1
     if not args.yes:
-        question = f"Persönliche Daten von {program.title} durch {args.file.name} ersetzen? [j/N] "
+        question = f"Persönliche Daten von {program.title} durch {source.name} ersetzen? [j/N] "
         if input(question).strip().lower() not in ("j", "ja", "y"):
             return 1
     try:
-        transfer.import_(program, settings, args.file, print, allow_other=args.any)
+        transfer.import_(program, settings, source, print, allow_other=args.any)
     except transfer.TransferError as exc:
         print(exc)
         return 1
@@ -1358,12 +1374,17 @@ def main(argv: Sequence[str] | None = None, prog: str = "cassi") -> int:
     export = commands.add_parser(
         "export", help="Persönliche Daten (Gedächtnis, eigene Modelle) als Zip exportieren"
     )
-    export.add_argument("file", nargs="?", type=Path, help="Ziel (Standard: Download-Ordner)")
+    export.add_argument(
+        "file", nargs="?", type=Path, help="Ziel (Standard: der Export-Ordner, siehe manage)"
+    )
     export.add_argument("--recordings", action="store_true", help="auch eigene Aufnahmen")
     import_parser = commands.add_parser(
         "import", help="Einen Export übernehmen (die bisherigen Daten werden vorher gesichert)"
     )
-    import_parser.add_argument("file", type=Path, help="Export-Datei (.zip)")
+    import_parser.add_argument("file", nargs="?", type=Path, help="Export-Datei (.zip)")
+    import_parser.add_argument(
+        "--latest", action="store_true", help="den neuesten Export aus dem Export-Ordner"
+    )
     import_parser.add_argument("--yes", action="store_true", help="ohne Rückfrage")
     import_parser.add_argument(
         "--any", action="store_true", help="auch den Export eines anderen Assistenten"

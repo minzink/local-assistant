@@ -135,3 +135,47 @@ async def test_history_actions_reach_the_conversation() -> None:
 
     seen = [call.name for m in llm.prompts[0][0] for call in m.tool_calls]
     assert seen == ["close_project"]
+
+
+@pytest.mark.parametrize(
+    ("expect", "calls", "problem"),
+    [
+        (
+            {"tool": "send_to_claude"},
+            [{"tool": "send_to_claude", "instruction": "Frag Claude, warum der Build bricht."}],
+            "Auftrag spricht über Claude",
+        ),
+        (
+            {"tool": "send_to_claude"},
+            [{"tool": "send_to_claude", "instruction": "Kopiere das in die Claude-Zeile."}],
+            "Auftrag spricht über Claude",
+        ),
+        (
+            {"tool": "look_at_screen", "claude_contains": ["csv"], "claude_project": ["flay"]},
+            [
+                {"tool": "look_at_screen"},
+                {
+                    "tool": "send_to_claude",
+                    "instruction": "Baue den CSV-Export.",
+                    "project": "flay",
+                },
+            ],
+            "",
+        ),
+        (
+            {"tool": "look_at_screen", "claude_contains": ["csv"]},
+            [{"tool": "look_at_screen"}, {"tool": "send_to_claude", "instruction": "Mach das."}],
+            "Auftrag an Claude ohne",
+        ),
+        (
+            {"tool": "read_file", "claude_project": ["flay"]},
+            [{"tool": "read_file"}, {"tool": "send_to_claude", "instruction": "Fasse zusammen."}],
+            "Auftrag an Claude im Projekt",
+        ),
+    ],
+)
+def test_judge_the_instruction_for_claude(
+    expect: dict[str, Any], calls: list[dict[str, Any]], problem: str
+) -> None:
+    result = _judge({"expect": expect}, calls, PROJECTS)
+    assert result.startswith(problem) if problem else result == ""

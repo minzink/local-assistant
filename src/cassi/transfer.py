@@ -14,6 +14,7 @@ Before importing, the current data is saved to ``<data_dir>/backups``.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import tempfile
 import time
@@ -33,7 +34,8 @@ FORMAT = 1
 # Large, made by recording: only with ``recordings=True``.
 RECORDINGS = ("eval", "wake", "voice_dataset", "training")
 # Never exported: downloads (voices, feature models), earlier exports and backups.
-SKIPPED_FOLDERS = ("voices", "backups", "exports")
+# "run": this computer's records (management UI, chosen export folder) – they must not move.
+SKIPPED_FOLDERS = ("voices", "backups", "exports", "run")
 # Downloaded model files in ``models/``; own trained models there (.npz) are personal.
 DOWNLOADED_SUFFIXES = (".onnx",)
 MEMORY = "memory.sqlite3"
@@ -81,11 +83,74 @@ def contents(data_dir: Path, recordings: bool = False) -> Contents:
     return Contents(len(files), sum((data_dir / f).stat().st_size for f in files))
 
 
-def default_target(app: App) -> Path:
-    """Where an export goes without a path: the downloads folder, else the home folder."""
+# Exports go to a folder that can be chosen – e.g. an external drive, to carry them to another
+# computer and import them there from the same folder. The choice belongs to this computer:
+# it is kept in Cassi's run/ folder, never exported.
+
+
+def _choice_file(app: App) -> Path:
+    from cassi.config import default_data_dir
+
+    return default_data_dir() / "run" / f"export-{app.name}.json"
+
+
+def chosen_folder(app: App) -> Path | None:
+    """The folder chosen in the management UI, if any."""
+    try:
+        data = json.loads(_choice_file(app).read_text(encoding="utf-8"))
+        return Path(str(data["folder"])).expanduser()
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def choose_folder(app: App, folder: Path | None) -> None:
+    """Remember ``folder`` for this program's exports on this computer (None: forget)."""
+    path = _choice_file(app)
+    if folder is None:
+        path.unlink(missing_ok=True)
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"folder": str(folder)}), encoding="utf-8")
+
+
+def export_folder(app: App, settings: Settings) -> Path:
+    """Where exports go: the chosen folder, else export_dir from cassi.yaml, else the
+    downloads folder (else the home folder)."""
+    chosen = chosen_folder(app) or settings.export_dir
+    if chosen is not None:
+        return Path(chosen).expanduser()
     downloads = Path.home() / "Downloads"
-    folder = downloads if downloads.is_dir() else Path.home()
-    return folder / f"{app.name}-export-{time.strftime('%Y-%m-%d-%H%M')}.zip"
+    return downloads if downloads.is_dir() else Path.home()
+
+
+def default_target(app: App, settings: Settings | None = None) -> Path:
+    """A new export file in the export folder."""
+    if settings is not None:
+        folder = export_folder(app, settings)
+    else:
+        downloads = Path.home() / "Downloads"
+        folder = downloads if downloads.is_dir() else Path.home()
+    return folder / f"{app.name}-export-{time.strftime('%Y-%m-%d-%H%M%S')}.zip"
+
+
+def exports_in(app: App, folder: Path) -> list[Path]:
+    """This program's exports in ``folder``, newest first (by the time in their name)."""
+    if not folder.is_dir():
+        return []
+    return sorted(folder.glob(f"{app.name}-export-*.zip"), key=lambda p: p.name, reverse=True)
+
+
+def check_folder(folder: Path) -> str | None:
+    """Why exports cannot go to ``folder`` (German, for the user), or None."""
+    if not folder.exists():
+        return (
+            f"Der Export-Ordner {folder} ist nicht erreichbar – ist die Festplatte angeschlossen?"
+        )
+    if not folder.is_dir():
+        return f"{folder} ist kein Ordner"
+    if not os.access(folder, os.W_OK):
+        return f"In {folder} darf nicht geschrieben werden"
+    return None
 
 
 def export(app: App, settings: Settings, target: Path, recordings: bool = False) -> Contents:

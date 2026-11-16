@@ -644,12 +644,66 @@ _SSH = re.compile(
 )
 
 
+# Coding without naming Claude: "Implementiere im Projekt flay einen Export-Button", "Behebe
+# den Bug im Login", "Schreib Tests für den Warenkorb". Code is always Claude's job – Cassi
+# only words the task. Verbs that mean code on their own …
+_CODE_VERB_ALONE = re.compile(
+    r"\b(?:implementier(?:e|en|st|t)?|programmier(?:e|en|st|t)?|refaktorier(?:e|en|st|t)?|"
+    r"refactor(?:e|ing)?|debugg?(?:e|en|st|t|ing)?|implement|umsetzen|setz\w*\b.{0,60}\bum|"
+    r"cod(?:e|en|iere|ier)\b(?!\s*(?:für|for|vom|des|der)\b))\b",
+    re.IGNORECASE,
+)
+# … and everyday verbs that do only together with something in code.
+_CODE_VERB = re.compile(
+    r"\b(?:(?:ein|aus|um|an|hinzu|ab|auf|nach|dazu)?(?:zu)?(?:bau\w*|schreib\w*|füg\w*|"
+    r"leg\w*|änder\w*|pass\w*)|fix\w*|beheb\w*|reparier\w*|ergänz\w*|erstell\w*|"
+    r"erweiter\w*|entfern\w*|optimier\w*|aktualisier\w*|"
+    r"build|write|add|fix|create|change|update|remove|extend)\b",
+    re.IGNORECASE,
+)
+_CODE_THING = re.compile(
+    r"\b(?:funktion\w*|feature\w*|klasse\w*|methode\w*|bugs?|bugfix\w*|fehler\w*|tests?|"
+    r"unit-?tests?|testf[aä]ll\w*|endpoints?|endpunkt\w*|api|schnittstelle\w*|komponente\w*|"
+    r"\w*button\w*|knopf|migration\w*|controller\w*|service\w*|modul\w*|skript\w*|script\w*|"
+    r"datenbank\w*|validierung\w*|css|template\w*|code|tickets?|startseite\w*|login|"
+    r"formular\w*|readme|changelog|doku\w*|abhängigkeit\w*|dependenc\w*|function\w*|"
+    r"class\w*|methods?|components?|database|page)\b"
+    r"|\b(?:im|in dem|ins|in the|in)\s+(?:projekt|project|repo)\b",
+    re.IGNORECASE,
+)
+# Things outside code the same verbs make: "Erstelle einen Termin", "Schreib eine Mail".
+_NOT_CODE = re.compile(
+    r"\b(?:timer\w*|wecker|erinnerung\w*|termin\w*|kalender\w*|e?-?mails?(?!-)|nachricht\w*|"
+    r"notiz\w*|einkaufsliste|playlist|alarm|reminder|appointment|message)\b",
+    re.IGNORECASE,
+)
+# "Ist der Bug behoben?", "Warum schlägt der Test fehl?" ask about code, they order nothing.
+_ASKS_ABOUT = re.compile(
+    r"^\W*(?:ist|sind|hat|haben|hast|wurde|wurden|war|was|warum|wieso|weshalb|wo|wer|"
+    r"welche\w*|gibt es|is|are|has|have|did|does|do|was|were|what|why|where|who|which)\b",
+    re.IGNORECASE,
+)
+
+
+def coding_intent(text: str) -> bool:
+    """The request wants code written or changed – Claude's job, named or not."""
+    if any(p.search(text) for p in (_NOT_CODE, _ASKS_ABOUT, _HOW_TO, _CANCEL)):
+        return False
+    if narrates(text):
+        return False
+    if _CODE_VERB_ALONE.search(text):
+        return True
+    return bool(_CODE_VERB.search(text) and _CODE_THING.search(text))
+
+
 def tool_intent(text: str) -> str | None:
     """Tool a request clearly asks for (Claude, projects, remember, forget), if any."""
     if claude := claude_intent(text):
         return claude
     if _HOW_TO.search(text):
         return None
+    if coding_intent(text):
+        return "send_to_claude"
     if _SSH.search(text) and not narrates(text):
         return "ssh_connect"
     if _WORKFLOW.search(text) and _WORKFLOW_ACTIONS.search(text) and not narrates(text):
@@ -673,8 +727,10 @@ def tool_intent(text: str) -> str | None:
 
 def to_claude(text: str) -> bool:
     """The request hands something to Claude ("gib es an Claude", "schick Claude …")."""
-    return claude_intent(text) == "send_to_claude" or bool(
-        _CLAUDE.search(text) and _HAND_OVER.search(text)
+    return (
+        claude_intent(text) == "send_to_claude"
+        or bool(_CLAUDE.search(text) and _HAND_OVER.search(text))
+        or coding_intent(text)
     )
 
 

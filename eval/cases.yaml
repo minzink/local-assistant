@@ -8,6 +8,11 @@
 #                  der Adresse stehen muss
 # expect.then:     Werkzeug, das nach dem ersten außerdem aufgerufen werden muss
 # expect.never:    Werkzeuge, die in der Runde gar nicht aufgerufen werden dürfen
+# expect.claude_contains: Wörter, von denen eines im Auftrag an Claude stehen muss – auch wenn
+#                  er erst ein späterer Schritt ist (Bildschirm, Webseite, Datei)
+# expect.claude_project:  Projekt(e), in die der Auftrag an Claude gehen muss
+# Jeder Auftrag an Claude wird außerdem geprüft: er nennt die Aufgabe selbst, ohne über Claude
+# zu reden („Frag Claude, …“, „in die Claude-Zeile“).
 # history:         vorherige Runden (user/assistant), für Nachfragen; actions: was Cassi in
 #                  der Runde ausgeführt hat (tool, arguments)
 
@@ -82,6 +87,35 @@ cases:
     expect: {tool: send_to_claude, project: [umx], contains: [build]}
   - say: "Tell Claude in flay to update the changelog."
     expect: {tool: send_to_claude, project: [flay], contains: [changelog]}
+  # Programmieren, ohne Claude zu nennen: geht trotzdem an Claude
+  - say: "Implementiere im Projekt flay einen Export-Button für die Einstellungen."
+    expect: {tool: send_to_claude, project: [flay], contains: [export]}
+  - say: "Behebe den Bug im Login vom Projekt umx."
+    expect: {tool: send_to_claude, project: [umx], contains: [login]}
+  - say: "Schreib Tests für den Warenkorb."
+    expect: {tool: send_to_claude, contains: [test, warenkorb]}
+  - say: "Fix the login bug in flay."
+    expect: {tool: send_to_claude, project: [flay], contains: [login]}
+  - say: "Kannst du im Projekt KX Command eine Validierung für die E-Mail-Adresse einbauen?"
+    expect: {tool: send_to_claude, project: [component-symfony-kx-command], contains: [valid]}
+  - say: "Schau dir den Screen an und setz das Ticket im Projekt flay um."
+    expect: {tool: look_at_screen, then: send_to_claude, claude_contains: [csv, bestellung],
+             claude_project: [flay]}
+  - say: "Warum schlägt der Test fehl?"  # eine Frage: antworten oder bei Claude nachsehen
+    expect: {tool: [none, claude_status], never: [send_to_claude]}
+  - say: "Erzähl mir einen Witz über Programmierer."
+    expect: {tool: none}
+  # Falsch gehört: „Claw“ statt Claude
+  - say: "Sag Claw im Projekt flay, er soll die Readme zusammenfassen."
+    expect: {tool: send_to_claude, project: [flay], contains: [readme]}
+  - say: "Gib in die Claw-Zeile von umx ein: Führe die Migrationen aus."
+    expect: {tool: send_to_claude, project: [umx], contains: [migration]}
+  # Mehrere Claude-Sitzungen, kein Projekt genannt: Claude im Blick bekommt den Auftrag
+  - say: "Sag Claude, er soll den Changelog aktualisieren."
+    expect: {tool: send_to_claude, contains: [changelog]}
+  # Projekt ohne Claude-Sitzung: Claude wird dort gestartet
+  - say: "Sag Claude im Projekt Moewe, er soll die Abhängigkeiten aktualisieren."
+    expect: {tool: send_to_claude, project: [moewe], contains: [abhängig, dependenc, update]}
   - say: "Sch uh, schreibe Claude, er soll die um Read Me im Projekt U M X ne, never mind, never mind, never mind."
     expect: {tool: none}
   - say: "Ist Claude fertig?"
@@ -123,7 +157,8 @@ cases:
   - say: "Summarize docs.python.org/3/tutorial for me."
     expect: {tool: read_webpage, contains: [docs.python.org]}
   - say: "Öffne google punkt com und schick Claude als Aufgabe, eine Startseite mit genau diesen Buttons zu bauen."
-    expect: {tool: read_webpage, contains: [google.com], then: send_to_claude}
+    expect: {tool: read_webpage, contains: [google.com], then: send_to_claude,
+             claude_contains: [startseite, button]}
   - say: "Schick Claude den Inhalt dieser Webseite."
     expect: {tool: read_webpage, then: send_to_claude}
   - say: "Übergib Claude die Links von google.com."
@@ -147,7 +182,7 @@ cases:
   - say: "Lies die README von flay und sag mir, wie man es installiert."
     expect: {tool: read_file, contains: [readme]}
   - say: "Fasse die Roadmap im Projekt flay zusammen und gib es Claude."
-    expect: {tool: read_file, contains: [roadmap], then: send_to_claude}
+    expect: {tool: read_file, contains: [roadmap], then: send_to_claude, claude_project: [flay]}
   - say: "Was steht in der neuesten PDF in meinen Downloads?"
     expect: {tool: read_file, contains: [pdf]}
 
@@ -229,9 +264,11 @@ cases:
   - say: "Also, was dieser ganze Kontext jetzt bedeuten soll, ist, du solltest eigentlich google.com öffnen und danach einen Screenshot machen, um mir zu sagen, was du auf der Seite google.com siehst."
     expect: {tool: [open_url, read_webpage], contains: [google.com], then: look_at_screen}
   - say: "Schau dir meinen Screen an und kopiere den Text von der Beschreibung in diesem Ticket in den Claude, also in die Claude-Textzeile."
-    expect: {tool: look_at_screen, then: send_to_claude, never: [open_project]}
+    expect: {tool: look_at_screen, then: send_to_claude, never: [open_project],
+             claude_contains: [csv, bestellung]}
   - say: "Schau dir mein Screen an und kopiere den Text aus der Beschreibung für dieses Ticket in das Projekt Flay, also in die Claw-Zeile vom Projekt Flay."
-    expect: {tool: look_at_screen, then: send_to_claude, never: [open_project]}
+    expect: {tool: look_at_screen, then: send_to_claude, never: [open_project],
+             claude_contains: [csv, bestellung], claude_project: [flay]}
 
   # Computer steuern (Apps, Tastatur, PhpStorm, Dateien, Timer, System)
   - say: "Öffne Firefox."

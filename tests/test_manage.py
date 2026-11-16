@@ -342,7 +342,7 @@ def test_the_page_shows_the_configuration_as_it_is_now(tmp_path: Path) -> None:
         tab.id: tab
         for tab in tabs_for(program, at_start, [], None, lambda: None, lambda: changed["settings"])
     }
-    (section,) = tabs["data"].sections()
+    section = tabs["data"].sections()[0]
 
     assert {row.label: row.value for row in section.rows}["Datenordner"] == str(tmp_path / "new")
 
@@ -350,7 +350,7 @@ def test_the_page_shows_the_configuration_as_it_is_now(tmp_path: Path) -> None:
         raise ValueError("cassi.yaml kaputt")
 
     tabs = {t.id: t for t in tabs_for(program, at_start, [], None, lambda: None, broken)}
-    (section,) = tabs["data"].sections()  # falls back to the configuration from the start
+    section = tabs["data"].sections()[0]  # falls back to the configuration from the start
     assert {row.label: row.value for row in section.rows}["Datenordner"] == str(tmp_path / "old")
 
 
@@ -434,3 +434,57 @@ async def test_a_running_action_keeps_the_server_open(monkeypatch: pytest.Monkey
     await asyncio.wait_for(manage._close_when_unused(server), 2)
 
     assert calls > 3  # waited for the action before ending
+
+
+def test_the_export_folder_is_chosen_in_the_page_and_used_both_ways(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sqlite3
+
+    from cassi import maintenance, manage, transfer
+
+    monkeypatch.setattr(manage.Launcher, "running", lambda self: False)
+    drive = tmp_path / "Stick"
+    drive.mkdir()
+    asked: list[str] = []
+
+    def dialog(prompt: str, start: Path | None = None) -> Path:
+        asked.append(prompt)
+        return drive
+
+    monkeypatch.setattr(maintenance, "ask_for_folder", dialog)
+    monkeypatch.setattr(maintenance, "open_folder", lambda path: True)
+    program = App("flay", tmp_path, None)
+
+    here = Settings(data_dir=tmp_path / "here")
+    here.data_dir.mkdir()
+    with sqlite3.connect(here.data_dir / "memory.sqlite3") as db:
+        db.execute("CREATE TABLE facts (text TEXT)")
+    db.close()
+    tabs = {t.id: t for t in tabs_for(program, here, [], None, lambda: None)}
+    actions = {a.id: a for a in tabs["data"].actions}
+    lines: list[str] = []
+
+    assert actions["folder"].run(lines.append, {}) and asked
+    assert actions["export"].run(lines.append, {"recordings": False})
+    assert len(transfer.exports_in(program, drive)) == 1
+    rows = {r.label: r.value for r in tabs["data"].sections()[1].rows}
+    assert rows["Export-Ordner"].startswith(f"{drive} (gewählt)")
+
+    there = Settings(data_dir=tmp_path / "there")
+    tabs = {t.id: t for t in tabs_for(program, there, [], None, lambda: None)}
+    latest = next(a for a in tabs["data"].actions if a.id == "import-latest")
+    assert latest.run(lines.append, {}), lines
+    assert (tmp_path / "there" / "memory.sqlite3").exists()
+
+
+def test_exporting_to_a_drive_that_is_not_attached_says_so(tmp_path: Path) -> None:
+    from cassi import transfer
+
+    program = App("flay", tmp_path, None)
+    transfer.choose_folder(program, tmp_path / "Volumes" / "weg")
+    tabs = {t.id: t for t in tabs_for(program, Settings(data_dir=tmp_path), [], None, lambda: None)}
+    lines: list[str] = []
+
+    assert not next(a for a in tabs["data"].actions if a.id == "export").run(lines.append, {})
+    assert "Festplatte" in lines[0]

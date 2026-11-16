@@ -20,3 +20,17 @@ def _no_real_processes(monkeypatch: pytest.MonkeyPatch) -> None:
     from cassi import maintenance
 
     monkeypatch.setattr(maintenance, "other_manage_processes", lambda name: [])
+
+
+@pytest.fixture(autouse=True)
+def _no_real_windows(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
+    """Tests never open terminal windows on this computer; the commands are recorded."""
+    from cassi.tools import ssh
+
+    opened: list[list[str]] = []
+
+    async def launch(command: list[str]) -> None:
+        opened.append(command)
+
+    monkeypatch.setattr(ssh, "launch", launch)
+    return opened

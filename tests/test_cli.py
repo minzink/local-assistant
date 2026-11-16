@@ -51,3 +51,24 @@ def test_memory_command_lists_forgets_and_clears(
     assert main(["-c", str(config), "memory", "clear"]) == 0
     assert main(["-c", str(config), "memory"]) == 0
     assert "Erinnerungen: keine" in capsys.readouterr().out
+
+
+def test_export_and_import_latest_go_through_the_export_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from cassi import app, manage, transfer
+
+    monkeypatch.setattr(manage.Launcher, "running", lambda self: False)
+    drive = tmp_path / "Stick"
+    drive.mkdir()
+    here, there = tmp_path / "here.yaml", tmp_path / "there.yaml"
+    here.write_text(f"data_dir: {tmp_path / 'a'}\nexport_dir: {drive}\nadapters: []\n")
+    there.write_text(f"data_dir: {tmp_path / 'b'}\nexport_dir: {drive}\nadapters: []\n")
+    (tmp_path / "a").mkdir()
+    (tmp_path / "a" / "workflows.json").write_text('{"x": 1}')
+
+    assert main(["-c", str(here), "export"]) == 0
+    assert len(transfer.exports_in(app.current(), drive)) == 1
+    assert main(["-c", str(there), "import"]) == 2  # neither a file nor --latest
+    assert main(["-c", str(there), "import", "--latest", "--yes"]) == 0
+    assert (tmp_path / "b" / "workflows.json").read_text() == '{"x": 1}'

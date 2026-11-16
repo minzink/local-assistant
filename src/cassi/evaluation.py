@@ -21,7 +21,7 @@ from typing import Any
 
 import yaml
 
-from cassi.assistant import Assistant
+from cassi.assistant import ABOUT_CLAUDE, Assistant
 from cassi.audio.base import AudioBuffer
 from cassi.config import Settings
 from cassi.core.events import AssistantDelta, Event, EventBus, ToolUsed, TurnProfiled
@@ -68,6 +68,12 @@ TEXT_ARGUMENT = {
 }
 # Tools that only read; the model answers from what they return.
 READING_TOOLS = ("claude_status", "look_at_screen", "read_webpage", "calendar")
+# What the simulated screen shows: a ticket whose description can be passed on.
+SIMULATED_SCREEN = (
+    "(simulated) The screen shows a ticket in the browser: 'KX-412 Bestellungen exportieren'. "
+    "Beschreibung: Im Kundenportal soll ein Button alle Bestellungen des Kunden als "
+    "CSV-Datei exportieren, mit Datum, Bestellnummer und Summe."
+)
 
 
 @dataclass
@@ -174,6 +180,8 @@ class _SimulatedTool:
         if self._spec.name in ("scroll_screen", "click_on_screen"):
             # On the simulated page there is nothing more to find.
             return ToolResult("(simulated) Done; the page shows the same as before.")
+        if self._spec.name == "look_at_screen":
+            return ToolResult(SIMULATED_SCREEN)
         if self._spec.name in READING_TOOLS:
             # Reading tools: the model answers from the result, as in real use.
             return ToolResult("(simulated) Claude is idle and waiting for input.")
@@ -414,6 +422,33 @@ def _judge(
         return f"danach kein {then}"
     if wrong := [c["tool"] for c in calls if c["tool"] in expect.get("never", ())]:
         return f"außerdem {wrong[0]}"
+    return _judge_claude(expect, calls, projects)
+
+
+def _judge_claude(
+    expect: dict[str, Any], calls: list[dict[str, Any]], projects: list[Project]
+) -> str:
+    """The instruction typed into Claude: the task itself, with what it needs, in the project.
+
+    Every instruction is checked for talk about Claude ("Frag Claude, …", "in die
+    Claude-Zeile"); ``claude_contains`` and ``claude_project`` check the instruction of a
+    later step too ("Schau dir den Screen an und kopiere das Ticket in Claude").
+    """
+    sent = [c for c in calls if c["tool"] == "send_to_claude"]
+    for call in sent:
+        text = str(call.get("instruction") or "")
+        if ABOUT_CLAUDE.search(text):
+            return f"Auftrag spricht über Claude statt die Aufgabe: „{text[:120]}“"
+    if (words := expect.get("claude_contains")) and not any(
+        word.lower() in str(c.get("instruction") or "").lower() for c in sent for word in words
+    ):
+        texts = [str(c.get("instruction") or "")[:120] for c in sent]
+        return f"Auftrag an Claude ohne {words}: {texts}"
+    if wanted := expect.get("claude_project"):
+        named = [str(c.get("project") or "") for c in sent]
+        found = [{p.name for p in match_projects(name, projects)} for name in named if name]
+        if not any(names and names <= set(wanted) for names in found):
+            return f"Auftrag an Claude im Projekt {named} statt {wanted}"
     return ""
 
 

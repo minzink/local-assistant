@@ -81,7 +81,9 @@ no line breaks. If the user wants Claude to do something, write it as a task in 
 imperative, starting with what to do (e.g. "Installiere …"), with every detail from the \
 page Claude needs (commands, versions, names, settings, steps, copied exactly). If the \
 user only passes the page on, summarize what it shows, at most six sentences, without \
-remarks about tasks or what is missing."""
+remarks about tasks or what is missing; if they ask for certain parts (the links, a list, a \
+table), give exactly those, copied. Never mention Claude or what it can or cannot do: \
+the text is typed into Claude as it is."""
 
 _FOR_USER = """\
 your spoken answer to the user in {language}: one to three short sentences, plain text, \
@@ -100,6 +102,11 @@ that has it (read_more with its heading from "Not shown yet", e.g. "Inheritance"
 links to it, search the page (search_page). One action per turn; you get the new text \
 after it. Never open login, logout, shop or form links. If nothing leads further, reply \
 DONE."""
+
+# For the second try at writing: reading is over, now only the text counts.
+_WRITING = """\
+You have read web pages for the user (above). Now write the result they asked for from \
+what the pages show. Never answer DONE and call no tools."""
 
 _OPEN_LINK = ToolSpec(
     name="open_link",
@@ -294,8 +301,20 @@ async def _write(
         Message.from_text(Role.USER, _WRITE.format(result=result, rules=rules), language)
     )
     written, _ = await _turn(llm, conversation, tools, decide=False)
-    if not _clean(written, for_claude) and tools:
-        # It called a tool or said DONE again: once more without any.
+    if not _clean(written, for_claude):
+        # It called a tool or said DONE again: once more without tools, told what was wrong
+        # (the same conversation alone gives the same answer). The reading instructions
+        # ("reply only DONE") give way to writing ones – they kept the model at DONE.
+        system = Message.from_text(Role.SYSTEM, _WRITING)
+        rest = [m for m in conversation if m.role is not Role.SYSTEM]
+        conversation[:] = [
+            system,
+            *rest,
+            Message(Role.ASSISTANT, (TextPart(written or "DONE"),), language),
+            Message.from_text(
+                Role.USER, f"That was no text. Write {result} Nothing else.", language
+            ),
+        ]
         written, _ = await _turn(llm, conversation, [], decide=False)
     return _clean(written, for_claude)
 
@@ -304,7 +323,11 @@ def _clean(written: str, for_claude: bool) -> str:
     """For Claude: "Schick Claude die Installationsschritte …" is the request echoed, not
     the task. Spoken: markdown marks would be read out or garble the voice."""
     written = _DONE.sub("", " ".join(written.split()))
-    return _ECHO.sub("", written, count=1) if for_claude else _MARKS.sub("", written)
+    if not for_claude:
+        return _MARKS.sub("", written)
+    if (lead := _ECHO_LEAD.match(written)) is not None:
+        return written[lead.end() :]
+    return _ECHO.sub("", written, count=1)
 
 
 async def browse(
@@ -409,7 +432,13 @@ _DECIDED = 24
 
 _DONE = re.compile(r"^DONE\b\W*")
 _MARKS = re.compile(r"[`*_#]+")
-_ECHO = re.compile(r"^[^.!?]*\bclaude\b[^.!?]*[.!?]\s*", re.IGNORECASE)
+# A dot inside a word ("google.com") does not end the sentence.
+_IN_SENTENCE = r"(?:[^.!?]|[.!?](?=\S))*"
+_ECHO = re.compile(rf"^{_IN_SENTENCE}\bclaude\b{_IN_SENTENCE}[.!?](?:\s+|$)", re.IGNORECASE)
+# "Übergib Claude folgende Links von google.com: Gmail, …" – only the lead-in is the echo.
+_ECHO_LEAD = re.compile(
+    r"^(?:[^:.!?]|[.!?](?=\S))*\bclaude\b(?:[^:.!?]|[.!?](?=\S))*:\s*(?=\S)", re.IGNORECASE
+)
 
 
 async def _turn(

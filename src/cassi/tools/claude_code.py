@@ -23,7 +23,7 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -146,6 +146,18 @@ ClaudeState = Literal["ready", "trust", "timeout"]
 _TRUST_PROMPT = re.compile(r"trust this folder|do you trust", re.IGNORECASE)
 # Claude puts a no-break space (U+00A0) after the prompt sign; \s matches both kinds.
 _INPUT_LINE = re.compile(r"^\s*❯(?:\s|$)", re.MULTILINE)
+# While Claude works, its status line offers to interrupt it.
+_WORKING = re.compile(r"esc to interrupt|esc zum abbrechen", re.IGNORECASE)
+_BUSY = {
+    Language.DE: "Claude arbeitet noch an etwas anderem; nach Enter nimmt es den Auftrag danach.",
+    Language.EN: "Claude is still working on something else; after Enter it takes this next.",
+}
+
+
+def claude_working(screen: str) -> bool:
+    """Whether Claude is busy with a task (its input still takes text, queued after it)."""
+    tail = "\n".join(screen.rstrip().splitlines()[-15:])
+    return bool(_WORKING.search(tail))
 
 
 _BORDER = re.compile(r"^\s*─{10,}")
@@ -241,6 +253,8 @@ class SendToClaudeTool:
         ready_timeout: float = 30.0,
         phpstorm: PhpStormMcp | None = None,
         confirm_timeout: float = 40.0,
+        show_window: bool = True,
+        terminal: str = "auto",
     ) -> None:
         self._transport = transport
         self._autostart = autostart
@@ -254,6 +268,11 @@ class SendToClaudeTool:
         self._typed: dict[str, str] = {}
         # Time for PhpStorm's terminal and `cassi claude` to come up.
         self._confirm_timeout = confirm_timeout
+        # A session nobody sees (no PhpStorm) is shown in a terminal window of its own.
+        self._show_window = show_window
+        self._terminal = terminal
+        # Sessions where Claude was still working when Cassi typed (see _busy_note).
+        self._busy: set[str] = set()
 
     @property
     def spec(self) -> ToolSpec:
@@ -261,7 +280,9 @@ class SendToClaudeTool:
             name="send_to_claude",
             description=(
                 "Give an instruction to Claude Code, the coding agent the user runs in PhpStorm. "
-                "Use it when the user wants Claude to do something in the code. Phrase a "
+                "Use it when the user wants Claude to do something in the code – and whenever "
+                "they want code written, changed, fixed or tested, even without naming Claude: "
+                "you never write code yourself. Phrase a "
                 "complete, precise instruction in the user's language. The instruction is only "
                 "written into Claude's input; the user checks it and submits it."
             ),
@@ -294,8 +315,10 @@ class SendToClaudeTool:
                     visible = await self._show_in_phpstorm(session)
                 if refused := await self._write(session.name, text):
                     return refused
+                if not visible:
+                    visible = await self._show_in_window(session.name)
                 if visible:
-                    return ToolResult(
+                    typed = ToolResult(
                         f"The instruction is written into Claude's input for project "
                         f"'{session.project}' but NOT sent. Tell the user it is waiting in "
                         f"Claude for project '{session.project}' to check and press Enter.",
@@ -305,7 +328,8 @@ class SendToClaudeTool:
                         ),
                         say=_typed_speech(session.project),
                     )
-                return ToolResult(
+                    return self._busy_note(session.name, typed)
+                hidden = ToolResult(
                     f"The instruction is written into Claude's input for project "
                     f"'{session.project}', NOT sent, but that Claude runs in the background and "
                     "is not shown anywhere. Tell the user to run 'cassi claude' in PhpStorm's "
@@ -323,6 +347,7 @@ class SendToClaudeTool:
                         "terminal to see it, then press Enter.",
                     ),
                 )
+                return self._busy_note(session.name, hidden)
             if self._autostart and self._phpstorm is not None:
                 opened = await self._open_in_phpstorm(project, text)
                 if opened is not None:
@@ -406,15 +431,18 @@ class SendToClaudeTool:
             )
         if refused := await self._write(name, text):
             return refused
-        return ToolResult(
-            f"Claude was opened in a new terminal tab of project '{project.name}' in PhpStorm "
-            "and the instruction is written into its input, NOT sent. Tell the user it is "
-            "waiting there to check and press Enter.",
-            action=(
-                f"PhpStorm ({project.name}): Claude im Terminal geöffnet, Auftrag eingetippt, "
-                f"nicht abgeschickt – „{text}“"
+        return self._busy_note(
+            name,
+            ToolResult(
+                f"Claude was opened in a new terminal tab of project '{project.name}' in PhpStorm "
+                "and the instruction is written into its input, NOT sent. Tell the user it is "
+                "waiting there to check and press Enter.",
+                action=(
+                    f"PhpStorm ({project.name}): Claude im Terminal geöffnet, Auftrag eingetippt, "
+                    f"nicht abgeschickt – „{text}“"
+                ),
+                say=_typed_speech(project.name, opened=True),
             ),
-            say=_typed_speech(project.name, opened=True),
         )
 
     async def _write(self, session: str, text: str) -> ToolResult | None:
@@ -423,8 +451,13 @@ class SendToClaudeTool:
         Text Cassi typed earlier and the user never sent is replaced. Anything else in the
         input may be the user's own writing, so Cassi leaves it alone.
         """
-        current = read_input(await self._tmux.screen(session))
+        screen = await self._tmux.screen(session)
+        current = read_input(screen)
         previous = self._typed.get(session, "")
+        if claude_working(screen):
+            self._busy.add(session)
+        else:
+            self._busy.discard(session)
         if current and previous and _compact(current) == _compact(previous):
             await self._tmux.press(session, "BSpace", len(previous))
             # Claude redraws asynchronously; wait until the input shows as empty.
@@ -465,6 +498,37 @@ class SendToClaudeTool:
         await self._tmux.type_text(session, text)
         self._typed[session] = text
         return None
+
+    def _busy_note(self, session: str, result: ToolResult) -> ToolResult:
+        """Claude was still working: the instruction waits in its input and Claude takes it
+        after its current task once the user presses Enter."""
+        if session not in self._busy:
+            return result
+        return replace(
+            result,
+            text=result.text + " Claude is still working on an earlier task; after Enter it "
+            "queues this instruction behind it. Tell the user.",
+            say={
+                language: f"{said} " + _BUSY[language]
+                for language, said in (result.say or {}).items()
+            }
+            or None,
+        )
+
+    async def _show_in_window(self, session: str) -> bool:
+        """Show a session nobody sees in a terminal window of its own (without PhpStorm)."""
+        tmux = shutil.which("tmux")
+        if not self._show_window or tmux is None or sys.platform == "win32":
+            return False
+        from cassi.tools.ssh import launch, window_command
+
+        try:
+            await launch(window_command([tmux, "attach", "-t", session], session, self._terminal))  # type: ignore[arg-type]
+        except (OSError, RuntimeError, ValueError) as exc:
+            log.info("Claude-Sitzung %s nicht im Terminal gezeigt: %s", session, exc)
+            return False
+        log.info("Claude-Sitzung %s im Terminal-Fenster gezeigt", session)
+        return True
 
     async def _show_in_phpstorm(self, session: Session) -> bool:
         """Attach a detached session in a new terminal tab of its project, if it is open."""
@@ -523,8 +587,34 @@ class SendToClaudeTool:
         project = matches[0]
         name = session_name(project.path)
         await self._tmux.start(name, project.path, self._claude_command)
+        # Shown at once: the user sees Claude come up – and its trust question, if it asks.
+        shown = await self._show_in_window(name)
         state = await wait_for_claude(self._tmux, name, self._ready_timeout)
-        attach = f"run 'cassi claude' in PhpStorm's terminal of project '{project.name}'"
+        attach = (
+            "look at the terminal window that opened"
+            if shown
+            else f"run 'cassi claude' in PhpStorm's terminal of project '{project.name}'"
+        )
+        if state == "trust" and shown:
+            return ToolResult(
+                f"Claude Code was started for project '{project.name}' in a terminal window and "
+                "first asks whether to trust this folder, so NOTHING was typed. Tell the user to "
+                "choose 'Yes, I trust this folder' there (arrow down, then Enter – 'No, exit' is "
+                "preselected) and ask again.",
+                ok=False,
+                action=(
+                    f"Claude ({name}): für „{project.name}“ im Terminal-Fenster gestartet, "
+                    "wartet auf Vertrauensabfrage – nichts eingetippt"
+                ),
+                say=speech(
+                    f"Claude fragt im neuen Terminal-Fenster, ob es {spoken(project.name)} "
+                    "vertrauen soll. Wähl mit Pfeil runter Ja und drück Enter, dann sag es mir "
+                    "noch mal.",
+                    f"Claude asks in the new terminal window whether to trust "
+                    f"{spoken(project.name)}. Choose yes with arrow down and Enter, then tell "
+                    "me again.",
+                ),
+            )
         if state == "trust":
             return ToolResult(
                 f"Claude Code was started for project '{project.name}' but first asks whether "
@@ -547,21 +637,43 @@ class SendToClaudeTool:
             )
         if refused := await self._write(name, text):
             return refused
-        return ToolResult(
-            f"No Claude session was running, so Claude Code was started in the background for "
-            f"project '{project.name}' and the instruction is written into its input, NOT sent. "
-            f"Tell the user: to see it, {attach}; then check it and press Enter.",
-            action=(
-                f"Claude ({name}): für „{project.name}“ gestartet, Auftrag eingetippt, "
-                f"nicht abgeschickt – „{text}“"
-            ),
-            say=speech(
-                f"Ich habe Claude für {spoken(project.name)} im Hintergrund gestartet, der "
-                "Auftrag steht in der Eingabe. Gib cassi claude im Terminal des Projekts ein, "
-                "um es zu sehen, und drück dann Enter.",
-                f"I started Claude for {spoken(project.name)} in the background; the "
-                "instruction is in its input. Run cassi claude in the project's terminal to "
-                "see it, then press Enter.",
+        if shown:
+            return self._busy_note(
+                name,
+                ToolResult(
+                    "No Claude session was running, so Claude Code was started for project "
+                    f"'{project.name}' in a new terminal window and the instruction is written "
+                    "into its input, NOT sent. Tell the user to check it there and press Enter.",
+                    action=(
+                        f"Claude ({name}): für „{project.name}“ im Terminal-Fenster gestartet, "
+                        f"Auftrag eingetippt, nicht abgeschickt – „{text}“"
+                    ),
+                    say=speech(
+                        f"Ich habe Claude für {spoken(project.name)} in einem Terminal-Fenster "
+                        "gestartet, der Auftrag steht in der Eingabe. Prüf ihn und drück Enter.",
+                        f"I started Claude for {spoken(project.name)} in a terminal window; the "
+                        "instruction is in its input. Check it and press Enter.",
+                    ),
+                ),
+            )
+        return self._busy_note(
+            name,
+            ToolResult(
+                "No Claude session was running, so Claude Code was started in the background "
+                f"for project '{project.name}' and the instruction is written into its input, "
+                f"NOT sent. Tell the user: to see it, {attach}; then check it and press Enter.",
+                action=(
+                    f"Claude ({name}): für „{project.name}“ gestartet, Auftrag eingetippt, "
+                    f"nicht abgeschickt – „{text}“"
+                ),
+                say=speech(
+                    f"Ich habe Claude für {spoken(project.name)} im Hintergrund gestartet, der "
+                    "Auftrag steht in der Eingabe. Gib cassi claude im Terminal des Projekts ein, "
+                    "um es zu sehen, und drück dann Enter.",
+                    f"I started Claude for {spoken(project.name)} in the background; the "
+                    "instruction is in its input. Run cassi claude in the project's terminal to "
+                    "see it, then press Enter.",
+                ),
             ),
         )
 

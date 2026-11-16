@@ -30,6 +30,8 @@ log = logging.getLogger(__name__)
 Terminal = Literal["auto", "terminal", "iterm", "windows-terminal", "console"]
 # Host aliases Cassi hands to ssh: plain names only, never an option ("-o…") or a pattern.
 _SAFE_ALIAS = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._@:+-]*$")
+# Words of a command put into a terminal window: paths, names, options – no quotes or shell syntax.
+_SAFE_WORD = re.compile(r"^[A-Za-z0-9_./:@%+=,-]+$")
 # Include depth: configs including each other must not loop forever.
 MAX_INCLUDE_DEPTH = 8
 
@@ -104,6 +106,15 @@ def terminal_command(alias: str, terminal: Terminal = "auto") -> list[str]:
     """The command that opens a new terminal window running ``ssh <alias>``."""
     if not _SAFE_ALIAS.match(alias):
         raise ValueError(f"unsafe ssh host alias: {alias!r}")
+    return window_command(["ssh", alias], alias, terminal)
+
+
+def window_command(argv: list[str], title: str, terminal: Terminal = "auto") -> list[str]:
+    """The command that opens a new terminal window running ``argv`` (e.g. ``ssh host`` or
+    ``tmux attach -t …``). Every word must be safe for a shell line (no quotes)."""
+    if any(not _SAFE_WORD.match(word) for word in argv):
+        raise ValueError(f"unsafe command for a terminal window: {argv!r}")
+    line = " ".join(argv)
     if terminal == "auto":
         terminal = _default_terminal()
     if terminal == "terminal":
@@ -111,7 +122,7 @@ def terminal_command(alias: str, terminal: Terminal = "auto") -> list[str]:
             "osascript",
             "-e", 'tell application "Terminal"',
             "-e", "activate",
-            "-e", f'do script "ssh {alias}"',
+            "-e", f'do script "{line}"',
             "-e", "end tell",
         ]  # fmt: skip
     if terminal == "iterm":
@@ -119,15 +130,15 @@ def terminal_command(alias: str, terminal: Terminal = "auto") -> list[str]:
             "osascript",
             "-e", 'tell application "iTerm"',
             "-e", "activate",
-            "-e", f'create window with default profile command "ssh {alias}"',
+            "-e", f'create window with default profile command "{line}"',
             "-e", "end tell",
         ]  # fmt: skip
     if terminal == "windows-terminal":
-        return ["wt", "new-tab", "--title", alias, "ssh", alias]
+        return ["wt", "new-tab", "--title", title, *argv]
     # A console window of its own (Windows) or the desktop's terminal emulator (Linux).
     if sys.platform == "win32":
-        return ["ssh", alias]
-    return ["x-terminal-emulator", "-e", "ssh", alias]
+        return list(argv)
+    return ["x-terminal-emulator", "-e", *argv]
 
 
 def _default_terminal() -> Terminal:
@@ -140,7 +151,7 @@ def _default_terminal() -> Terminal:
 
 async def launch(command: list[str]) -> None:
     """Start the terminal and leave it running; never through a shell."""
-    if sys.platform == "win32" and command[0] == "ssh":
+    if sys.platform == "win32" and command[0] not in ("wt", "osascript"):
         flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
         subprocess.Popen(command, creationflags=flags)  # noqa: S603 – fixed argv, no shell
         return

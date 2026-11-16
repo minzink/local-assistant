@@ -310,6 +310,27 @@ def builtin_tabs(
         backups = sorted((folder / "backups").glob("*.zip"))
         if backups:
             rows.append(Row("Letzte Sicherung", backups[-1].name))
+        target = transfer.export_folder(app, settings)
+        problem = transfer.check_folder(target)
+        source = (
+            "gewählt"
+            if transfer.chosen_folder(app)
+            else "aus cassi.yaml"
+            if settings.export_dir
+            else "Standard"
+        )
+        exports = transfer.exports_in(app, target)
+        places = [
+            Row(
+                "Export-Ordner",
+                f"{target} ({source})" + (f" – {problem}" if problem else ""),
+                "fail" if problem else "ok",
+            ),
+            Row(
+                "Exporte dort",
+                f"{len(exports)}, neuester: {exports[0].name}" if exports else "keine",
+            ),
+        ]
         return [
             Section(
                 "Persönliche Daten",
@@ -317,14 +338,25 @@ def builtin_tabs(
                 "Gedächtnis und eigene Modelle liegen nur hier, nie im Repository. Mit dem "
                 "Export nimmst du sie auf einen anderen Rechner mit oder sicherst sie; "
                 "heruntergeladene Modelle lädt dort das Setup.",
-            )
+            ),
+            Section(
+                "Übertragen",
+                places,
+                "Für einen anderen Rechner: hier den Export-Ordner auf die externe Festplatte "
+                "stellen und exportieren; dort denselben Ordner wählen und den neuesten Export "
+                "importieren. Die Wahl gilt nur für diesen Rechner.",
+            ),
         ]
 
     def export_data(out: Output, chosen: Mapping[str, Any]) -> bool:
         settings = now()
         from cassi import transfer
 
-        target = transfer.default_target(app)
+        folder = transfer.export_folder(app, settings)
+        if problem := transfer.check_folder(folder):
+            out(f"✗ {problem}")
+            return False
+        target = transfer.default_target(app, settings)
         done = transfer.export(app, settings, target, recordings=bool(chosen.get("recordings")))
         out(f"✓ {done.files} Dateien ({maintenance.human_size(done.size)}) exportiert:")
         out(f"  {target}")
@@ -338,12 +370,50 @@ def builtin_tabs(
         if Launcher(app, settings, config).running():
             out(f"✗ {app.title} läuft – erst oben mit „Beenden“ schließen, dann importieren.")
             return False
+        source = chosen.get("file")
+        if source is None:  # the newest export in the export folder
+            folder = transfer.export_folder(app, settings)
+            if problem := transfer.check_folder(folder):
+                out(f"✗ {problem}")
+                return False
+            exports = transfer.exports_in(app, folder)
+            if not exports:
+                out(f"✗ Kein {app.title}-Export in {folder}")
+                return False
+            source = exports[0]
+            out(f"Importiere {Path(source).name} …")
         try:
-            transfer.import_(app, settings, Path(str(chosen["file"])), out)
+            transfer.import_(app, settings, Path(str(source)), out)
         except transfer.TransferError as exc:
             out(f"✗ {exc}")
             return False
         out(f"Fertig. Beim nächsten Start nutzt {app.title} die importierten Daten.")
+        return True
+
+    def pick_folder(out: Output, _: Mapping[str, Any]) -> bool:
+        from cassi import transfer
+
+        settings = now()
+        out("Der Ordner-Dialog ist auf diesem Rechner geöffnet …")
+        folder = maintenance.ask_for_folder(
+            f"Ordner für {app.title}-Exporte (z.B. auf einer externen Festplatte)",
+            transfer.export_folder(app, settings),
+        )
+        if folder is None:
+            out("Kein Ordner gewählt – alles bleibt, wie es war.")
+            return True
+        if problem := transfer.check_folder(folder):
+            out(f"✗ {problem}")
+            return False
+        transfer.choose_folder(app, folder)
+        out(f"✓ Exporte gehen jetzt nach {folder}")
+        return True
+
+    def reset_folder(out: Output, _: Mapping[str, Any]) -> bool:
+        from cassi import transfer
+
+        transfer.choose_folder(app, None)
+        out(f"✓ Exporte gehen wieder nach {transfer.export_folder(app, now())}")
         return True
 
     def open_backups(out: Output, _: Mapping[str, Any]) -> bool:
@@ -428,15 +498,38 @@ def builtin_tabs(
                 Action(
                     "export",
                     "Exportieren",
-                    "Speichert die persönlichen Daten als Zip-Datei im Download-Ordner.",
+                    "Speichert die persönlichen Daten als Zip-Datei im Export-Ordner.",
                     export_data,
                     options=(Option("recordings", "Aufnahmen einschließen (größer)"),),
                 ),
                 Action(
+                    "folder",
+                    "Export-Ordner wählen …",
+                    "Öffnet den Ordner-Dialog – z.B. für eine externe Festplatte, um die Daten "
+                    "auf einen anderen Rechner mitzunehmen.",
+                    pick_folder,
+                ),
+                Action(
+                    "folder-reset",
+                    "Export-Ordner zurücksetzen",
+                    "Exporte gehen wieder in den Download-Ordner (oder export_dir aus cassi.yaml).",
+                    reset_folder,
+                ),
+                Action(
+                    "import-latest",
+                    "Neuesten Export importieren",
+                    "Übernimmt den neuesten Export aus dem Export-Ordner (z.B. von der "
+                    "Festplatte). Die bisherigen Daten werden vorher gesichert.",
+                    import_data,
+                    confirm="Die persönlichen Daten durch den neuesten Export im Export-Ordner "
+                    "ersetzen? Die bisherigen werden vorher gesichert.",
+                    danger=True,
+                ),
+                Action(
                     "import",
                     "Importieren",
-                    "Übernimmt einen Export (z.B. vom anderen Rechner). Die bisherigen Daten "
-                    "werden vorher gesichert.",
+                    "Übernimmt eine beliebige Export-Datei. Die bisherigen Daten werden vorher "
+                    "gesichert.",
                     import_data,
                     confirm="Die persönlichen Daten durch den Export ersetzen? "
                     "Die bisherigen werden vorher gesichert.",

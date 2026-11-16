@@ -164,7 +164,9 @@ TRUST_SCREEN = """ Accessing workspace:
 STARTING_SCREEN = ""
 
 
-def autostart_tool(tmux: FakeTmux, tmp_path: Path, timeout: float = 1.0) -> SendToClaudeTool:
+def autostart_tool(
+    tmux: FakeTmux, tmp_path: Path, timeout: float = 1.0, show_window: bool = False
+) -> SendToClaudeTool:
     project = Project("stadt-wolkenthal", tmp_path / "stadt-wolkenthal")
 
     def find(name: str) -> list[Project]:
@@ -175,6 +177,7 @@ def autostart_tool(tmux: FakeTmux, tmp_path: Path, timeout: float = 1.0) -> Send
         find=find,
         claude_command=["claude"],
         ready_timeout=timeout,
+        show_window=show_window,
     )
 
 
@@ -1870,3 +1873,51 @@ async def test_look_at_pointer_says_where_the_pointer_is(
     assert captured == [((0, 340, 640, 400), screen.POINTER_MAX_SIZE)]
     assert result.images == (ImagePart(b"png", "image/png"),)
     assert "(16, 500)" in result.text
+
+
+async def test_without_phpstorm_a_started_claude_is_shown_in_a_terminal_window(
+    tmp_path: Path, _no_real_windows: list[list[str]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from cassi.tools import claude_code
+
+    monkeypatch.setattr(claude_code.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(claude_code.sys, "platform", "darwin")
+    tmux = FakeTmux([], screens=[READY_SCREEN])
+    tool = autostart_tool(tmux, tmp_path, timeout=5, show_window=True)
+
+    result = await tool.run({"instruction": "Prüfe die README.", "project": "Stadt Wolkenthal"})
+
+    assert result.ok and "terminal window" in result.text
+    assert tmux.typed == [("cassi-claude-stadt-wolkenthal", "Prüfe die README.")]
+    (command,) = _no_real_windows
+    assert "tmux attach -t cassi-claude-stadt-wolkenthal" in " ".join(command)
+
+
+async def test_the_trust_question_is_shown_with_how_to_answer_it(
+    tmp_path: Path, _no_real_windows: list[list[str]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from cassi.tools import claude_code
+
+    monkeypatch.setattr(claude_code.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(claude_code.sys, "platform", "darwin")
+    tmux = FakeTmux([], screens=[TRUST_SCREEN])
+
+    result = await autostart_tool(tmux, tmp_path, show_window=True).run(
+        {"instruction": "x", "project": "Stadt Wolkenthal"}
+    )
+
+    assert not result.ok and tmux.typed == []
+    assert "arrow down" in result.text  # "No, exit" is preselected
+    assert result.say is not None and "Pfeil runter" in result.say[Language.DE]
+
+
+async def test_while_claude_works_the_instruction_waits_and_the_user_is_told() -> None:
+    working = "✻ Bearbeite die Tests … (esc to interrupt)\n──────────\n❯\u00a0\n──────────"
+    tmux = FakeTmux([Session("cassi-claude-flay", 1, attached=True)], screens=[working])
+    tool = SendToClaudeTool(tmux=tmux, find=lambda name: [], show_window=False)  # type: ignore[arg-type]
+
+    result = await tool.run({"instruction": "Prüfe die README.", "project": "flay"})
+
+    assert result.ok and tmux.typed == [("cassi-claude-flay", "Prüfe die README.")]
+    assert "queues" in result.text
+    assert result.say is not None and "arbeitet noch" in result.say[Language.DE]

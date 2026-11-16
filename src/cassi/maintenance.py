@@ -539,3 +539,41 @@ def other_manage_processes(name: str) -> list[tuple[int, str]]:
         for pid, ppid, command in _processes()
         if pid not in (me, parent) and ppid != me and is_manage_command(command, name)
     ]
+
+
+def ask_for_folder(prompt: str, start: Path | None = None) -> Path | None:
+    """Show the system's folder dialog on this computer (the management UI runs here); the
+    chosen folder, or None if cancelled or no dialog is available."""
+    try:
+        if sys.platform == "darwin":
+            script = f'POSIX path of (choose folder with prompt "{prompt}"'
+            if start is not None and start.is_dir():
+                script += f' default location POSIX file "{start}"'
+            result = subprocess.run(
+                ["osascript", "-e", script + ")"], capture_output=True, text=True, timeout=600
+            )
+        elif sys.platform == "win32":
+            selected = f"$d.SelectedPath = '{start}'; " if start is not None else ""
+            script = (
+                "Add-Type -AssemblyName System.Windows.Forms; "
+                "$d = New-Object System.Windows.Forms.FolderBrowserDialog; "
+                f"$d.Description = '{prompt}'; {selected}"
+                "if ($d.ShowDialog() -eq 'OK') { $d.SelectedPath }"
+            )
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-STA", "-Command", script],
+                capture_output=True,
+                text=True,
+                timeout=600,
+            )
+        else:
+            result = subprocess.run(
+                ["zenity", "--file-selection", "--directory", f"--title={prompt}"],
+                capture_output=True,
+                text=True,
+                timeout=600,
+            )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    chosen = result.stdout.strip()
+    return Path(chosen) if result.returncode == 0 and chosen else None

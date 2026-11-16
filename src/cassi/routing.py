@@ -19,8 +19,10 @@ ACTIONS = {
     "open_project": "open a project in PhpStorm",
     "close_project": "close a project that is open in PhpStorm",
     "send_to_claude": (
-        "give Claude Code (an AI coding agent in PhpStorm's terminal) an instruction; text = "
-        "the instruction as one complete, precise sentence"
+        "give Claude Code (an AI coding agent in PhpStorm's terminal) an instruction – also "
+        "for any request to write, change, fix or test code without naming Claude; text = "
+        "the task itself as one complete, precise sentence in the imperative – not addressed "
+        "to Claude ('Finde heraus, warum der Build fehlschlägt', not 'Frag Claude, warum …')"
     ),
     "claude_status": "ask what Claude Code is doing or whether it is done",
     "remember": "store a fact about the user; text = the fact as one short sentence",

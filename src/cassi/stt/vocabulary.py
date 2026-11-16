@@ -29,6 +29,20 @@ _CLAUDE_MISHEARD = re.compile(
     r"(lord|lot|lott|claw|clo|klo|laude)\b",
     re.IGNORECASE,
 )
+# Further spots where only Claude fits: before what belongs to it ("die Claw-Zeile", "Clod
+# Code") and after a preposition pointing at it ("in den Claw", "an Klaud"). "Cloud" or
+# "Lord" alone stay – they are words of their own.
+_CLAUDE_BEFORE = re.compile(
+    r"\b(?:claw|clod+|klod+|klaud|kloud|laude)(?=[\s-]*(?:zeile|code|eingabe|terminal|"
+    r"session|sitzung|fenster)\b)",
+    re.IGNORECASE,
+)
+_CLAUDE_AFTER = re.compile(
+    r"\b(an|in|zu|zum|dem|den|für|to|into)(\s+)(?:claw|clod+|klod+|klaud|kloud)\b",
+    re.IGNORECASE,
+)
+_CLOUD_CODE = re.compile(r"\bcloud(?=[\s-]+code\b)", re.IGNORECASE)
+
 # Words around project names that look like parts of them but must stay as they are.
 PROTECTED = frozenset("projekt projekte projekts project projects formen ordner folder".split())
 
@@ -70,6 +84,9 @@ class Vocabulary:
 
     def correct(self, text: str) -> str:
         text = _CLAUDE_MISHEARD.sub(r"\1\2Claude", text)
+        text = _CLAUDE_BEFORE.sub("Claude", text)
+        text = _CLAUDE_AFTER.sub(r"\1\2Claude", text)
+        text = _CLOUD_CODE.sub("Claude", text)
         terms = self.terms()
         if not terms:
             return text
