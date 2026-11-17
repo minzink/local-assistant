@@ -141,7 +141,7 @@ class FakeTmux:
     async def press(self, session: str, key: str, count: int = 1) -> None:
         self.pressed.append((session, key, count))
 
-    async def screen(self, session: str, lines: int = 40) -> str:
+    async def screen(self, session: str, lines: int = 40, styled: bool = False) -> str:
         if self._screens is not None:
             return self._screens.pop(0) if len(self._screens) > 1 else self._screens[0]
         return f"screen of {session}\n──────────\n❯\u00a0\n──────────"
@@ -987,6 +987,41 @@ def test_read_input(screen: str, expected: str | None) -> None:
     from cassi.tools.claude_code import read_input
 
     assert read_input(screen) == expected
+
+
+# After an answer Claude suggests the next message, dimmed, in its empty input.
+SUGGESTION_SCREEN = (
+    "\x1b[38;5;244m──────────────\x1b[39m\n"
+    "\x1b[39m❯\u00a0\x1b[2mJa, stell den Block wieder her\x1b[0m\n"
+    "\x1b[38;5;244m──────────────\x1b[39m\n"
+    "  \x1b[38;5;220m⏵⏵ auto mode on\x1b[38;5;246m (shift+tab to cycle)\x1b[39m"
+)
+
+
+@pytest.mark.parametrize(
+    ("styled", "expected"),
+    [
+        (SUGGESTION_SCREEN, ""),
+        (SUGGESTION_SCREEN.replace("\x1b[2m", ""), "Ja, stell den Block wieder her"),
+        # A "2" inside an extended colour is not dim.
+        (input_screen("\x1b[38;2;2;2;2mMein Text\x1b[39m"), "Mein Text"),
+        (input_screen("\x1b[1;2mVorschlag\x1b[22m"), ""),
+    ],
+)
+def test_read_input_ignores_claudes_suggestion(styled: str, expected: str) -> None:
+    from cassi.tools.claude_code import read_input, without_suggestion
+
+    assert read_input(without_suggestion(styled)) == expected
+
+
+async def test_claudes_suggestion_does_not_block_typing() -> None:
+    tmux = FakeTmux([CASSI], screens=[SUGGESTION_SCREEN])
+    tool = SendToClaudeTool(tmux=tmux, autostart=False)  # type: ignore[arg-type]
+
+    result = await tool.run({"instruction": "Neuer Auftrag."})
+
+    assert result.ok
+    assert tmux.typed == [(CASSI.name, "Neuer Auftrag.")]
 
 
 async def test_foreign_text_in_claude_input_is_never_overwritten() -> None:

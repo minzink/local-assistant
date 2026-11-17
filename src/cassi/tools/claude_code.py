@@ -117,8 +117,10 @@ class Tmux:
     async def press(self, session: str, key: str, count: int = 1) -> None:
         await self._run("send-keys", "-t", session, "-N", str(count), key)
 
-    async def screen(self, session: str, lines: int = 40) -> str:
-        output = await self._run("capture-pane", "-p", "-t", session, "-S", f"-{lines}")
+    async def screen(self, session: str, lines: int = 40, styled: bool = False) -> str:
+        """The pane's text; ``styled`` keeps the colour codes (see ``without_suggestion``)."""
+        flags = ("-p", "-e") if styled else ("-p",)
+        output = await self._run("capture-pane", *flags, "-t", session, "-S", f"-{lines}")
         return output.rstrip()
 
 
@@ -182,6 +184,48 @@ def read_input(screen: str) -> str | None:
         parts.append(line.strip())
     text = _CONTEXT_CHIP.sub("", " ".join(p for p in parts if p).strip())
     return "" if _PLACEHOLDER.match(text) else text
+
+
+_ESCAPE = re.compile(r"\x1b\[([0-9;:?]*)([A-Za-z])|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
+
+
+def without_suggestion(styled: str) -> str:
+    """Plain text of a ``screen(styled=True)``, without dimmed text.
+
+    After an answer Claude puts a suggestion for the next message into its empty input,
+    dimmed (like the "Try ..." placeholder); typing replaces it. It is not the user's text.
+    """
+    out: list[str] = []
+    dim = False
+    position = 0
+    for match in _ESCAPE.finditer(styled):
+        if not dim:
+            out.append(styled[position : match.start()])
+        position = match.end()
+        if match.group(2) == "m":
+            dim = _sgr_dim(match.group(1), dim)
+    if not dim:
+        out.append(styled[position:])
+    return "".join(out)
+
+
+def _sgr_dim(params: str, dim: bool) -> bool:
+    """Whether text is dim after the SGR sequence ``ESC [ params m``."""
+    codes = [int(code) if code.isdigit() else 0 for code in re.split(r"[;:]", params)]
+    i = 0
+    while i < len(codes):
+        code = codes[i]
+        if code in (38, 48, 58):  # extended colour: skip its arguments (5;n or 2;r;g;b)
+            i += 3 if codes[i + 1 : i + 2] == [5] else 5
+            continue
+        if code == 0:
+            dim = False
+        elif code == 2:
+            dim = True
+        elif code == 22:
+            dim = False
+        i += 1
+    return dim
 
 
 def _compact(text: str) -> str:
@@ -451,8 +495,10 @@ class SendToClaudeTool:
         Text Cassi typed earlier and the user never sent is replaced. Anything else in the
         input may be the user's own writing, so Cassi leaves it alone.
         """
-        screen = await self._tmux.screen(session)
-        current = read_input(screen)
+        styled = await self._tmux.screen(session, styled=True)
+        screen = _ESCAPE.sub("", styled)
+        # Claude's own suggestion for the next message (dimmed) does not count as text.
+        current = read_input(without_suggestion(styled))
         previous = self._typed.get(session, "")
         if claude_working(screen):
             self._busy.add(session)
@@ -463,7 +509,9 @@ class SendToClaudeTool:
             # Claude redraws asynchronously; wait until the input shows as empty.
             for _ in range(20):
                 await asyncio.sleep(0.1)
-                current = read_input(await self._tmux.screen(session))
+                current = read_input(
+                    without_suggestion(await self._tmux.screen(session, styled=True))
+                )
                 if current == "":
                     break
         if current is None:
