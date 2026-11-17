@@ -472,9 +472,13 @@ class Assistant:
             return
         self._set_state(AssistantState.SPEAKING)
         try:
+            # Synthesized in full before playing: an announcement comes after a quiet spell,
+            # when the TTS model may be swapped out and slower than real time; streamed, that
+            # is heard as stutter. One short sentence costs only a moment more this way.
+            audio = [chunk async for chunk in self._tts.synthesize(text, language)]
 
             async def chunks() -> AsyncIterator[AudioBuffer]:
-                async for chunk in self._tts.synthesize(text, language):
+                for chunk in audio:
                     yield chunk
 
             await self._output.play(chunks())

@@ -829,3 +829,29 @@ async def test_a_repeated_sentence_is_noticed_but_still_said(
     assert any("Es ist spät" in text for text, _ in tts.spoken)
     assert assistant.history[-1].text == reply
     assert "Wiederholung erkannt" in caplog.text
+
+
+async def test_announcement_is_synthesized_in_full_before_playing() -> None:
+    # A slow TTS (swapped out after a quiet spell) must not be heard as stutter.
+    events: list[str] = []
+
+    class ChunkedTTS(FakeTTS):
+        async def synthesize(self, text: str, language: Language) -> AsyncIterator[AudioBuffer]:
+            for i in range(3):
+                events.append(f"synth{i}")
+                yield AudioBuffer(pcm=b"\x00\x00", sample_rate=22_050)
+
+    class RecordingOutput(FakeOutput):
+        async def play(self, chunks: AsyncIterator[AudioBuffer]) -> bool:
+            async for chunk in chunks:
+                events.append("play")
+                self.played.append(chunk)
+            return True
+
+    output = RecordingOutput()
+    assistant = make_assistant(FakeSTT(""), FakeLLM(), ChunkedTTS(), output)
+
+    assistant.announce({Language.DE: "Claude ist fertig.", Language.EN: "Claude is done."})
+    await assistant.wait_until_idle(poll=0.01)
+
+    assert events == ["synth0", "synth1", "synth2", "play", "play", "play"]
