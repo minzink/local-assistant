@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from cassi.core.messages import Message, Role
 from cassi.llm.base import StructuredChat
@@ -21,7 +21,10 @@ log = logging.getLogger(__name__)
 # The actions the model may pick, described for it.
 ACTIONS = {
     "control_window": "open, switch to, move, arrange, minimize or close an app's window",
-    "use_keyboard": "type dictated text, or press a shortcut in the front app",
+    "use_keyboard": (
+        "type dictated text, press a shortcut or keys, or make a virtual key (a hotkey to "
+        "set up in a program so the assistant can control it)"
+    ),
     "system_control": "volume, mute, music playback, lock the screen",
     "timer": "a timer or reminder at a time or after a duration ('in 20 Minuten')",
     "find_file": "find or open a document in the user's folders",
@@ -45,12 +48,22 @@ _SYSTEM = (
 )
 
 
-async def classify(llm: StructuredChat, text: str, available: Sequence[str]) -> str | None:
-    """The action ``text`` asks for among ``available``, or None."""
+async def classify(
+    llm: StructuredChat,
+    text: str,
+    available: Sequence[str],
+    extra: Mapping[str, str] | None = None,
+) -> str | None:
+    """The action ``text`` asks for among ``available``, or None. ``extra``: more about an
+    action as things are now (the virtual keys and what they control)."""
     actions = [name for name in ACTIONS if name in available]
     if not actions:
         return None
-    described = "\n".join(f"- {name}: {ACTIONS[name]}" for name in actions)
+    more = extra or {}
+    described = "\n".join(
+        f"- {name}: {ACTIONS[name]}" + (f"; {more[name]}" if more.get(name) else "")
+        for name in actions
+    )
     schema = {
         "type": "object",
         "properties": {"action": {"type": "string", "enum": [*actions, NONE]}},

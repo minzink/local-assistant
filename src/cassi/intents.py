@@ -100,6 +100,19 @@ _SELECTION = re.compile(
     re.IGNORECASE,
 )
 _SHORT = 6
+# "Leg eine Taste an, mit der du in OBS die Aufnahme startest", "Mach dir einen Hotkey für …".
+_NEW_KEY = re.compile(
+    r"\bvirtuelle\w*\s+tasten?\b|\bvirtual\s+keys?\b|"
+    r"\b(?:leg\w*|erstell\w*|mach\w*|richt\w*|create|make)\b.{0,30}"
+    r"\b(?:tasten?|hotkeys?|tastenkürzel|key)\b.{0,30}\b(?:an|ein|für|for|to)\b",
+    re.IGNORECASE,
+)
+# "Drück Enter", "Drück dreimal Pfeil runter", "Press ctrl shift t".
+_PRESS = re.compile(
+    r"^\W*(?:\w+\W+)?(?:drück\w*|press)\b(?!\s+(?:auf|on)\b)"
+    r"(?!.*\b(?:knopf|button|link|schaltfläche)\b)",
+    re.IGNORECASE,
+)
 # "Zeig mir, was in Firefox offen ist" asks about the app, it does not switch to it.
 _QUESTION = re.compile(r"\b(?:was|welche\w*|wie|wo|warum|what|which|how|where|why)\b|\?", re.I)
 # "Speichere, dass …" is a fact to remember, not Cmd+S.
@@ -133,10 +146,18 @@ def computer_intent(
     apps: Sequence[App] = (),
     projects: Sequence[str] = (),
     commands: Sequence[str] = (),
+    keys: Sequence[str] = (),
 ) -> str | None:
-    """The computer tool a request clearly asks for, if any."""
+    """The computer tool a request clearly asks for, if any. ``keys``: the user's virtual
+    keys ("Nächste Folie")."""
+    from cassi.tools.virtual_keys import named_key
+
     lowered = text.casefold()
     words = len(text.split())
+    if keys and named_key(text, keys) is not None:
+        return "use_keyboard"
+    if _PRESS.search(text) or _NEW_KEY.search(text):
+        return "use_keyboard"
     if commands and _RUN.search(text):
         for name in commands:
             if re.search(rf"\b{re.escape(name.casefold())}\b", lowered):

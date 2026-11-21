@@ -23,6 +23,8 @@ Arguments = dict[str, Any]
 
 # Requests longer than this carry more than one clear action: the model reads them.
 MAX_WORDS = 9
+# "Dreimal nächste Folie": how often is for the model to read.
+_TIMES = re.compile(r"\b(?:\d+|zwei|drei|vier|fünf|\w+mal|twice|times)\b", re.IGNORECASE)
 
 
 def direct_arguments(
@@ -30,8 +32,15 @@ def direct_arguments(
     text: str,
     projects: Sequence[str] = (),
     apps: Sequence[App] = (),
+    keys: Sequence[str] = (),
 ) -> Arguments | None:
-    """The arguments of ``tool`` for ``text`` if they are unambiguous, else None."""
+    """The arguments of ``tool`` for ``text`` if they are unambiguous, else None.
+    ``keys``: the user's virtual keys ("Nächste Folie" presses it)."""
+    if tool == "use_keyboard" and keys:
+        from cassi.tools.virtual_keys import named_key
+
+        if (key := named_key(text, keys)) is not None and not _TIMES.search(text):
+            return {"key": key}
     if len(text.split()) > MAX_WORDS and tool not in ("use_keyboard",):
         return None
     handler = _HANDLERS.get(tool)

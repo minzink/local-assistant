@@ -85,7 +85,17 @@ async def test_adapter_tabs_come_before_uninstall(client: TestClient) -> None:
 async def test_an_adapter_tab_is_data_and_its_action_runs(client: TestClient) -> None:
     tab = await (await client.get("/api/tabs/extra", headers=auth(client))).json()
     assert tab["sections"][0]["rows"] == [{"label": "Modell", "value": "m1", "level": "ok"}]
-    assert tab["actions"][0]["options"] == [{"id": "loud", "label": "Laut", "default": False}]
+    assert tab["actions"][0]["options"] == [
+        {
+            "id": "loud",
+            "label": "Laut",
+            "default": False,
+            "kind": "check",
+            "placeholder": "",
+            "help": "",
+            "choices": [],
+        }
+    ]
 
     body = {"tab": "extra", "action": "greet", "options": {"loud": True}}
     response = await client.post("/api/run", json=body, headers=auth(client, post=True))

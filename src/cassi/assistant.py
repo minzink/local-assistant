@@ -1719,7 +1719,9 @@ class Assistant:
         if not may_be_computer_task(text, apps):
             return None
         with perf.span("classify"):
-            return await classify(self._llm, text, [s.name for s in self._tools.specs])
+            keys = getattr(self._tools.get("use_keyboard"), "key_purposes", "")
+            extra = {"use_keyboard": f"also presses virtual keys: {keys}"} if keys else None
+            return await classify(self._llm, text, [s.name for s in self._tools.specs], extra)
 
     def _computer_intent(self, text: str) -> str | None:
         """Apps, keyboard, PhpStorm, timers ...: a tool the request clearly asks for."""
@@ -1731,8 +1733,9 @@ class Assistant:
             if callable(load):
                 self._background(_discard(asyncio.to_thread(load)))
         commands = getattr(self._tools.get("run_command"), "names", [])
+        keys = getattr(self._tools.get("use_keyboard"), "key_names", [])
         intent = computer_intent(
-            text, apps or [], self._projects() if self._projects else [], commands
+            text, apps or [], self._projects() if self._projects else [], commands, keys
         )
         return intent if intent is not None and intent in self._tools else None
 
@@ -1820,7 +1823,8 @@ class Assistant:
         """
         apps = getattr(self._tools.get("control_window"), "_apps", None) or []
         projects = self._projects() if self._projects is not None else []
-        if (direct := direct_arguments(name, user_message.text, projects, apps)) is not None:
+        keys = getattr(self._tools.get("use_keyboard"), "key_names", [])
+        if (direct := direct_arguments(name, user_message.text, projects, apps, keys)) is not None:
             # Nothing left to interpret: no model needed (~1 s saved, see cassi.direct).
             log.info("Ohne Modell: %s(%s)", name, direct)
             perf.mark("direct")

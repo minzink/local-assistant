@@ -147,8 +147,9 @@ def create_tools(
             tools.append(ControlWindowTool())
         elif name == "use_keyboard":
             from cassi.tools.keyboard import KeyboardTool
+            from cassi.tools.virtual_keys import KeyStore
 
-            tools.append(KeyboardTool())
+            tools.append(KeyboardTool(store=KeyStore(settings.data_dir / "keyboard.json")))
         elif name == "phpstorm":
             if not config.phpstorm.use_mcp:
                 log.debug("phpstorm braucht PhpStorms MCP-Server (use_mcp) – deaktiviert.")

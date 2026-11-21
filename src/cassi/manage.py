@@ -46,6 +46,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 HOST = "127.0.0.1"
+MAX_TEXT = 500  # characters of a text option
 Level = Literal["", "ok", "warn", "fail"]
 
 
@@ -67,11 +68,26 @@ class Section:
 
 @dataclass(frozen=True, slots=True)
 class Option:
-    """A checkbox shown with an action; ``run`` gets its value by ``id``."""
+    """An input shown with an action; ``run`` gets its value by ``id``: a checkbox (bool),
+    a text field, a key combination (a text field that can also record keys pressed, as
+    "ctrl+alt+r") or a choice among ``choices`` (value, label) – all but the checkbox str."""
 
     id: str
     label: str
-    default: bool = False
+    default: bool | str = False
+    kind: Literal["check", "text", "keys", "choice"] = "check"
+    placeholder: str = ""
+    choices: Sequence[tuple[str, str]] = ()
+    # A hint below the field.
+    help: str = ""
+
+    def value(self, raw: object) -> bool | str:
+        if self.kind == "check":
+            return bool(self.default if raw is None else raw)
+        text = str(self.default if raw is None else raw).strip()[:MAX_TEXT]
+        if self.kind == "choice" and text not in {value for value, _ in self.choices}:
+            return str(self.default)
+        return text
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,6 +144,7 @@ def builtin_tabs(
 
     from cassi import autostart
     from cassi.config import resolve_config_path
+    from cassi.keyboard_tab import keyboard_tab
     from cassi.voice_training import voice_tab
 
     options = _command_args(config)
@@ -541,6 +558,7 @@ def builtin_tabs(
                 Action("backups", "Sicherungen öffnen", "Stände vor einem Import.", open_backups),
             ],
         ),
+        keyboard_tab(app, now),
         voice_tab(app, now),
         Tab(
             "uninstall",
@@ -775,7 +793,16 @@ class ManageServer:
                         "confirm": a.confirm,
                         "danger": a.danger,
                         "options": [
-                            {"id": o.id, "label": o.label, "default": o.default} for o in a.options
+                            {
+                                "id": o.id,
+                                "label": o.label,
+                                "default": o.default,
+                                "kind": o.kind,
+                                "placeholder": o.placeholder,
+                                "help": o.help,
+                                "choices": [list(c) for c in o.choices],
+                            }
+                            for o in a.options
                         ],
                         "file": a.file,
                         "accept": a.accept,
@@ -794,7 +821,7 @@ class ManageServer:
         if any(not job.done for job in self.jobs.values()):
             raise web.HTTPConflict(text="Es läuft schon eine Aktion.")
         raw = body.get("options") if isinstance(body.get("options"), dict) else {}
-        chosen: dict[str, Any] = {o.id: bool(raw.get(o.id, o.default)) for o in action.options}
+        chosen: dict[str, Any] = {o.id: o.value(raw.get(o.id)) for o in action.options}
         uploaded = self.uploads.pop(str(body.get("upload")), None) if action.file else None
         if action.file:
             if uploaded is None:

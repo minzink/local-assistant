@@ -66,6 +66,16 @@
   .actions { display: grid; gap: 10px; }
   .action { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
   .action .about { flex: 1; min-width: 220px; }
+  .action .about .keys { margin-top: 6px; font-size: 14px; }
+  .action .about .keys-row { display: flex; gap: 6px; margin-top: 4px; }
+  .action .about .keys-row input { flex: 1; min-width: 140px; font: inherit; padding: 4px 6px;
+    border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
+  .action .about .keys-row button { width: auto; padding: 4px 10px; }
+  .action .about .keys-row button.recording { border-color: var(--accent); color: var(--accent); }
+  .action .about .hint { color: var(--muted); font-size: 13px; margin-top: 3px; }
+  .action .about label.field { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+  .action .about label.field input, .action .about label.field select { flex: 1; min-width: 160px; font: inherit; padding: 4px 6px;
+    border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
   .action .about div { color: var(--muted); font-size: 14px; }
   .action label { display: block; font-size: 14px; margin-top: 4px; }
   button {
@@ -200,6 +210,82 @@ async function show(id) {
   setRunning(running);
 }
 
+// A key combination: typed, or recorded – press "Aufnehmen", then the keys.
+const IS_MAC = /Mac/.test(navigator.platform);
+const KEY_CODES = {
+  ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right", Enter: "enter",
+  NumpadEnter: "enter", Escape: "esc", Tab: "tab", Space: "space", Backspace: "backspace",
+  Delete: "delete", Home: "home", End: "end", PageUp: "page_up", PageDown: "page_down",
+  NumpadAdd: "plus", MediaPlayPause: "play_pause", MediaTrackNext: "next_track",
+  MediaTrackPrevious: "previous_track", AudioVolumeUp: "volume_up",
+  AudioVolumeDown: "volume_down", AudioVolumeMute: "mute",
+};
+const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "AltGraph", "OS"]);
+
+function keyName(event) {
+  if (KEY_CODES[event.code]) return KEY_CODES[event.code];
+  let match = /^F(\d{1,2})$/.exec(event.code);
+  if (match && Number(match[1]) <= 20) return "f" + match[1];
+  match = /^Key([A-Z])$/.exec(event.code);
+  // The letter of the user's layout (QWERTZ), unless a modifier changed it ("å").
+  if (match) return /^[a-z]$/i.test(event.key) ? event.key.toLowerCase() : match[1].toLowerCase();
+  match = /^(?:Digit|Numpad)(\d)$/.exec(event.code);
+  if (match) return match[1];
+  if (event.key === "+") return "plus";
+  if (event.key === ",") return "comma";
+  return event.key.length === 1 ? event.key.toLowerCase() : null;
+}
+
+function combination(event) {
+  if (event.metaKey && !IS_MAC) return { error: "Die Windows-Taste kann ich nicht drücken." };
+  const name = keyName(event);
+  if (!name) return { error: `Die Taste „${event.key}“ kenne ich nicht.` };
+  const parts = [];
+  if (event.ctrlKey) parts.push("ctrl");
+  if (event.altKey) parts.push("alt");
+  if (event.shiftKey) parts.push("shift");
+  if (event.metaKey) parts.push("cmd");
+  return { keys: [...parts, name].join("+") };
+}
+
+function keysField(option, boxes) {
+  const wrap = el("div", { class: "field keys" });
+  const row = el("div", { class: "keys-row" });
+  const field = el("input", { type: "text", placeholder: option.placeholder || "", spellcheck: "false" });
+  field.value = option.default || "";
+  const record = el("button", { type: "button" }, "⏺ Aufnehmen");
+  const note = el("div", { class: "hint" }, option.help || "");
+  let recording = false;
+  const stop = () => {
+    recording = false;
+    record.textContent = "⏺ Aufnehmen";
+    record.classList.remove("recording");
+    window.removeEventListener("keydown", onKey, true);
+  };
+  const onKey = (event) => {
+    if (MODIFIER_KEYS.has(event.key)) return;  // wait for the key itself
+    event.preventDefault();
+    event.stopPropagation();
+    const found = combination(event);
+    stop();
+    if (found.error) { note.textContent = found.error; return; }
+    field.value = found.keys;
+    note.textContent = option.help || "";
+  };
+  record.addEventListener("click", () => {
+    if (recording) { stop(); return; }
+    recording = true;
+    record.textContent = "Tasten drücken …";
+    record.classList.add("recording");
+    note.textContent = "Jetzt die Kombination drücken (nochmal klicken bricht ab).";
+    window.addEventListener("keydown", onKey, true);
+  });
+  boxes[option.id] = { read: () => field.value };
+  row.append(field, record);
+  wrap.append(el("span", {}, option.label + ":"), row, note);
+  return wrap;
+}
+
 function actionRow(tabId, action) {
   const row = el("div", { class: "action" });
   const button = el("button", { type: "button", class: action.danger ? "primary danger" : "primary" }, action.label);
@@ -215,18 +301,38 @@ function actionRow(tabId, action) {
     about.append(label);
   }
   for (const option of action.options) {
-    const label = el("label");
-    const box = el("input", { type: "checkbox" });
-    box.checked = option.default;
-    boxes[option.id] = box;
-    label.append(box, document.createTextNode(" " + option.label));
+    if (option.kind === "keys") {
+      about.append(keysField(option, boxes));
+      continue;
+    }
+    const label = el("label", { class: option.kind === "check" ? "" : "field" });
+    if (option.kind === "text") {
+      const field = el("input", { type: "text", placeholder: option.placeholder || "" });
+      field.value = option.default || "";
+      boxes[option.id] = { read: () => field.value };
+      label.append(document.createTextNode(option.label + ": "), field);
+    } else if (option.kind === "choice") {
+      const select = el("select");
+      for (const [value, text] of option.choices) {
+        const choice = el("option", { value }, text);
+        choice.selected = value === option.default;
+        select.append(choice);
+      }
+      boxes[option.id] = { read: () => select.value };
+      label.append(document.createTextNode(option.label + ": "), select);
+    } else {
+      const box = el("input", { type: "checkbox" });
+      box.checked = option.default;
+      boxes[option.id] = { read: () => box.checked };
+      label.append(box, document.createTextNode(" " + option.label));
+    }
     about.append(label);
   }
   button.addEventListener("click", () => {
     const file = chooser?.files?.[0];
     if (chooser && !file) { alert(`Erst ${action.file} auswählen.`); return; }
     if (action.confirm && !confirm(action.confirm)) return;
-    const options = Object.fromEntries(Object.entries(boxes).map(([key, box]) => [key, box.checked]));
+    const options = Object.fromEntries(Object.entries(boxes).map(([key, box]) => [key, box.read()]));
     run(tabId, action, options, file);
   });
   row.append(button, about);
