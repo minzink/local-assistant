@@ -106,6 +106,8 @@ class Tray:
         self._recording: str | None = None
         # Where the read-along switch is kept (set once Cassi runs with the screen tool).
         self.screen_switch: Path | None = None
+        # The reflexes' file: "Beobachten beenden" asks the watching to stop through it.
+        self.reflex_store: Path | None = None
         # The last exchange, shortened: what Cassi understood and what it answered.
         self._heard = ""
         self._answered = ""
@@ -160,6 +162,11 @@ class Tray:
                     "Bildschirm nicht ansehen",
                     self._toggle_screen,
                     checked=lambda _: _screen_paused(),
+                ),
+                item(
+                    "Beobachten beenden",
+                    self._stop_watching,
+                    visible=lambda _: self.reflex_store is not None,
                 ),
                 item(
                     "Bildschirm mitlesen",
@@ -283,6 +290,13 @@ class Tray:
         PRIVACY.paused = not PRIVACY.paused
         log.info("Bildschirm %s", "pausiert" if PRIVACY.paused else "wieder freigegeben")
         self._refresh()
+
+    def _stop_watching(self) -> None:
+        from cassi.reflexes.store import ReflexStore
+
+        if self.reflex_store is not None:
+            ReflexStore(self.reflex_store).request_stop()
+            log.info("Beobachten beenden (Menü)")
 
     def _toggle_watch(self) -> None:
         from cassi.screen_watch import WATCH, write_switch

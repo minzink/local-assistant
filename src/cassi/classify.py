@@ -26,6 +26,9 @@ ACTIONS = {
         "set up in a program so the assistant can control it)"
     ),
     "system_control": "volume, mute, music playback, lock the screen",
+    "observe": (
+        "watch the screen, a game or a video and react to what happens (reflexes), or stop watching"
+    ),
     "timer": "a timer or reminder at a time or after a duration ('in 20 Minuten')",
     "find_file": "find or open a document in the user's folders",
     "calendar": "the user's appointments and calendar",

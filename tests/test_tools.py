@@ -413,7 +413,7 @@ def test_factory_drops_screen_tool_for_text_only_models() -> None:
         "open_project", "close_project", "send_to_claude", "claude_status", "open_url",
         "fill_web_form", "read_file", "workflow", "ssh_connect", "control_window",
         "use_keyboard", "phpstorm", "find_file", "system_control", "calendar",
-        "adjust_settings", "answer_claude",
+        "adjust_settings", "answer_claude", "observe",
     ]  # fmt: skip
 
 

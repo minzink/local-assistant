@@ -335,6 +335,7 @@ ToolName = Literal[
     "calendar",
     "adjust_settings",
     "answer_claude",
+    "observe",
 ]
 
 
@@ -449,6 +450,25 @@ class ComputerSettings(_Section):
     learn: bool = True
 
 
+class ReflexSettings(_Section):
+    # Watching with reflexes (cassi.reflexes): pictures per second of the watched window.
+    fps: float = Field(default=8.0, ge=1, le=30)
+    # The small model (SigLIP encoder, ~40 ms) at most this often, only when the picture changed.
+    encoder_hz: float = Field(default=4.0, ge=0.5, le=30)
+    # Text rules (OCR in a region) at most this often.
+    ocr_hz: float = Field(default=2.0, ge=0.2, le=10)
+    # Similarity (0–1) from which a picture counts as a learned situation.
+    match: float = Field(default=0.95, ge=0.5, le=0.999)
+    # Thinking about something new (vision model with the picture): at most every … seconds.
+    think: bool = True
+    think_seconds: float = Field(default=8.0, ge=1)
+    # The same decision in a similar situation this often: it becomes a reflex.
+    promote_after: int = Field(default=2, ge=1, le=10)
+    # Model that thinks; "auto": the 4B vision model if `cassi setup` made it (~2× faster
+    # than the 8B), null: llm.model.
+    model: str | None = "auto"
+
+
 class CalendarSettings(_Section):
     # Calendars to leave out (by name), e.g. ["Feiertage", "Geburtstage"].
     hidden: list[str] = Field(default_factory=list)
@@ -469,6 +489,7 @@ class ToolsSettings(_Section):
     notifications: NotificationSettings = NotificationSettings()
     computer: ComputerSettings = ComputerSettings()
     calendar: CalendarSettings = CalendarSettings()
+    reflexes: ReflexSettings = ReflexSettings()
 
 
 class UISettings(_Section):

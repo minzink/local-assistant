@@ -613,6 +613,11 @@ async def _setup(settings: Settings, adapters: Sequence[Adapter] = ()) -> int:
         print("  ✓ Stimme (Qwen3-TTS)")
     SileroVAD(settings.downloads / "models").download()
     print("  ✓ Stille-Erkennung (Silero VAD)")
+    if "observe" in settings.tools.enabled:
+        from cassi.reflexes import encoder
+
+        encoder.download(settings.downloads)
+        print("  ✓ Reflex-Modell (SigLIP, Apache 2.0)")
     from cassi.wake import download_features
 
     download_features(settings.downloads / "models")
@@ -1115,6 +1120,8 @@ async def _run(
             from cassi.screen_watch import switch_file
 
             tray.screen_switch = switch_file(settings.data_dir)
+        if "observe" in tools:
+            tray.reflex_store = settings.data_dir / "reflexes.json"
     notices = _watch_for_updates(settings, assistant, background)
     if hasattr(llm, "resolve_missing"):
         llm.resolve_missing = _model_finder(settings, adapters, assistant)
@@ -1475,6 +1482,10 @@ def main(argv: Sequence[str] | None = None, prog: str = "cassi") -> int:
         "--language", choices=[lang.value for lang in Language], help="nur diese Sprache aufnehmen"
     )
     voice.add_argument("--name", help="test: diese Stimme statt tts.voice.name (z.B. ramona)")
+    reflex_test = commands.add_parser(
+        "reflex-test", help="Messen, wie schnell Reflexe auf diesem Rechner sind"
+    )
+    reflex_test.add_argument("--think", action="store_true", help="auch einmal nachdenken lassen")
     mic_test = commands.add_parser("mic-test", help="Mikrofon aufnehmen, Pegel und Text zeigen")
     mic_test.add_argument("--seconds", type=float, default=4.0)
     run = commands.add_parser("run", help="Assistent starten")
@@ -1575,6 +1586,10 @@ def main(argv: Sequence[str] | None = None, prog: str = "cassi") -> int:
             return _autostart(settings, args.config, args.action)
         if args.command == "setup":
             return asyncio.run(_setup(settings, adapters))
+        if args.command == "reflex-test":
+            from cassi.reflexes.bench import measure
+
+            return 0 if measure(_resolved(settings), print, think=args.think) else 1
         if args.command == "doctor":
             from cassi import doctor
 

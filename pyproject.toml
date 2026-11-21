@@ -34,6 +34,7 @@ dependencies = [
     "pyyaml>=6.0",
     "qwen-tts>=0.1 ; platform_machine != 'arm64' or sys_platform != 'darwin'",
     "sounddevice>=0.5.6",
+    "dxcam>=0.3 ; sys_platform == 'win32'",
     "torch>=2.9 ; sys_platform == 'win32'",
     "torchaudio>=2.9 ; sys_platform == 'win32'",
     "transformers==4.57.3 ; platform_machine != 'arm64' or sys_platform != 'darwin'",
@@ -96,5 +97,5 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 
 [[tool.mypy.overrides]]
-module = ["sounddevice", "pynput.*", "mlx.*", "mlx_whisper.*", "faster_whisper.*", "piper.*", "scipy.*", "onnxruntime", "huggingface_hub", "pyperclip", "mcp.*", "pystray", "PyObjCTools.*", "Quartz", "ApplicationServices", "AppKit", "comtypes.*", "Vision", "EventKit", "Foundation", "winrt.*", "onnx_asr.*", "mlx_audio.*", "qwen_tts.*"]
+module = ["sounddevice", "pynput.*", "mlx.*", "mlx_whisper.*", "faster_whisper.*", "piper.*", "scipy.*", "onnxruntime", "huggingface_hub", "pyperclip", "mcp.*", "pystray", "PyObjCTools.*", "Quartz", "ApplicationServices", "AppKit", "comtypes.*", "Vision", "EventKit", "Foundation", "winrt.*", "onnx_asr.*", "mlx_audio.*", "qwen_tts.*", "dxcam", "tokenizers"]
 ignore_missing_imports = true

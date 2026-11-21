@@ -150,6 +150,26 @@ def _keyboard(text: str, projects: Sequence[str], apps: Sequence[App]) -> Argume
     return {"shortcut": hits[0]} if len(hits) == 1 else None
 
 
+# Watching: stopping and judging need no model --------------------------------------------
+
+_STOP_WATCHING = re.compile(
+    r"\b(?:hör|hoer|höre)\w*\s+auf\s+zu\s+beobachten|\bbeobacht\w*\s+(?:beenden|stoppen|aus)\b|"
+    r"\bnicht\s+mehr\s+beobachten|\bstop\s+watching\b",
+    re.IGNORECASE,
+)
+_BAD = re.compile(r"\b(?:falsch|nicht so|lass das|wrong|don'?t)\b", re.IGNORECASE)
+
+
+def _observe(text: str, projects: Sequence[str], apps: Sequence[App]) -> Arguments | None:
+    from cassi.intents import FEEDBACK
+
+    if _STOP_WATCHING.search(text):
+        return {"action": "stop"}
+    if FEEDBACK.search(text):
+        return {"action": "feedback", "good": not _BAD.search(text)}
+    return None  # what to watch and how to react: the model
+
+
 # System ------------------------------------------------------------------------------------
 
 _SYSTEM = [
@@ -276,6 +296,7 @@ _HANDLERS = {
     "claude_status": _claude_status,
     "control_window": _window,
     "use_keyboard": _keyboard,
+    "observe": _observe,
     "system_control": _system,
     "timer": _timer,
     "adjust_settings": _settings,

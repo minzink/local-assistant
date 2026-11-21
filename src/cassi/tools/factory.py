@@ -221,6 +221,8 @@ def create_tools(
                 snapshot=screen_snapshot,
             )
             tools.append(computer)
+        elif name == "observe":
+            tools.append(_observe_tool(settings, announcements))
         elif name == "calendar":
             from cassi.tools.appointments import CalendarTool
 
@@ -306,3 +308,64 @@ def _embedder(settings: Settings) -> Any:
     except Exception as exc:
         log.debug("Kein Embedding-Modell für Lösungswege: %s", exc)
         return None
+
+
+def _observe_tool(settings: Settings, announcements: Announcements | None) -> Tool:
+    """Watching with reflexes: the encoder, the reflexes, and the small model to think."""
+    from cassi.reflexes import encoder
+    from cassi.reflexes.engine import Observer
+    from cassi.reflexes.engine import Settings as ReflexEngineSettings
+    from cassi.reflexes.store import ReflexStore
+    from cassi.reflexes.tool import ObserveTool, make_thinker
+    from cassi.tools.virtual_keys import KeyStore, press_sequence
+
+    config = settings.tools.reflexes
+    store = ReflexStore(settings.data_dir / "reflexes.json")
+    keys = KeyStore(settings.data_dir / "keyboard.json")
+
+    def may_press() -> bool:
+        # Reflexes press keys with the user's leave for them – or for all keys ("immer").
+        return store.may_press or keys.direct == "always"
+
+    def say(text: str) -> None:
+        if announcements is not None:
+            announcements.say(text, text)
+
+    thinker = None
+    locator = None
+    # Thinking looks at the picture: only with a model that sees images.
+    if config.think and Modality.IMAGE in settings.llm.input_modalities:
+        from cassi.llm.base import StructuredChat
+        from cassi.llm.factory import create_chat_model
+
+        llm = settings.llm
+        if config.model:
+            from cassi.llm.ollama import POINTER, resolve
+
+            model = resolve(config.model, POINTER, settings.llm.model, settings.llm.base_url)
+            llm = llm.model_copy(update={"model": model})
+        chat = create_chat_model(llm)
+        if isinstance(chat, StructuredChat):
+            thinker = make_thinker(chat, may_press)
+        # Finding what the user names happens once: the main model, which finds more.
+        main = create_chat_model(settings.llm)
+        if isinstance(main, StructuredChat):
+            locator = main
+    observer = Observer(
+        store,
+        encoder.Encoder(encoder.model_dir(settings.downloads)),
+        say,
+        press=lambda combo: press_sequence(combo),
+        thinker=thinker,
+        settings=ReflexEngineSettings(
+            fps=config.fps,
+            encoder_hz=config.encoder_hz,
+            ocr_hz=config.ocr_hz,
+            match=config.match,
+            think_seconds=config.think_seconds,
+            promote_after=config.promote_after,
+        ),
+        status_file=settings.data_dir / "reflexes-status.json",
+        may_press_keys=may_press,
+    )
+    return ObserveTool(observer, locator)

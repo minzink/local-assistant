@@ -1747,8 +1747,14 @@ class Assistant:
                 self._background(_discard(asyncio.to_thread(load)))
         commands = getattr(self._tools.get("run_command"), "names", [])
         keys = getattr(self._tools.get("use_keyboard"), "key_names", [])
+        observer = getattr(self._tools.get("observe"), "observer", None)
         intent = computer_intent(
-            text, apps or [], self._projects() if self._projects else [], commands, keys
+            text,
+            apps or [],
+            self._projects() if self._projects else [],
+            commands,
+            keys,
+            watching=bool(getattr(observer, "watching", False)),
         )
         return intent if intent is not None and intent in self._tools else None
 

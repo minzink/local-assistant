@@ -145,6 +145,7 @@ def builtin_tabs(
     from cassi import autostart
     from cassi.config import resolve_config_path
     from cassi.keyboard_tab import keyboard_tab
+    from cassi.reflex_tab import reflex_tab
     from cassi.voice_training import voice_tab
 
     options = _command_args(config)
@@ -599,6 +600,7 @@ def builtin_tabs(
             ],
         ),
         keyboard_tab(app, now),
+        reflex_tab(app, now),
         voice_tab(app, now),
         Tab(
             "uninstall",

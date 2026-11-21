@@ -100,6 +100,19 @@ _SELECTION = re.compile(
     re.IGNORECASE,
 )
 _SHORT = 6
+# Watching with reflexes: "Schau mir beim Spielen zu", "Beobachte das Video", "Hör auf zu
+# beobachten", "Merk dir als Reflex: …".
+_OBSERVE = re.compile(
+    r"\bbeobacht\w*|\bschau\w*\s+(?:mir\s+)?(?:beim|bei|dem|der|den)\s+(?:\w+\s+){0,2}zu\b|"
+    r"\b(?:watch|observe)\s+(?:me|the|my|this)\b|\breflex\w*|\bstop\s+watching\b",
+    re.IGNORECASE,
+)
+# While watching: the user judges the last reflex.
+FEEDBACK = re.compile(
+    r"^\W*(?:(?:ja,?\s+)?(?:gut|genau|richtig|super|perfekt)(?:\s+so)?|das war (?:gut|richtig|"
+    r"falsch)|falsch|nicht so|lass das|good|right|wrong|don'?t do that)\W*$",
+    re.IGNORECASE,
+)
 # "Leg eine Taste an, mit der du in OBS die Aufnahme startest", "Mach dir einen Hotkey für …".
 _NEW_KEY = re.compile(
     r"\bvirtuelle\w*\s+tasten?\b|\bvirtual\s+keys?\b|"
@@ -147,6 +160,7 @@ def computer_intent(
     projects: Sequence[str] = (),
     commands: Sequence[str] = (),
     keys: Sequence[str] = (),
+    watching: bool = False,
 ) -> str | None:
     """The computer tool a request clearly asks for, if any. ``keys``: the user's virtual
     keys ("Nächste Folie")."""
@@ -154,6 +168,8 @@ def computer_intent(
 
     lowered = text.casefold()
     words = len(text.split())
+    if _OBSERVE.search(text) or (watching and FEEDBACK.search(text)):
+        return "observe"
     if keys and named_key(text, keys) is not None:
         return "use_keyboard"
     if _PRESS.search(text) or _NEW_KEY.search(text):
