@@ -13,17 +13,17 @@ import shutil
 from collections.abc import AsyncIterator, Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from fractions import Fraction
 from pathlib import Path
 
 import numpy as np
 from piper import PiperVoice, SynthesisConfig
 from piper.download_voices import VOICE_PATTERN, download_voice
+from scipy.signal import resample_poly
 
 from cassi.audio.base import AudioBuffer
 from cassi.core.language import Language
 from cassi.offline import MissingModelError
-from cassi.tts.shaping import pitch_shift
-from cassi.tts.voice import resample
 
 log = logging.getLogger(__name__)
 
@@ -50,8 +50,12 @@ class PiperTTS:
         self._voice_names = dict(voices)
         self._voice_dir = voice_dir
         self._repo_voices = repo_voices
-        self._pitch = pitch
-        self._config = SynthesisConfig(length_scale=1 / speed)
+        # Pitch without artifacts: Piper speaks ``factor`` times slower (its own, clean
+        # duration control), and playing that ``factor`` times faster raises the pitch by
+        # the factor at the original pace. Reshaping every sentence afterwards (WSOLA, as
+        # for Qwen3-TTS's reference) left Flay's +1 semitone audibly rough and warbly.
+        self._pitch = Fraction(2 ** (pitch / 12)).limit_denominator(200)
+        self._speed = speed
         self._voices: dict[Language, PiperVoice] = {}
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassi-tts")
 
@@ -116,7 +120,11 @@ class PiperTTS:
 
     def set_speed(self, speed: float) -> None:
         """Speak faster (>1) or slower (<1) from the next sentence on."""
-        self._config = SynthesisConfig(length_scale=1 / speed)
+        self._speed = speed
+
+    @property
+    def _config(self) -> SynthesisConfig:
+        return SynthesisConfig(length_scale=float(self._pitch) / self._speed)
 
     def voices(self) -> list[str]:
         """Voices installed in the voice folder (and Cassi's own)."""
@@ -153,16 +161,16 @@ class PiperTTS:
 
     @staticmethod
     def _chunks(
-        voice: PiperVoice, text: str, config: SynthesisConfig, pitch: float, rate: int
+        voice: PiperVoice, text: str, config: SynthesisConfig, pitch: Fraction, rate: int
     ) -> Iterator[AudioBuffer]:
         # Piper yields one chunk per sentence.
         for chunk in voice.synthesize(text, config):
             pcm = chunk.audio_int16_bytes
-            if pitch or chunk.sample_rate != rate:
-                # Same rate for all languages: switching would reopen the audio stream.
+            # Played at ``pitch`` × its rate (see __init__), converted to the output rate:
+            # the same for all languages, as switching would reopen the audio stream.
+            ratio = Fraction(rate) / (chunk.sample_rate * pitch)
+            if ratio != 1:
                 samples = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32768.0
-                if pitch:
-                    samples = pitch_shift(samples, pitch, chunk.sample_rate)
-                samples = resample(samples, chunk.sample_rate, rate)
+                samples = resample_poly(samples, ratio.numerator, ratio.denominator)
                 pcm = (np.clip(samples, -1.0, 1.0) * 32767).astype("<i2").tobytes()
             yield AudioBuffer(pcm=pcm, sample_rate=rate)

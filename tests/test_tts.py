@@ -278,3 +278,33 @@ async def test_piper_voices_of_different_rates_play_at_one(tmp_path: Path) -> No
         (chunk,) = [chunk async for chunk in tts.synthesize("Hallo.", language)]
         assert chunk.sample_rate == 22_050
         assert chunk.duration == pytest.approx(1.0)
+
+
+async def test_piper_pitch_comes_from_slower_speech_played_faster(tmp_path: Path) -> None:
+    # No reshaping after synthesis (WSOLA sounded rough): an octave up (+12) lets Piper
+    # speak twice as slow, and the result is played at twice the rate.
+    from types import SimpleNamespace
+
+    from piper import SynthesisConfig
+
+    configs: list[SynthesisConfig] = []
+
+    class Voice:
+        config = SimpleNamespace(sample_rate=22_050)
+
+        def synthesize(self, text: str, config: SynthesisConfig) -> Iterator[SimpleNamespace]:
+            configs.append(config)
+            yield SimpleNamespace(audio_int16_bytes=bytes(2 * 2_000), sample_rate=22_050)
+
+    tts = PiperTTS({Language.DE: "x"}, tmp_path, pitch=12, speed=1.25)
+    tts._voices[Language.DE] = Voice()  # type: ignore[assignment]
+
+    chunks = [chunk async for chunk in tts.synthesize("Hallo.", Language.DE)]
+
+    assert configs[0].length_scale == pytest.approx(2 / 1.25)
+    assert [chunk.sample_rate for chunk in chunks] == [22_050]
+    assert len(chunks[0].pcm) == 2 * 1_000
+
+    tts.set_speed(1.0)
+    _ = [chunk async for chunk in tts.synthesize("Hallo.", Language.DE)]
+    assert configs[1].length_scale == pytest.approx(2.0)
