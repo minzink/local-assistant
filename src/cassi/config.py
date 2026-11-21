@@ -368,6 +368,14 @@ class ScreenToolSettings(_Section):
     # 1 = primary monitor, 2 = second, ..., 0 = all monitors combined.
     monitor: int = Field(default=1, ge=0)
     max_size: int = Field(default=1280, ge=256)
+    # Read along: keep the front window's text current (OCR when it changes) and send it with
+    # requests about the screen instead of a screenshot – less exact, much faster. Also
+    # switched in the tray menu and the management UI (that choice wins).
+    watch: bool = False
+    watch_interval: float = Field(default=1.0, ge=0.2)
+    # At most one OCR per this many seconds while the window keeps changing.
+    watch_ocr_seconds: float = Field(default=2.0, ge=0.5)
+    watch_chars: int = Field(default=1500, ge=200, le=8000)
 
 
 class PointerToolSettings(_Section):

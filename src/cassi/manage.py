@@ -441,6 +441,22 @@ def builtin_tabs(
         out(f"Geöffnet: {folder}" if ok else "Noch keine Sicherungen")
         return ok
 
+    def watching() -> bool:
+        from cassi.screen_watch import read_switch, switch_file
+
+        settings = now()
+        chosen = read_switch(switch_file(settings.data_dir))
+        return settings.tools.screen.watch if chosen is None else chosen
+
+    def screen_watch(out: Output, chosen: Mapping[str, Any]) -> bool:
+        from cassi.screen_watch import switch_file, write_switch
+
+        on = chosen.get("watch") == "on"
+        write_switch(switch_file(now().data_dir), on)
+        out(f"✓ Bildschirm mitlesen: {'an' if on else 'aus'} (gilt sofort, auch im laufenden "
+            f"{title})")  # fmt: skip
+        return True
+
     def stop_others(out: Output, _: Mapping[str, Any]) -> bool:
         if not end_others(app, out):
             out("Keine weiteren Verwaltungen.")
@@ -456,6 +472,15 @@ def builtin_tabs(
                 Section(
                     "Wartung",
                     text="Reparieren ist immer sicher: Es prüft alles und ergänzt nur, was fehlt.",
+                ),
+                Section(
+                    "Bildschirm mitlesen",
+                    [Row("Mitlesen", "an" if watching() else "aus", "")],
+                    f"{title} liest den Text des vorderen Fensters laufend mit (Texterkennung, "
+                    "nur wenn sich etwas ändert) und gibt ihn bei Fragen zum Bildschirm mit – "
+                    "statt eines Bildschirmfotos: weniger genau, aber Sekunden schneller. "
+                    "Private Fenster (Passwortmanager, Banking) werden nie gelesen, nichts "
+                    "wird gespeichert. Auch im Menüleisten-Symbol schaltbar.",
                 ),
                 Section(
                     "Verwaltung",
@@ -476,6 +501,21 @@ def builtin_tabs(
             ],
             [
                 Action("doctor", "Diagnose", "Prüft GPU, Ollama, Modelle und Kontext.", doctor),
+                Action(
+                    "screen-watch",
+                    "Bildschirm mitlesen",
+                    "Schaltet das Mitlesen an oder aus.",
+                    screen_watch,
+                    options=(
+                        Option(
+                            "watch",
+                            "Mitlesen",
+                            "on",
+                            kind="choice",
+                            choices=[("on", "an"), ("off", "aus")],
+                        ),
+                    ),  # fmt: skip
+                ),
                 Action(
                     "repair",
                     "Reparieren",

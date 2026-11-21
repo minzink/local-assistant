@@ -890,6 +890,18 @@ async def _run(
     settings = preferences.applied(settings)
     set_privacy(settings.privacy.private_apps, settings.privacy.private_titles)
     PRIVACY.paused = preferences.screen_paused
+    screen_watcher = None
+    if "look_at_screen" in settings.tools.enabled:
+        from cassi.screen_watch import ScreenWatcher, switch_file
+
+        screen = settings.tools.screen
+        screen_watcher = ScreenWatcher(
+            switch_file(settings.data_dir),
+            default=screen.watch,
+            interval=screen.watch_interval,
+            ocr_seconds=screen.watch_ocr_seconds,
+            chars=screen.watch_chars,
+        )
     hardware = detect_hardware()
     stt = create_stt(settings, hardware)
 
@@ -1064,6 +1076,7 @@ async def _run(
         wake_word_available=wake is not None,
         preferences=preferences,
         routines=Routines(settings.data_dir / "routines.json"),
+        screen_text=screen_watcher.current if screen_watcher else None,
     )
     await assistant.prepare_fillers()
     # The real conversation prompt (system, tools: ~2000 tokens) into the server's cache:
@@ -1094,8 +1107,14 @@ async def _run(
         if answer is not None and hasattr(answer, "asked"):
             watcher.on_question = answer.asked
         background.append(asyncio.create_task(watcher.run()))
+    if screen_watcher is not None:
+        background.append(asyncio.create_task(screen_watcher.run()))
     if tray is not None:
         tray.attach(assistant)
+        if screen_watcher is not None:
+            from cassi.screen_watch import switch_file
+
+            tray.screen_switch = switch_file(settings.data_dir)
     notices = _watch_for_updates(settings, assistant, background)
     if hasattr(llm, "resolve_missing"):
         llm.resolve_missing = _model_finder(settings, adapters, assistant)

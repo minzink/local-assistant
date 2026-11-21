@@ -13,6 +13,7 @@ import sys
 import threading
 import webbrowser
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from PIL import Image, ImageDraw
@@ -66,6 +67,12 @@ def _short(text: str) -> str:
     return text if len(text) <= MENU_CHARS else text[: MENU_CHARS - 1] + "…"
 
 
+def _screen_watched() -> bool:
+    from cassi.screen_watch import WATCH
+
+    return WATCH.enabled
+
+
 def _screen_paused() -> bool:
     from cassi.tools.screen import PRIVACY
 
@@ -97,6 +104,8 @@ class Tray:
         self._continuous: bool | None = None
         self._wake_word: bool | None = None
         self._recording: str | None = None
+        # Where the read-along switch is kept (set once Cassi runs with the screen tool).
+        self.screen_switch: Path | None = None
         # The last exchange, shortened: what Cassi understood and what it answered.
         self._heard = ""
         self._answered = ""
@@ -151,6 +160,12 @@ class Tray:
                     "Bildschirm nicht ansehen",
                     self._toggle_screen,
                     checked=lambda _: _screen_paused(),
+                ),
+                item(
+                    "Bildschirm mitlesen",
+                    self._toggle_watch,
+                    checked=lambda _: _screen_watched(),
+                    visible=lambda _: self.screen_switch is not None,
                 ),
                 item("Neues Gespräch (Kontext leeren)", self._new_session),
                 item("Web-UI öffnen", self._open_ui, visible=ui_url is not None),
@@ -267,6 +282,15 @@ class Tray:
         # Read by every screenshot at the moment it is taken; nothing else to tell.
         PRIVACY.paused = not PRIVACY.paused
         log.info("Bildschirm %s", "pausiert" if PRIVACY.paused else "wieder freigegeben")
+        self._refresh()
+
+    def _toggle_watch(self) -> None:
+        from cassi.screen_watch import WATCH, write_switch
+
+        WATCH.enabled = not WATCH.enabled
+        if self.screen_switch is not None:
+            write_switch(self.screen_switch, WATCH.enabled)
+        log.info("Bildschirm mitlesen %s", "an" if WATCH.enabled else "aus")
         self._refresh()
 
     def _new_session(self) -> None:

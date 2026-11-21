@@ -228,9 +228,12 @@ class Assistant:
         wake_word_available: bool = True,
         preferences: Preferences | None = None,
         routines: Routines | None = None,
+        screen_text: Callable[[], str | None] | None = None,
     ) -> None:
         # Plans with a name, set up by voice ("Merk dir als Feierabend: …").
         self._routines = routines
+        # Reading along (cassi.screen_watch): the front window's text, if switched on.
+        self._screen_text = screen_text
         self._settings = settings
         self._wake_spoken = wake_pattern(settings.input.continuous.wake_pattern)
         # Changed by voice ("Antworte kürzer"): the answer length goes into the prompt.
@@ -869,6 +872,16 @@ class Assistant:
             # "Ich habe gestern Slack auf den zweiten Bildschirm geschoben" shows nothing.
             and not narrates(text)
         )
+        if self._screen_text is not None and not narrates(text) and not overview_only:
+            from cassi.screen_watch import LOOKS, about_screen
+
+            if (screen or about_screen(text)) and (reading := self._screen_text()):
+                # Read along: the front window's text, already there – instead of a
+                # screenshot (~1000 tokens) unless the look itself counts.
+                state = f"{state} {reading}" if state else reading
+                if screen and not LOOKS.search(text):
+                    screen = False
+                    log.info("Mitgelesener Text statt Bildschirmfoto")
         if "use_keyboard" in self._tools and mentions_selection(text):
             # "Übersetz das Markierte": the selection, copied from the front app. Sent with
             # the request, never stored.
