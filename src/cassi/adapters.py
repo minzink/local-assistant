@@ -28,7 +28,9 @@ hooks are called by the CLI:
   conversations, waiting until Cassi is idle, replacing the system prompt) – e.g. Flay
   learning about its relationship with the user. Errors are logged, never stop Cassi.
 
-``adapters`` in the config chooses which installed adapters are used (default: all).
+``adapters`` in the config chooses which installed adapters are used (default: all). An
+adapter that is an AI of its own (``own_profile``) is used only in the profiles built on it
+(see cassi.profiles).
 """
 
 from __future__ import annotations
@@ -37,7 +39,7 @@ import logging
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from importlib.metadata import entry_points
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -75,6 +77,18 @@ class Adapter:
     """Base class with hooks that change nothing; adapters override what they need."""
 
     name = "adapter"
+    # An AI of its own (cassi.profiles): it gets a built-in profile in its own data folder
+    # and is used only in profiles that build on it. False: it applies to every profile.
+    own_profile = False
+    profile_title = ""
+    # Files in a profile's folder that define this AI (copied to a new profile made from
+    # one), as opposed to what it learned or remembers.
+    definition_files: tuple[str, ...] = ()
+    # An AI of its own that keeps who it is in its own files (not in Cassi's persona
+    # settings): a static ``define_profile(folder, definition) -> settings`` writes a
+    # ``cassi.profiles.Definition`` set in the management UI into them (None: Cassi's
+    # settings in profile.yaml).
+    define_profile: Any = None
 
     def configure(self, settings: Settings) -> Settings:
         return settings

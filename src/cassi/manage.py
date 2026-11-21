@@ -47,6 +47,7 @@ log = logging.getLogger(__name__)
 
 HOST = "127.0.0.1"
 MAX_TEXT = 500  # characters of a text option
+MAX_LONG_TEXT = 4000  # characters of a long text option (several lines)
 Level = Literal["", "ok", "warn", "fail"]
 
 
@@ -70,12 +71,13 @@ class Section:
 class Option:
     """An input shown with an action; ``run`` gets its value by ``id``: a checkbox (bool),
     a text field, a key combination (a text field that can also record keys pressed, as
-    "ctrl+alt+r") or a choice among ``choices`` (value, label) – all but the checkbox str."""
+    "ctrl+alt+r"), a choice among ``choices`` (value, label) or a long text (several lines,
+    e.g. a description) – all but the checkbox str."""
 
     id: str
     label: str
     default: bool | str = False
-    kind: Literal["check", "text", "keys", "choice"] = "check"
+    kind: Literal["check", "text", "keys", "choice", "longtext"] = "check"
     placeholder: str = ""
     choices: Sequence[tuple[str, str]] = ()
     # A hint below the field.
@@ -84,7 +86,8 @@ class Option:
     def value(self, raw: object) -> bool | str:
         if self.kind == "check":
             return bool(self.default if raw is None else raw)
-        text = str(self.default if raw is None else raw).strip()[:MAX_TEXT]
+        limit = MAX_LONG_TEXT if self.kind == "longtext" else MAX_TEXT
+        text = str(self.default if raw is None else raw).strip()[:limit]
         if self.kind == "choice" and text not in {value for value, _ in self.choices}:
             return str(self.default)
         return text
@@ -116,6 +119,12 @@ class Tab:
     # Called whenever the tab is shown, in a worker thread: may ask git, Ollama, files.
     sections: Callable[[], Sequence[Section]]
     actions: Sequence[Action] = ()
+    # Instead of ``actions``: made anew whenever the tab is shown or an action runs – for
+    # choices and defaults that change (e.g. a list of profiles).
+    make_actions: Callable[[], Sequence[Action]] | None = None
+
+    def current_actions(self) -> Sequence[Action]:
+        return self.actions if self.make_actions is None else self.make_actions()
 
 
 def _command_args(config: Path | None) -> list[str]:
@@ -145,6 +154,7 @@ def builtin_tabs(
     from cassi import autostart
     from cassi.config import resolve_config_path
     from cassi.keyboard_tab import keyboard_tab
+    from cassi.profile_tab import profile_tab
     from cassi.reflex_tab import reflex_tab
     from cassi.voice_training import voice_tab
 
@@ -599,6 +609,7 @@ def builtin_tabs(
                 Action("backups", "Sicherungen öffnen", "Stände vor einem Import.", open_backups),
             ],
         ),
+        profile_tab(app, settings, config, now, quit_soon),
         keyboard_tab(app, now),
         reflex_tab(app, now),
         voice_tab(app, now),
@@ -816,8 +827,10 @@ class ManageServer:
         tab = self.tabs.get(request.match_info["tab"])
         if tab is None:
             raise web.HTTPNotFound()
+        actions: Sequence[Action] = ()
         try:
             sections = await asyncio.to_thread(tab.sections)
+            actions = await asyncio.to_thread(tab.current_actions)
         except Exception as exc:  # an adapter's tab must not break the page
             log.exception("Tab %s", tab.id)
             sections = [Section("Fehler", text=f"Dieser Tab ließ sich nicht laden: {exc}")]
@@ -849,7 +862,7 @@ class ManageServer:
                         "file": a.file,
                         "accept": a.accept,
                     }
-                    for a in tab.actions
+                    for a in actions
                 ],
             }
         )
@@ -857,7 +870,8 @@ class ManageServer:
     async def _run(self, request: web.Request) -> web.Response:
         body = await request.json()
         tab = self.tabs.get(str(body.get("tab")))
-        action = next((a for a in tab.actions if a.id == body.get("action")), None) if tab else None
+        actions = await asyncio.to_thread(tab.current_actions) if tab else ()
+        action = next((a for a in actions if a.id == body.get("action")), None)
         if action is None:
             raise web.HTTPNotFound()
         if any(not job.done for job in self.jobs.values()):
@@ -1122,10 +1136,11 @@ async def serve(
     holder: list[ManageServer] = []
 
     def current() -> Settings:
+        from cassi import profiles
         from cassi.adapters import configure
         from cassi.config import load_settings
 
-        return configure(adapters, load_settings(config))
+        return configure(adapters, profiles.resolve(load_settings(config), program=app.name))
 
     tabs = tabs_for(app, settings, adapters, config, lambda: holder[0].quit_soon(), current)
     server = ManageServer(app, tabs, port, launcher=Launcher(app, settings, config))

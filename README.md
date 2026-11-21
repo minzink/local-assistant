@@ -696,6 +696,48 @@ Standardwerte stehen im Code (`src/cassi/config.py`). Eigene Werte in `cassi.yam
 (Vorlage: `cassi.example.yaml`); alternativ Pfad per `--config` oder `$CASSI_CONFIG`.
 Unbekannte Schlüssel und ungültige Werte werden beim Start abgelehnt.
 
+## KI-Profile: mehrere getrennte KIs
+
+Ein **Profil** ist eine eigene KI auf derselben Cassi-Installation, getrennt nach dem, wie sie
+definiert ist, was sie gelernt hat und woran sie sich erinnert:
+
+| | liegt im Ordner des Profils |
+|---|---|
+| Definition | `profile.yaml` (Name, Persönlichkeit, Modell, Stimme … – wie `cassi.yaml`, nur was abweicht) und Dateien eines Adapters (bei Flay `Modelfile.local`, `persona.local.yaml`) |
+| Erinnerungen | Gedächtnis (`memory.sqlite3`), Verlauf |
+| Gelerntes | gelernte Notizen, Reflexe, Tasten-Einstellungen, eigene Stimm- und Erkennermodelle |
+
+Gemeinsam bleiben `cassi.yaml` (Geräte, Server), heruntergeladene Modelle und der
+Export-Ordner. Eingebaut sind „cassi“ (Cassis Datenordner) und eines je Adapter, der eine eigene
+KI ist (z.B. „flay“ in Flays Ordner); eigene Profile liegen in `<Datenordner>/profiles/<name>`.
+
+```bash
+cassi profil                                   # Liste, * = in Gebrauch
+cassi profil neu "Kasimir" --vorlage cassi     # --kopie nichts|definition|alles
+cassi profil wechseln kasimir                  # ab dem nächsten Start
+cassi --profil kasimir run                     # einmalig (auch CASSI_PROFILE)
+cassi profil loeschen kasimir                  # vorher als Zip unter backups gesichert
+```
+
+In der Verwaltung geht alles ohne eine Datei anzufassen, im Tab **Profile**:
+
+- **Neue KI anlegen**: Name des Profils, Zweck, von welchem Profil sie ausgeht (worauf es
+  aufbaut, z.B. Flay, und auf Wunsch seine Definition oder alles samt Erinnerungen) – dazu der
+  Name der KI, wer sie ist (Charakter, frei beschrieben), wie sie spricht, Stimme, Tonhöhe,
+  Tempo und Sprachmodell (aus den Modellen, die Ollama hat). Leere Felder: wie die Vorlage.
+- **KI bearbeiten**: dieselben Felder für eine bestehende KI; leere bleiben, wie sie sind, ihre
+  Erinnerungen bleiben auch. Ist sie in Gebrauch, startet der Assistent neu.
+- **Profil wechseln**: Assistent und Verwaltung starten mit dem neuen Profil neu.
+
+Bei einer Cassi-KI landet das in `profile.yaml` (Name und System-Prompt unter `persona`, der
+Charakter unter `character`, Stimme unter `tts.voice`, Modell unter `llm.model`); ein Adapter, der
+eigene KIs definiert, schreibt es in seine Dateien (`Adapter.define_profile`, bei Flay
+`persona.local.yaml` und `FROM` in `Modelfile.local`). Cassi selbst (das eingebaute Profil)
+stellst du weiter im Tab „Einstellungen“ ein. Welches
+gilt: `--profil`/`CASSI_PROFILE`, sonst das zuletzt gewählte, sonst `profile` in `cassi.yaml`,
+sonst das eigene eines Adapters (beim Start über seinen Befehl, z.B. `flay`), sonst „cassi“.
+Der Export (`cassi export`) nimmt das Profil in Gebrauch mit.
+
 ## Als Paket einbinden: Adapter
 
 Cassi läuft eigenständig. Andere Projekte können Cassi aber als Paket (`cassi`) einbinden und
@@ -726,7 +768,9 @@ Aktivierungswort (`input.continuous.wake_model`, `wake_pattern` und `wake_phrase
 Anzeige, wie Flays „Hey Flay“).
 
 Welche installierten Adapter aktiv sind, steuert `adapters` in `cassi.yaml` (fehlt der Eintrag:
-alle; `[]`: keiner). Ein Adapter, der sich nicht laden lässt, bricht den Start mit einer
+alle; `[]`: keiner). Ein Adapter, der eine eigene KI ist, setzt `own_profile = True` (dazu
+`profile_title` und `definition_files`): Er bekommt ein eingebautes Profil und gilt nur in
+Profilen, die auf ihm aufbauen. Ein Adapter, der sich nicht laden lässt, bricht den Start mit einer
 Meldung ab, statt still zu fehlen.
 
 ## Architektur

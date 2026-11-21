@@ -60,6 +60,7 @@ def _info(settings: Settings, config: Path | None) -> int:
     print(f"System:        {hardware.system} ({hardware.machine})")
     print(f"Beschleuniger: {hardware.accelerator}")
     print(f"Config:        {resolve_config_path(config) or 'Standardwerte'}")
+    print(f"Profil:        {settings.profile or 'cassi'} ({settings.data_dir})")
     print()
     print(yaml.safe_dump(settings.model_dump(mode="json"), allow_unicode=True, sort_keys=False))
     return 0
@@ -1366,6 +1367,56 @@ def _warm_ocr() -> None:
         log.debug("Texterkennung nicht vorgewärmt: %s", exc)
 
 
+def _profile_command(settings: Settings, args: argparse.Namespace, prog: str) -> int:
+    """`cassi profil [liste|neu|wechseln|loeschen] [NAME]`."""
+    from cassi import profiles
+
+    base = settings.shared_dir
+    infos = profiles.adapter_infos()
+    try:
+        active = profiles.active_name(settings, args.profil, prog, infos)
+        if args.action == "liste":
+            for profile in profiles.available(base, infos):
+                mark = "*" if profile.name == active else " "
+                built = ", ".join(profile.adapters) or "Cassi"
+                print(f"{mark} {profile.name:<20} {profile.label} · auf {built}")
+                if profile.description:
+                    print(f"  {'':<20} {profile.description}")
+                print(f"  {'':<20} {profile.folder}")
+            print("\n* in Gebrauch. Wechseln: profil wechseln NAME · neu: profil neu NAME")
+            return 0
+        if not args.name:
+            print("Bitte einen Namen angeben.")
+            return 1
+        if args.action == "neu":
+            template = profiles.find(base, args.vorlage or active, infos)
+            copy = {"nichts": "nothing", "definition": "definition", "alles": "everything"}
+            profile = profiles.create(
+                base,
+                args.name,
+                args.beschreibung,
+                template,
+                copy[args.kopie],  # type: ignore[arg-type]
+                infos=infos,
+            )
+            print(f"✓ Profil „{profile.label}“ angelegt ({profile.folder}),")
+            print(f"  ausgehend von „{template.label}“. Wechseln: profil wechseln {profile.name}")
+            return 0
+        if args.action == "wechseln":
+            profile = profiles.find(base, args.name, infos)
+            profiles.choose(base, profile.name)
+            print(f"✓ Ab dem nächsten Start: „{profile.label}“ ({profile.folder}).")
+            if os.environ.get(profiles.ENVIRONMENT):
+                print(f"  Hinweis: {profiles.ENVIRONMENT} ist gesetzt und geht vor.")
+            return 0
+        archive = profiles.remove(base, args.name, active, infos)
+        print(f"✓ Gelöscht – zur Sicherheit aufbewahrt in {archive}")
+        return 0
+    except profiles.ProfileError as exc:
+        print(f"Profil: {exc}")
+        return 1
+
+
 def main(argv: Sequence[str] | None = None, prog: str = "cassi") -> int:
     """Cassi's command line; an adapter's own command (``flay``) passes its name as ``prog``."""
     from cassi import app
@@ -1375,7 +1426,25 @@ def main(argv: Sequence[str] | None = None, prog: str = "cassi") -> int:
     parser.add_argument("--version", action="version", version=f"{prog} {app.current().version}")
     parser.add_argument("-c", "--config", type=Path, help="Pfad zur YAML-Konfiguration")
     parser.add_argument("-v", "--verbose", action="store_true", help="Debug-Ausgaben")
+    parser.add_argument(
+        "-p", "--profil", help="KI-Profil (eigene Definition, Erinnerungen, Gelerntes)"
+    )
     commands = parser.add_subparsers(dest="command")
+    profile_parser = commands.add_parser(
+        "profil", help="KI-Profile anzeigen, anlegen, wechseln oder löschen"
+    )
+    profile_parser.add_argument(
+        "action", nargs="?", default="liste", choices=["liste", "neu", "wechseln", "loeschen"]
+    )
+    profile_parser.add_argument("name", nargs="?", help="Name des Profils")
+    profile_parser.add_argument("--beschreibung", default="", help="Wofür das Profil ist")
+    profile_parser.add_argument("--vorlage", help="Profil, von dem das neue ausgeht")
+    profile_parser.add_argument(
+        "--kopie",
+        choices=["nichts", "definition", "alles"],
+        default="definition",
+        help="Was von der Vorlage übernommen wird (alles: auch Gedächtnis und Gelerntes)",
+    )
     commands.add_parser("setup", help="Alle Modelle einmalig herunterladen (sonst offline)")
     autostart = commands.add_parser("autostart", help="Cassi bei der Anmeldung starten")
     autostart.add_argument("action", nargs="?", choices=["on", "off", "status"], default="status")
@@ -1553,6 +1622,18 @@ def main(argv: Sequence[str] | None = None, prog: str = "cassi") -> int:
         settings = load_settings(args.config)
     except (OSError, yaml.YAMLError, ValidationError) as exc:
         print(f"Konfiguration ungültig: {exc}")
+        return 1
+    from cassi import profiles
+
+    if args.profil:
+        # Also for what this process starts (the assistant from the management UI).
+        os.environ[profiles.ENVIRONMENT] = args.profil
+    if args.command == "profil":
+        return _profile_command(settings, args, prog)
+    try:
+        settings = profiles.resolve(settings, args.profil, prog)
+    except (profiles.ProfileError, ValidationError) as exc:
+        print(f"Profil: {exc}")
         return 1
     try:
         adapters = load_adapters(settings.adapters)

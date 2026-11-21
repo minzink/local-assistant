@@ -12,6 +12,8 @@ def _no_real_data_folders(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
     monkeypatch.setattr(
         config, "user_data_path", lambda name, appauthor=False: tmp_path / "user-data" / name
     )
+    # No profile from the environment, and none set by a test leaks into the next.
+    monkeypatch.setenv("CASSI_PROFILE", "")
 
 
 @pytest.fixture(autouse=True)

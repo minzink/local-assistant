@@ -35,7 +35,8 @@ FORMAT = 1
 RECORDINGS = ("eval", "wake", "voice_dataset", "training")
 # Never exported: downloads (voices, feature models), earlier exports and backups.
 # "run": this computer's records (management UI, chosen export folder) – they must not move.
-SKIPPED_FOLDERS = ("voices", "backups", "exports", "run")
+# "profiles": the other AIs' folders inside Cassi's (each is exported while it is in use).
+SKIPPED_FOLDERS = ("voices", "backups", "exports", "run", "profiles")
 # Downloaded model files in ``models/``; own trained models there (.npz) are personal.
 DOWNLOADED_SUFFIXES = (".onnx",)
 MEMORY = "memory.sqlite3"

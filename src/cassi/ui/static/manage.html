@@ -74,7 +74,8 @@
   .action .about .keys-row button.recording { border-color: var(--accent); color: var(--accent); }
   .action .about .hint { color: var(--muted); font-size: 13px; margin-top: 3px; }
   .action .about label.field { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
-  .action .about label.field input, .action .about label.field select { flex: 1; min-width: 160px; font: inherit; padding: 4px 6px;
+  .action .about label.field textarea { flex-basis: 100%; min-height: 4.5em; resize: vertical; }
+  .action .about label.field input, .action .about label.field select, .action .about label.field textarea { flex: 1; min-width: 160px; font: inherit; padding: 4px 6px;
     border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
   .action .about div { color: var(--muted); font-size: 14px; }
   .action label { display: block; font-size: 14px; margin-top: 4px; }
@@ -311,6 +312,11 @@ function actionRow(tabId, action) {
       field.value = option.default || "";
       boxes[option.id] = { read: () => field.value };
       label.append(document.createTextNode(option.label + ": "), field);
+    } else if (option.kind === "longtext") {
+      const field = el("textarea", { rows: "4", placeholder: option.placeholder || "" });
+      field.value = option.default || "";
+      boxes[option.id] = { read: () => field.value };
+      label.append(document.createTextNode(option.label + ": "), field);
     } else if (option.kind === "choice") {
       const select = el("select");
       for (const [value, text] of option.choices) {
@@ -327,6 +333,7 @@ function actionRow(tabId, action) {
       label.append(box, document.createTextNode(" " + option.label));
     }
     about.append(label);
+    if (option.help) about.append(el("div", { class: "hint" }, option.help));
   }
   button.addEventListener("click", () => {
     const file = chooser?.files?.[0];

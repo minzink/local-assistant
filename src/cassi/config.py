@@ -558,10 +558,20 @@ class Settings(_Section):
     # Installed adapters to use (packages that personalize Cassi, e.g. "flay"); None = all
     # installed ones, [] = none. See cassi.adapters.
     adapters: list[str] | None = None
+    # The AI profile to use (cassi.profiles): its own definition, memory and what it learned.
+    # None: the one chosen last in the management UI, else an adapter's own, else "cassi".
+    profile: str | None = None
+    # Set by the profile in use: the shared data folder (where the profiles live); None: data_dir.
+    base_dir: Path | None = None
 
     @property
     def downloads(self) -> Path:
         return self.downloads_dir or self.data_dir
+
+    @property
+    def shared_dir(self) -> Path:
+        """The data folder all profiles share (cassi.profiles); data_dir without profiles."""
+        return self.base_dir or self.data_dir
 
 
 def default_data_dir(name: str = "cassi") -> Path:
