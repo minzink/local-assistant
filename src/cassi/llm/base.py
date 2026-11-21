@@ -77,5 +77,28 @@ class StructuredChat(Protocol):
     """
 
     async def complete_json(
-        self, messages: Sequence[Message], schema: dict[str, Any], name: str = "answer"
+        self,
+        messages: Sequence[Message],
+        schema: dict[str, Any],
+        name: str = "answer",
+        max_tokens: int | None = None,
     ) -> dict[str, Any]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class Reasoning:
+    """What a model thought before answering, within a time budget."""
+
+    thoughts: str
+    answer: str = ""
+    finished: bool = True  # False: the time was up before the model was done
+
+
+@runtime_checkable
+class ReasoningChat(Protocol):
+    """Optional: a model that can think freely for a while (a thinking model's reasoning,
+    or another model's text), stopped when the time is up."""
+
+    async def reason(
+        self, messages: Sequence[Message], seconds: float, model: str | None = None
+    ) -> Reasoning: ...

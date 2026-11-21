@@ -91,6 +91,15 @@ def models(base_url: str, timeout: float = 1.0) -> set[str]:
     return names
 
 
+def thinking_variant(base_url: str, model: str) -> str | None:
+    """The thinking sibling of an instruct model ("qwen3-vl:8b-instruct" →
+    "qwen3-vl:8b-thinking"), if the server has it."""
+    if "instruct" not in model:
+        return None
+    candidate = model.replace("instruct", "thinking")
+    return candidate if candidate in models(base_url) else None
+
+
 def resolve(setting: str | None, variant: Variant, fallback: str, base_url: str) -> str:
     """ "auto": the variant if the server has it, else ``fallback``; else the setting."""
     if setting not in (None, "auto"):

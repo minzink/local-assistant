@@ -10,6 +10,7 @@ import asyncio
 import base64
 import json
 import logging
+import re
 import time
 from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass
@@ -21,7 +22,14 @@ from openai.types.chat import ChatCompletionMessageParam
 from cassi import perf
 from cassi.core.messages import AudioPart, ImagePart, Message, Role, TextPart, ToolCall
 from cassi.llm import budget
-from cassi.llm.base import LLMEvent, ModelCapabilities, TextDelta, ThinkingOptions, ToolSpec
+from cassi.llm.base import (
+    LLMEvent,
+    ModelCapabilities,
+    Reasoning,
+    TextDelta,
+    ThinkingOptions,
+    ToolSpec,
+)
 from cassi.llm.gate import synthesis
 from cassi.net import trust_env
 
@@ -182,8 +190,13 @@ class OpenAICompatibleChat:
             )
 
     async def complete_json(
-        self, messages: Sequence[Message], schema: dict[str, Any], name: str = "answer"
+        self,
+        messages: Sequence[Message],
+        schema: dict[str, Any],
+        name: str = "answer",
+        max_tokens: int | None = None,
     ) -> dict[str, Any]:
+        max_tokens = max_tokens or self._max_tokens
         start = time.perf_counter()
         await synthesis.wait()  # see cassi.llm.gate
         _waited(start)
@@ -191,10 +204,10 @@ class OpenAICompatibleChat:
         with perf.request(perf.purpose()):
             response = await self._create(
                 self._model,
-                messages=self._messages(messages, max_tokens=self._max_tokens),
+                messages=self._messages(messages, max_tokens=max_tokens),
                 # Deterministic: the same request should always be routed the same way.
                 temperature=0,
-                max_tokens=self._max_tokens,
+                max_tokens=max_tokens,
                 response_format={
                     "type": "json_schema",
                     "json_schema": {"name": name, "schema": schema, "strict": True},
@@ -218,6 +231,55 @@ class OpenAICompatibleChat:
         if not isinstance(result, dict):
             raise ValueError(f"expected a JSON object, got: {content[:200]}")
         return result
+
+    async def reason(
+        self, messages: Sequence[Message], seconds: float, model: str | None = None
+    ) -> Reasoning:
+        """Let a model think for at most ``seconds`` (by default the thinking model, if one is
+        set up, else the main one): its reasoning, and its answer if it got that far."""
+        thinking = self._thinking
+        model = model or (thinking.model if thinking else None) or self._model
+        max_tokens = thinking.max_tokens if thinking else 4000
+        if self._context_tokens is not None:
+            # Room for the question: a long budget must not shorten what is asked.
+            max_tokens = min(max_tokens, self._context_tokens // 2)
+        body = (self._extra_body or {}) | (thinking.extra_body if thinking else {})
+        thoughts: list[str] = []
+        text: list[str] = []
+        finished = True
+        await synthesis.wait()  # see cassi.llm.gate
+        with perf.request(perf.purpose()):
+            try:
+                async with asyncio.timeout(seconds):
+                    response = await self._create(
+                        model,
+                        messages=self._messages(messages, max_tokens=max_tokens),
+                        temperature=self._temperature,
+                        max_tokens=max_tokens,
+                        stream=True,
+                        extra_body=body or None,
+                    )
+                    async with response:
+                        async for chunk in response:
+                            if not chunk.choices:
+                                continue
+                            delta = chunk.choices[0].delta
+                            extra = delta.model_extra or {}
+                            # Ollama: "reasoning"; llama.cpp, vLLM: "reasoning_content".
+                            for key in ("reasoning", "reasoning_content"):
+                                if isinstance(extra.get(key), str):
+                                    thoughts.append(extra[key])
+                            if delta.content:
+                                text.append(delta.content)
+            except TimeoutError:
+                finished = False
+        answer = "".join(text)
+        # Some servers leave the thinking in the text as <think>…</think>.
+        inside = re.findall(r"<think>(.*?)(?:</think>|$)", answer, flags=re.S)
+        if inside:
+            thoughts.extend(inside)
+            answer = re.sub(r"<think>.*?(?:</think>|$)", "", answer, flags=re.S)
+        return Reasoning("".join(thoughts).strip(), answer.strip(), finished)
 
     async def stream(
         self, messages: Sequence[Message], tools: Sequence[ToolSpec] = (), think: bool = False
