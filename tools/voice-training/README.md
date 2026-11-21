@@ -13,7 +13,16 @@ gemeinfrei). Alles Erzeugte landet in `tools/voice-training/work/` (nicht im Git
 - das Cassi-Repo, Internet (~10 GB Downloads), ~20 GB freier Platz
 - Python, Compiler usw. sind nicht nötig – das Setup holt alles selbst
 
-## Schritte
+## Am einfachsten: aus der Verwaltung
+
+`cassi manage` (bzw. `flay manage`), Tab **Stimme**, „Training starten“ – optional „Hohe
+Qualität“. Das startet `run.ps1` in einem eigenen Fenster: Einrichten, Datensatz, Training
+(2000 Epochen), Export und Kopie in den Stimmen-Ordner, ohne Ruhezustand. Der Tab zeigt den
+Schritt und die erreichte Epoche; erneut starten setzt nach einem Abbruch fort. Danach
+„Trainierte Stimme verwenden“ und neu starten. Von Hand:
+`powershell -ExecutionPolicy Bypass -File tools\voice-training\run.ps1 -VoicesDir <Stimmen-Ordner>`.
+
+## Schritte einzeln
 
 Alle Befehle in PowerShell (kein Administrator) im Repo-Ordner, z.B. `cd C:\local-assistant`.
 
@@ -42,6 +51,11 @@ Alle Befehle in PowerShell (kein Administrator) im Repo-Ordner, z.B. `cd C:\loca
    - Kürzer: `-Epochs 1000`. Die Zahl vorher festlegen – die Lernrate richtet sich danach.
    - „CUDA out of memory“: `-BatchSize 8`.
    - Abgebrochen? Mit derselben Epochenzahl fortsetzen: `-Resume` (bzw. `-Epochs 1000 -Resume`).
+   - **Bessere Qualität:** `-Quality high` trainiert Pipers großes Modell (Start ist der
+     LJSpeech-high-Checkpoint, weiblich, gemeinfrei; lädt beim ersten Mal ~1 GB). Es klingt
+     natürlicher, braucht aber je Satz länger (Mac-CPU 0,55–0,8 s statt ~0,1 s bis zum ersten
+     Ton). Eigene Ordner (`runs-high\`), ein medium-Training bleibt unberührt. Beim Export
+     ebenfalls `-Quality high` angeben; das ergibt `cassi-ramona-high.onnx`.
 5. **Zwischenstand exportieren** (auch während des Trainings, zweites Fenster):
    ```powershell
    powershell -ExecutionPolicy Bypass -File tools\voice-training\export.ps1
@@ -108,7 +122,7 @@ Ein fertig trainiertes Modell liegt in `voices/` (Git LFS); siehe `voices/README
        en: cassi-ramona-medium
    ```
    Steht dasselbe Modell bei beiden Sprachen, lädt Cassi es einmal und spricht jede Sprache
-   mit ihrer espeak-Aussprache (`de` bzw. `en-us`).
+   mit ihrer espeak-Aussprache (`de` bzw. `en-us`). Mit `-Quality high` trainiert: `cassi-ramona-high`.
 
 ## Technisches
 

@@ -128,6 +128,7 @@ def builtin_tabs(
 
     from cassi import autostart
     from cassi.config import resolve_config_path
+    from cassi.voice_training import voice_tab
 
     options = _command_args(config)
 
@@ -540,6 +541,7 @@ def builtin_tabs(
                 Action("backups", "Sicherungen öffnen", "Stände vor einem Import.", open_backups),
             ],
         ),
+        voice_tab(app, now),
         Tab(
             "uninstall",
             "Deinstallieren",
